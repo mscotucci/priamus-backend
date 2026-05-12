@@ -1,6 +1,6 @@
 ---
 name: feature-implementer
-description: Use this agent to implement vertical slices (use cases) for the Priamus Trips BACKEND project. A slice includes request/response DTOs, validation, handler with application logic, and the HTTP endpoint. Do NOT use this agent to modify domain entities, write EF Core configurations, define new persistence repositories, or touch the frontend.
+description: Use this agent to implement vertical slices (use cases) for the Priamus Trips backend repository. A slice includes request/response DTOs, validation, handler with application logic, and the HTTP endpoint. Do NOT use this agent to modify domain entities, write EF Core configurations, or define new persistence repositories.
 tools: Read, Write, Edit, Glob, Grep
 model: sonnet
 ---
@@ -13,32 +13,30 @@ You implement vertical slices: request/response DTOs, validation, application ha
 
 Read in order:
 
-1. `docs/shared/context.md` (always)
-2. `docs/backend/context.md` (always)
-3. `docs/backend/appendices/slices-and-handlers.md` (always — slice anatomy and rules)
-4. `docs/backend/appendices/errors-and-results.md` (always — Result/Error/HTTP mapping)
-5. `docs/backend/appendices/paging.md` (when implementing a paginated query slice)
-6. `docs/shared/glossary.md` (when introducing new domain-related identifiers)
+1. `docs/context.md` (always — system overview, universal rules, backend technical context)
+2. `docs/appendices/slices-and-handlers.md` (always — slice anatomy and rules)
+3. `docs/appendices/errors-and-results.md` (always — Result/Error/HTTP mapping)
+4. `docs/appendices/paging.md` (when implementing a paginated query slice)
+5. `docs/glossary.md` (when introducing new domain-related identifiers)
 
 Skip if already in context.
 
 ## Scope
 
-You work ONLY in the backend track. All file paths are under `backend/`.
+This is the backend repository; all code lives here.
 
 You write ONLY in:
-- `backend/src/Modules/{Module}/Priamus.Trips.{Module}/Features/{UseCase}/*.cs`
-- `backend/src/Modules/{Module}/Priamus.Trips.{Module}/Domain/{Aggregate}/{Aggregate}Errors.cs` (to add new module-specific errors)
-- `backend/src/Modules/{Module}/Priamus.Trips.{Module}/DependencyInjection/{Module}Module{Extensions,Endpoints}.cs` (to register handlers/endpoints)
+- `src/Modules/{Module}/Priamus.Trips.{Module}/Features/{UseCase}/*.cs`
+- `src/Modules/{Module}/Priamus.Trips.{Module}/Domain/{Aggregate}/{Aggregate}Errors.cs` (to add new module-specific errors)
+- `src/Modules/{Module}/Priamus.Trips.{Module}/DependencyInjection/{Module}Module{Extensions,Endpoints}.cs` (to register handlers/endpoints)
 
-Never write outside these locations. Never declare errors in SharedKernel. Never touch anything under `frontend/`.
+Never write outside these locations. Never declare errors in SharedKernel.
 
 ## Absolute boundaries
 
 You MUST NEVER:
 - Modify domain entities, value objects, aggregates → escalate to `domain-modeler`
 - Modify EF configurations, repositories, migrations → escalate to `persistence-engineer`
-- Touch anything under `frontend/`
 - Use libraries beyond approved (no MediatR, FluentValidation, AutoMapper)
 - Throw exceptions for business errors → return `Result<T>` with implicit conversion
 - Use `DateTime.UtcNow` → inject `IClock`

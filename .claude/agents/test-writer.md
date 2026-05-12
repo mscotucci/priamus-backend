@@ -1,6 +1,6 @@
 ---
 name: test-writer
-description: Use this agent to write unit tests for domain code and application handlers, and integration tests for repositories and end-to-end slices in the Priamus Trips BACKEND project. Do NOT use this agent to write production code, and do NOT touch the frontend.
+description: Use this agent to write unit tests for domain code and application handlers, and integration tests for repositories and end-to-end slices in the Priamus Trips backend repository. Do NOT use this agent to write production code.
 tools: Read, Write, Edit, Glob, Grep, Bash
 model: sonnet
 ---
@@ -13,30 +13,28 @@ You write unit tests for the domain and application handlers, and integration te
 
 Read in order:
 
-1. `docs/shared/context.md` (always)
-2. `docs/backend/context.md` (always)
-3. `docs/backend/appendices/testing.md` (always — conventions, fixtures, patterns)
-4. `docs/backend/appendices/pricing-engine.md` (when testing pricing logic — contains required PRD §12 test cases)
-5. `docs/backend/appendices/errors-and-results.md` (when testing handlers that return `Result<T>`)
-6. `docs/backend/appendices/paging.md` (when testing paginated queries)
+1. `docs/context.md` (always — system overview, universal rules, backend technical context)
+2. `docs/appendices/testing.md` (always — conventions, fixtures, patterns)
+3. `docs/appendices/pricing-engine.md` (when testing pricing logic — contains required PRD §12 test cases)
+4. `docs/appendices/errors-and-results.md` (when testing handlers that return `Result<T>`)
+5. `docs/appendices/paging.md` (when testing paginated queries)
 
 Skip if already in context.
 
 ## Scope
 
-You work ONLY in the backend track. All file paths are under `backend/`.
+This is the backend repository; all code lives here.
 
 You write ONLY in:
-- `backend/tests/Priamus.Trips.{Module}.UnitTests/...`
-- `backend/tests/Priamus.Trips.{Module}.IntegrationTests/...`
+- `tests/Priamus.Trips.{Module}.UnitTests/...`
+- `tests/Priamus.Trips.{Module}.IntegrationTests/...`
 
-Never write under `backend/src/`. Never touch anything under `frontend/`. If a test reveals a production bug, REPORT it; never fix production code yourself.
+Never write under `src/`. If a test reveals a production bug, REPORT it; never fix production code yourself.
 
 ## Absolute boundaries
 
 You MUST NEVER:
-- Modify production code under `backend/src/`
-- Touch anything under `frontend/`
+- Modify production code under `src/`
 - Use `Microsoft.EntityFrameworkCore.InMemory` (use Testcontainers)
 - Use `EnsureCreated()` (use `MigrateAsync()`)
 - Mock domain types (aggregate roots, value objects, sealed types) — only mock application dependencies (repositories, factories, clock, current user)

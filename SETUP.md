@@ -46,14 +46,9 @@ Extract the content of this package into the new directory. You should end up wi
 priamus-trips/
 ├── .claude/agents/                    (6 agent .md files)
 ├── docs/
-│   ├── shared/
-│   │   ├── context.md
-│   │   └── glossary.md
-│   ├── backend/
-│   │   ├── context.md
-│   │   └── appendices/                (8 .md files)
-│   └── frontend/
-│       └── context.md                 (placeholder)
+│   ├── context.md                     (system overview, universal rules, backend technical context)
+│   ├── glossary.md                    (Italian PRD terms → English code identifiers)
+│   └── appendices/                    (9 .md files loaded on demand)
 └── README.md
 ```
 
@@ -63,7 +58,7 @@ Verify the structure:
 find . -name "*.md" | sort
 ```
 
-You should see 17 markdown files total (1 README + 2 shared + 1 backend context + 8 backend appendices + 1 frontend placeholder + 6 agents).
+You should see 17 markdown files total (1 README + 1 SETUP + 1 backend context + 1 glossary + 9 appendices + 6 agents).
 
 ---
 
@@ -131,10 +126,10 @@ Before lanching a real task, do a "dry run" to verify the agents understand the 
 
 > Use the domain-modeler agent. Without writing any files yet, do the following:
 >
-> 1. Read `docs/shared/context.md`, `docs/shared/glossary.md`, `docs/backend/context.md`, and `docs/backend/appendices/domain-modeling.md`.
+> 1. Read `docs/context.md`, `docs/glossary.md`, and `docs/appendices/domain-modeling.md`.
 > 2. Confirm the file paths you read are correct (no 404s).
 > 3. Describe to me:
->    - The expected backend solution structure under `backend/`
+>    - The expected backend solution structure at the repository root
 >    - The types that should live in `Priamus.Trips.SharedKernel`
 >    - Which types depend on which (build order)
 >    - Which NuGet packages will be needed for the SharedKernel
@@ -142,7 +137,7 @@ Before lanching a real task, do a "dry run" to verify the agents understand the 
 
 This validates:
 - Agents load correctly
-- The new path structure (`docs/shared/...`, `docs/backend/...`) is found
+- The documentation path structure (`docs/context.md`, `docs/appendices/...`) is found
 - The model understands the plan before writing files
 
 Review the output. If something looks wrong, tell Claude what to adjust BEFORE proceeding.
@@ -155,16 +150,16 @@ After the dry run looks good, give the actual task:
 
 > Use the domain-modeler agent to:
 >
-> 1. Create the `backend/` directory and initialize the .NET solution structure:
->    - `backend/Priamus.Trips.slnx`
->    - `backend/Directory.Build.props` with the project-wide settings from `docs/backend/context.md`
->    - `backend/Directory.Packages.props` with central package management
->    - `backend/src/Priamus.Trips.Host/` (`webapi` template, .NET 10)
->    - `backend/src/Priamus.Trips.SharedKernel/` (classlib)
->    - The four modules: `backend/src/Modules/{Identity,Registry,Operations,BackOffice}/` each with their implementation project and Contracts project
->    - The test projects: `backend/tests/Priamus.Trips.{Module}.{UnitTests,IntegrationTests}/`
+> 1. At the repository root, initialize the .NET solution structure:
+>    - `Priamus.Trips.slnx`
+>    - `Directory.Build.props` with the project-wide settings from `docs/context.md`
+>    - `Directory.Packages.props` with central package management
+>    - `src/Priamus.Trips.Host/` (`webapi` template, .NET 10)
+>    - `src/Priamus.Trips.SharedKernel/` (classlib)
+>    - The four modules: `src/Modules/{Identity,Registry,Operations,BackOffice}/` each with their implementation project and Contracts project
+>    - The test projects: `tests/Priamus.Trips.{Module}.{UnitTests,IntegrationTests}/`
 >
-> 2. Configure all `ProjectReference` entries according to the rules in `docs/backend/context.md`:
+> 2. Configure all `ProjectReference` entries according to the rules in `docs/context.md`:
 >    - Host references all module implementations + SharedKernel
 >    - Each module references its own Contracts + SharedKernel + other modules' Contracts
 >    - Each Contracts project references only SharedKernel
@@ -182,7 +177,7 @@ After the dry run looks good, give the actual task:
 >    - `PagedRequest`, `PagedResponse<T>`, `SortDirection` enum
 >    - `ICurrentUser` interface
 >
-> 4. Verify the solution builds: `cd backend && dotnet restore && dotnet build`
+> 4. Verify the solution builds: `dotnet restore && dotnet build`
 >
 > 5. Summarize: files created, NuGet packages added with version, and confirm `dotnet build` succeeded.
 
@@ -198,16 +193,15 @@ After the agent finishes:
 
 The guardian will run its checks. Review the report. If there are BLOCKERs, they need fixing before proceeding.
 
-If the audit produces false positives (the guardian flags something that's actually correct), update the appropriate rule in `docs/backend/appendices/audit-rules.md` and commit the change. The audit rules are themselves living documentation.
+If the audit produces false positives (the guardian flags something that's actually correct), update the appropriate rule in `docs/appendices/audit-rules.md` and commit the change. The audit rules are themselves living documentation.
 
 ---
 
 ## Step 9 — Local build verification
 
-Outside Claude Code:
+Outside Claude Code, from the repository root:
 
 ```bash
-cd backend
 dotnet restore
 dotnet build
 ```
@@ -226,7 +220,6 @@ A clean build is the success criterion of this milestone.
 If build + audit pass:
 
 ```bash
-cd ..  # back to repo root
 git add .
 git commit -m "Add SharedKernel and solution structure"
 ```
@@ -250,7 +243,7 @@ These are normal first-setup frictions. Each one resolved gets folded back into 
 
 - **Do not skip the architecture audit** after each task. It's the cheapest way to catch drift early.
 - **Do not run multiple agents in parallel**. One agent at a time, sequential sessions, until you trust the setup.
-- **Do not start any frontend work**. The frontend context is a placeholder; we'll fill it in when the backend is stable.
+- **Do not start any frontend work in this repository**. The frontend lives in a separate repository and is consumed via the OpenAPI contract.
 - **Do not "fix" agent output by editing prompts inline** during a session. If an agent makes a systematic error, update its `.md` file in `.claude/agents/` between sessions.
 - **Do not skip the dry run (Step 6)**. The 2 minutes saved by skipping it can become hours wasted later.
 
@@ -267,7 +260,7 @@ Suggested order of subsequent tasks:
 5. **Operations module — Trip aggregate**: the heart of the system, depending on most of the above.
 6. **Operations — DailySummary, attachments, issues**.
 7. **BackOffice — reporting and exports**.
-8. **Frontend kickoff**.
+8. **Frontend kickoff** (in the separate frontend repository, once the backend OpenAPI contract is stable).
 
 Each milestone gets its own ticket / branch / commit, with architecture audit at the end.
 
