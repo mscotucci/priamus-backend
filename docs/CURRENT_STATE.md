@@ -1,6 +1,6 @@
 # Current State
 
-**Last updated**: 2026-05 (after backend scaffolding milestone, before Identity module)
+**Last updated**: 2026-05 (after Identity domain layer, before Identity persistence)
 
 This document is the single-page snapshot of where the project stands. It is updated after each significant milestone. It is intended as the first file an AI assistant or new contributor should read after `docs/context.md`.
 
@@ -8,7 +8,7 @@ This document is the single-page snapshot of where the project stands. It is upd
 
 ## Where we are right now
 
-The backend repository is fully scaffolded but contains no domain code yet. The SharedKernel is complete and verified.
+The backend repository is fully scaffolded and contains the Identity domain layer; no persistence code yet. The SharedKernel is complete and verified.
 
 **Completed milestones:**
 
@@ -22,6 +22,8 @@ The backend repository is fully scaffolded but contains no domain code yet. The 
 
 5. **Audit rules refined** — `B6` in `docs/appendices/audit-rules.md` now catches `MapGet`/`MapPost`/`MapPut`/`MapDelete`/`MapPatch` calls without authorization directives across all `.cs` files, not just `*Endpoint.cs`.
 
+6. **Identity domain layer** — User and RefreshToken aggregates with their value objects, errors classes, and domain events. ADR 0008 documents the decision to model the User↔Driver link on Registry rather than on User. Persistence not yet implemented.
+
 **Build status**: 0 errors, 0 warnings across 20 projects.
 **Audit status**: PASS — 0 BLOCKER, 0 MAJOR, 0 MINOR. Two human-review notes addressed.
 
@@ -29,7 +31,7 @@ The backend repository is fully scaffolded but contains no domain code yet. The 
 
 ## What is next
 
-**Next milestone: Identity module.**
+**Next milestone: Identity persistence.**
 
 Scoped for MVP (decisions confirmed):
 
@@ -44,6 +46,7 @@ Scoped for MVP (decisions confirmed):
 - Audit log via outbox: `UserLoggedIn`, `LoginFailed`, `TokenRefreshed`, `TokenRevoked`.
 
 **Out of scope MVP** (deferred to future ADRs):
+
 - Self-service registration (users created by secretariat/admin)
 - Password reset flow
 - 2FA
