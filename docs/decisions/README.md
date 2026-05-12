@@ -25,6 +25,7 @@ Each ADR follows this structure:
 | [0005](0005-jwt-with-refresh-token-rotation.md)                | JWT authentication with refresh token rotation                     | Accepted | 2026-05 |
 | [0006](0006-shared-kernel-http-as-separate-project.md)         | SharedKernel.Http as a separate project                            | Accepted | 2026-05 |
 | [0007](0007-glossary-sync-strategy.md)                         | Glossary synchronization between backend and frontend repositories | Accepted | 2026-05 |
+| [0008](0008-cross-module-identity-driver-linkage.md)           | Cross-module identity-driver linkage and JWT claim enrichment      | Accepted | 2026-05 |
 
 ## When to write a new ADR
 
