@@ -1,0 +1,12 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <Target Name="ValidateNoAspNetCoreReference" BeforeTargets="Build">
+    <Error
+      Condition="@(FrameworkReference->AnyHaveMetadataValue('Identity', 'Microsoft.AspNetCore.App')) == 'true'"
+      Text="SharedKernel must remain framework-agnostic. Do NOT add FrameworkReference to Microsoft.AspNetCore.App. HTTP bridge code belongs in Priamus.Trips.SharedKernel.Http." />
+    <Error
+      Condition="@(FrameworkReference->AnyHaveMetadataValue('Identity', 'Microsoft.AspNetCore.App.Ref')) == 'true'"
+      Text="SharedKernel must remain framework-agnostic. Do NOT add FrameworkReference to Microsoft.AspNetCore.App.Ref. HTTP bridge code belongs in Priamus.Trips.SharedKernel.Http." />
+  </Target>
+
+</Project>

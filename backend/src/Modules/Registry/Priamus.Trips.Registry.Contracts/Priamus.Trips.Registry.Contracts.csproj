@@ -1,0 +1,7 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\..\Priamus.Trips.SharedKernel\Priamus.Trips.SharedKernel.csproj" />
+  </ItemGroup>
+
+</Project>

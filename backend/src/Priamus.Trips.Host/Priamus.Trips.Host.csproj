@@ -1,0 +1,21 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer" />
+    <PackageReference Include="Microsoft.AspNetCore.OpenApi" />
+    <PackageReference Include="Serilog.AspNetCore" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Priamus.Trips.SharedKernel\Priamus.Trips.SharedKernel.csproj" />
+    <ProjectReference Include="..\Modules\Identity\Priamus.Trips.Identity\Priamus.Trips.Identity.csproj" />
+    <ProjectReference Include="..\Modules\Registry\Priamus.Trips.Registry\Priamus.Trips.Registry.csproj" />
+    <ProjectReference Include="..\Modules\Operations\Priamus.Trips.Operations\Priamus.Trips.Operations.csproj" />
+    <ProjectReference Include="..\Modules\BackOffice\Priamus.Trips.BackOffice\Priamus.Trips.BackOffice.csproj" />
+  </ItemGroup>
+
+</Project>

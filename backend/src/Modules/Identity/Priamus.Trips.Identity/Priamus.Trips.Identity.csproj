@@ -1,0 +1,21 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.EntityFrameworkCore" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Relational" />
+    <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" />
+    <PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer" />
+    <PackageReference Include="Scrutor" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\..\Priamus.Trips.SharedKernel\Priamus.Trips.SharedKernel.csproj" />
+    <ProjectReference Include="..\..\..\Priamus.Trips.SharedKernel.Http\Priamus.Trips.SharedKernel.Http.csproj" />
+    <ProjectReference Include="..\Priamus.Trips.Identity.Contracts\Priamus.Trips.Identity.Contracts.csproj" />
+  </ItemGroup>
+
+</Project>

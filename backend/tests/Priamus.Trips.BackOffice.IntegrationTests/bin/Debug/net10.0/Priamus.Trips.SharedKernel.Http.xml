@@ -1,0 +1,26 @@
+<?xml version="1.0"?>
+<doc>
+    <assembly>
+        <name>Priamus.Trips.SharedKernel.Http</name>
+    </assembly>
+    <members>
+        <member name="T:Priamus.Trips.SharedKernel.Http.ResultHttpExtensions">
+            <summary>
+            Maps <see cref="T:Priamus.Trips.SharedKernel.Results.Error"/> values to ASP.NET Core <see cref="T:Microsoft.AspNetCore.Http.IResult"/> ProblemDetails responses.
+            Mapping is driven exclusively by <see cref="P:Priamus.Trips.SharedKernel.Results.Error.Type"/>: never branch on <see cref="P:Priamus.Trips.SharedKernel.Results.Error.Code"/>.
+            Adding a new error in a module therefore does not require modifying this class.
+            </summary>
+            <remarks>
+            SharedKernel core is intentionally framework-agnostic; this project adds the ASP.NET Core bridge.
+            </remarks>
+        </member>
+        <member name="M:Priamus.Trips.SharedKernel.Http.ResultHttpExtensions.ToProblemDetails(Priamus.Trips.SharedKernel.Results.Error)">
+            <summary>
+            Converts an <see cref="T:Priamus.Trips.SharedKernel.Results.Error"/> to a ProblemDetails <see cref="T:Microsoft.AspNetCore.Http.IResult"/>.
+            </summary>
+            <param name="error">The error to convert. Must not be <see cref="F:Priamus.Trips.SharedKernel.Results.Error.None"/>.</param>
+            <returns>An <see cref="T:Microsoft.AspNetCore.Http.IResult"/> representing a ProblemDetails response.</returns>
+            <exception cref="T:System.InvalidOperationException">Thrown when <paramref name="error"/> is <see cref="F:Priamus.Trips.SharedKernel.Results.Error.None"/>.</exception>
+        </member>
+    </members>
+</doc>

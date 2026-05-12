@@ -1,0 +1,35 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/Priamus.Trips.Host/Priamus.Trips.Host.csproj" />
+    <Project Path="src/Priamus.Trips.SharedKernel.Http/Priamus.Trips.SharedKernel.Http.csproj" />
+    <Project Path="src/Priamus.Trips.SharedKernel/Priamus.Trips.SharedKernel.csproj" />
+  </Folder>
+  <Folder Name="/src/Modules/" />
+  <Folder Name="/src/Modules/BackOffice/">
+    <Project Path="src/Modules/BackOffice/Priamus.Trips.BackOffice.Contracts/Priamus.Trips.BackOffice.Contracts.csproj" />
+    <Project Path="src/Modules/BackOffice/Priamus.Trips.BackOffice/Priamus.Trips.BackOffice.csproj" />
+  </Folder>
+  <Folder Name="/src/Modules/Identity/">
+    <Project Path="src/Modules/Identity/Priamus.Trips.Identity.Contracts/Priamus.Trips.Identity.Contracts.csproj" />
+    <Project Path="src/Modules/Identity/Priamus.Trips.Identity/Priamus.Trips.Identity.csproj" />
+  </Folder>
+  <Folder Name="/src/Modules/Operations/">
+    <Project Path="src/Modules/Operations/Priamus.Trips.Operations.Contracts/Priamus.Trips.Operations.Contracts.csproj" />
+    <Project Path="src/Modules/Operations/Priamus.Trips.Operations/Priamus.Trips.Operations.csproj" />
+  </Folder>
+  <Folder Name="/src/Modules/Registry/">
+    <Project Path="src/Modules/Registry/Priamus.Trips.Registry.Contracts/Priamus.Trips.Registry.Contracts.csproj" />
+    <Project Path="src/Modules/Registry/Priamus.Trips.Registry/Priamus.Trips.Registry.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/Priamus.Trips.BackOffice.IntegrationTests/Priamus.Trips.BackOffice.IntegrationTests.csproj" />
+    <Project Path="tests/Priamus.Trips.BackOffice.UnitTests/Priamus.Trips.BackOffice.UnitTests.csproj" />
+    <Project Path="tests/Priamus.Trips.Identity.IntegrationTests/Priamus.Trips.Identity.IntegrationTests.csproj" />
+    <Project Path="tests/Priamus.Trips.Identity.UnitTests/Priamus.Trips.Identity.UnitTests.csproj" />
+    <Project Path="tests/Priamus.Trips.Operations.IntegrationTests/Priamus.Trips.Operations.IntegrationTests.csproj" />
+    <Project Path="tests/Priamus.Trips.Operations.UnitTests/Priamus.Trips.Operations.UnitTests.csproj" />
+    <Project Path="tests/Priamus.Trips.Registry.IntegrationTests/Priamus.Trips.Registry.IntegrationTests.csproj" />
+    <Project Path="tests/Priamus.Trips.Registry.UnitTests/Priamus.Trips.Registry.UnitTests.csproj" />
+    <Project Path="tests/Priamus.Trips.SharedKernel.UnitTests/Priamus.Trips.SharedKernel.UnitTests.csproj" />
+  </Folder>
+</Solution>
