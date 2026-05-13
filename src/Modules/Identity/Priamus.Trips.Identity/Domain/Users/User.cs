@@ -150,7 +150,10 @@ public sealed class User : AggregateRoot
     {
         ArgumentNullException.ThrowIfNull(clock);
 
-        EnsureActive(false);
+        if (Status is UserStatus.Disabled)
+        {
+            return;
+        }
 
         Status = UserStatus.Disabled;
 
@@ -171,7 +174,10 @@ public sealed class User : AggregateRoot
     {
         ArgumentNullException.ThrowIfNull(clock);
 
-        EnsureActive(false);
+        if (Status is UserStatus.Active)
+        {
+            return;
+        }
 
         Status = UserStatus.Active;
 
@@ -183,14 +189,12 @@ public sealed class User : AggregateRoot
     }
 
     /// <summary>
-    /// Ensures the user is active. By default, throws if the user is disabled; can be configured
-    /// to not throw by setting <paramref name="throwIfDisabled"/> to <c>false</c>.
+    /// Ensures the user is active.
     /// </summary>
-    /// <param name="throwIfDisabled">Whether to throw an exception if the user is disabled.</param>
     /// <exception cref="DomainException"></exception>
-    private void EnsureActive(bool throwIfDisabled = true)
+    private void EnsureActive()
     {
-        if (Status is UserStatus.Disabled && throwIfDisabled)
+        if (Status is UserStatus.Disabled)
         {
             throw new DomainException(UserErrors.CannotChangePasswordOnDisabledUser);
         }

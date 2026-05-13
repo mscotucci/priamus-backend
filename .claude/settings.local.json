@@ -4,7 +4,12 @@
       "Bash(dotnet --version)",
       "Bash(git --version)",
       "Bash(dotnet build *)",
-      "Bash(dotnet restore *)"
+      "Bash(dotnet restore *)",
+      "Bash(dotnet list *)",
+      "Bash(dotnet nuget *)",
+      "Bash(dotnet test *)",
+      "Bash(dotnet tool *)",
+      "Bash(docker info *)"
     ]
   }
 }

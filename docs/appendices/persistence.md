@@ -20,15 +20,15 @@ Detailed rules for mapping the domain to EF Core and PostgreSQL.
 
 ## Naming conventions
 
-| Element | Convention | Example |
-|---|---|---|
-| Schema | snake_case English | `operations` |
-| Table | snake_case plural English | `trips`, `trip_attachments` |
-| Column | snake_case English | `reference_number`, `created_at` |
-| Index | `ix_{table}_{columns}` | `ix_trips_driver_id_execution_date` |
-| Foreign key | `fk_{table}_{referenced}_{column}` | `fk_trip_attachments_trips_trip_id` |
-| Check constraint | `chk_{table}_{rule}` | `chk_trips_composition_trailer` |
-| Unique | `uq_{table}_{columns}` | `uq_trips_reference_number` |
+| Element          | Convention                         | Example                             |
+| ---------------- | ---------------------------------- | ----------------------------------- |
+| Schema           | snake_case English                 | `operations`                        |
+| Table            | snake_case plural English          | `trips`, `trip_attachments`         |
+| Column           | snake_case English                 | `reference_number`, `created_at`    |
+| Index            | `ix_{table}_{columns}`             | `ix_trips_driver_id_execution_date` |
+| Foreign key      | `fk_{table}_{referenced}_{column}` | `fk_trip_attachments_trips_trip_id` |
+| Check constraint | `chk_{table}_{rule}`               | `chk_trips_composition_trailer`     |
+| Unique           | `uq_{table}_{columns}`             | `uq_trips_reference_number`         |
 
 Apply via `.HasConstraintName(...)`, `.HasDatabaseName(...)`.
 
@@ -97,12 +97,12 @@ Never store sealed types in JSON when their fields need to be queried.
 
 ## Decimal precision
 
-| Type | Precision |
-|---|---|
-| Money amounts | `HasPrecision(12, 2)` |
-| Tons | `HasPrecision(10, 3)` |
-| Kilometers | `HasPrecision(10, 2)` |
-| Hours (if stored) | `HasPrecision(8, 2)` |
+| Type              | Precision             |
+| ----------------- | --------------------- |
+| Money amounts     | `HasPrecision(12, 2)` |
+| Tons              | `HasPrecision(10, 3)` |
+| Kilometers        | `HasPrecision(10, 2)` |
+| Hours (if stored) | `HasPrecision(8, 2)`  |
 
 ```csharp
 builder.Property(t => t.FinalAmount)
@@ -118,7 +118,7 @@ Currency hardcoded to "EUR" for MVP. Multi-currency support requires revisiting 
 
 ## Concurrency
 
-Every aggregate root has `version: int`:
+Every aggregate root has `Version: int`:
 
 ```csharp
 builder.Property<int>("Version")
@@ -143,32 +143,162 @@ builder.ToTable("trips", "operations", t =>
 });
 ```
 
-## Repositories
+## Data access (no repositories)
 
-One interface per aggregate root. In `Application/Abstractions/I{Aggregate}Repository.cs`:
+Per [ADR 0009](../decisions/0009-no-repository-pattern.md), the project does **not** use the classic Repository pattern. Handlers depend on the module's `DbContext` directly, both for write operations and for hydrating aggregates needed by a command.
+
+### What this means in practice
+
+- **No `I{Aggregate}Repository` interfaces.** Do not create them, even for new aggregates. If you find yourself writing one, the convention has been broken — re-read ADR 0009 first.
+- **Handlers inject the module's `DbContext` directly.** Example:
 
 ```csharp
-public interface ITripRepository
+internal sealed class ChangePasswordHandler(
+    IdentityDbContext dbContext,
+    IClock clock,
+    ICurrentUser currentUser)
 {
-    Task<Trip?> LoadAsync(TripId id, CancellationToken cancellationToken);
-    Task AddAsync(Trip trip, CancellationToken cancellationToken);
+    public async Task<Result<Unit>> HandleAsync(
+        ChangePasswordRequest request,
+        CancellationToken ct)
+    {
+        var user = await dbContext.Users
+            .FirstOrDefaultAsync(u => u.Id == request.UserId, ct);
+        if (user is null) return UserErrors.NotFound;
+
+        user.ChangePassword(request.NewHash, clock, currentUser.Id);
+        await dbContext.SaveChangesAsync(ct);
+        return Result.Success(Unit.Value);
+    }
 }
 ```
 
-Implementation in `Persistence/Repositories/{Aggregate}Repository.cs`:
+- **`DbContext` is registered scoped via DI** in the module's persistence registration extensions.
+- **`DbContext` is not exposed outside its module.** Other modules talk to this one through Contracts interfaces, not by injecting its `DbContext`.
+- **`SaveChangesAsync` is called by the handler itself**, at the end of the command. There is no central transaction filter.
 
-- Always load aggregate intero with child entities via `Include(...)`.
-- Filter soft-deleted children: `.Include(t => t.Attachments.Where(a => a.SoftDeletedAt == null))`.
-- Use `.AsSplitQuery()` when multiple Include cause cartesian explosion.
-- No `Update` method. EF tracks changes; `TransactionFilter` calls `SaveChangesAsync`.
-- No query methods on the repository. Read queries go through dedicated query handlers using `DbContext` directly.
+### Reusable queries
 
-## Outbox pattern
+When the same filter or projection is used across two or more slices, factor it out — but **not** into a repository. Options, in order of preference:
 
-Each module has an outbox table:
+1. **Extension method on `IQueryable<T>`**. Best for read filters that compose:
+
+```csharp
+public static IQueryable<User> WhereActive(this IQueryable<User> q)
+    => q.Where(u => u.Status == UserStatus.Active);
+
+public static IQueryable<User> ByUsername(this IQueryable<User> q, Username username)
+    => q.Where(u => u.Username == username);
+
+// usage:
+var user = await dbContext.Users
+    .WhereActive()
+    .ByUsername(username)
+    .FirstOrDefaultAsync(ct);
+```
+
+Place these extension methods in the module's `Persistence/Queries/` folder.
+
+2. **Read-only query service**. For more complex multi-aggregate read projections that don't compose well as extension methods. Define as a small interface (`IUserQueryService`) exposing specific methods (`GetActiveUserSummaryAsync`), implement against the `DbContext`. This is a _query_ service, not a repository — only reads, returns DTOs, never mutates and never returns aggregates.
+
+3. **Inline in the handler**. Always acceptable when the query is used by exactly one slice.
+
+### Tests
+
+Per `context.md` §6, persistence is tested against real PostgreSQL via Testcontainers. There are no mocks of `DbContext` or `DbSet<T>`. Handlers that touch persistence are tested as integration tests; pure domain logic (aggregate methods, value objects) is tested as unit tests with no persistence at all.
+
+## Domain event persistence
+
+Aggregates emit domain events (`UserPasswordChanged`, `TripRegistered`, etc.) inside their state-change methods. These events serve two distinct purposes which are handled by two distinct mechanisms.
+
+### Default: synchronous audit log
+
+For events that record "what happened, by whom, when" — accountability, forensics, conformity — the default mechanism is a **synchronous audit log table** populated via an `ISaveChangesInterceptor`. The audit row is written in the same transaction as the aggregate state change, guaranteeing atomicity.
+
+This covers the requirement in `context.md` §6 ("audit log of sensitive operations") and PRD RNF-08 without introducing asynchronous infrastructure.
+
+Schema per module:
 
 ```sql
-CREATE TABLE operations.outbox_messages (
+CREATE TABLE identity.audit_log (
+    id              UUID PRIMARY KEY,
+    occurred_at     TIMESTAMPTZ NOT NULL,
+    actor_id        UUID,
+    subject_id      UUID NOT NULL,
+    event_type      VARCHAR(200) NOT NULL,
+    payload         JSONB NOT NULL
+);
+
+CREATE INDEX ix_audit_log_subject_id_occurred_at
+    ON identity.audit_log(subject_id, occurred_at DESC);
+
+CREATE INDEX ix_audit_log_event_type_occurred_at
+    ON identity.audit_log(event_type, occurred_at DESC);
+```
+
+Conventions:
+
+- `event_type` is a stable string (`"identity.user.password_changed"`, `"operations.trip.registered"`). It is a de-facto compatibility contract — changing it breaks downstream consumers of the audit table. Collect the strings in an `AuditEventTypes` static class per module.
+- `subject_id` is the identity of the entity the event is about. For events on a child aggregate, prefer the parent's id when there is a natural "owner" (e.g. for refresh-token events, `subject_id` is the `UserId`, not the `RefreshTokenId`).
+- `actor_id` is resolved from `ICurrentUser`. It is nullable: some events (e.g. failed login attempts) have no authenticated actor.
+- `payload` is the full event serialized as JSON via `System.Text.Json`. Never truncate — audit value depends on completeness.
+
+Implementation: an `ISaveChangesInterceptor` registered on the module's `DbContext`. In `SavingChangesAsync`, the interceptor iterates `ChangeTracker.Entries<AggregateRoot>()`, dequeues their domain events, transforms them into `AuditLogEntry` instances, and adds them to the ChangeTracker. The base flush writes everything in one transaction.
+
+```csharp
+public sealed class AuditInterceptor(IClock clock, ICurrentUser currentUser)
+    : ISaveChangesInterceptor
+{
+    public ValueTask<InterceptionResult<int>> SavingChangesAsync(
+        DbContextEventData eventData,
+        InterceptionResult<int> result,
+        CancellationToken ct = default)
+    {
+        var context = eventData.Context!;
+
+        var aggregates = context.ChangeTracker.Entries<AggregateRoot>()
+            .Select(e => e.Entity)
+            .Where(a => a.DomainEvents.Count > 0)
+            .ToList();
+
+        foreach (var aggregate in aggregates)
+        {
+            foreach (var domainEvent in aggregate.DomainEvents)
+            {
+                var entry = MapToAuditEntry(domainEvent, currentUser.IdOrNull);
+                context.Set<AuditLogEntry>().Add(entry);
+            }
+            aggregate.ClearDomainEvents();
+        }
+
+        return ValueTask.FromResult(result);
+    }
+
+    // Also override the synchronous SavingChanges as a defensive measure
+    // for callers that bypass the async path.
+
+    private static AuditLogEntry MapToAuditEntry(IDomainEvent e, UserId? actor) =>
+        e switch
+        {
+            UserPasswordChanged ev => AuditLogEntry.For(ev, actor, AuditEventTypes.UserPasswordChanged),
+            // ... one branch per event in the module
+            _ => throw new UnreachableException($"Unmapped domain event: {e.GetType().Name}")
+        };
+}
+```
+
+The interceptor lives inside the owning module at `Persistence/Interceptors/`. **Do not pre-extract** to `SharedKernel`. When a second module needs the same mechanism, promote the shared pieces then.
+
+### Opt-in: outbox for cross-module communication
+
+The outbox pattern is used **only** when an event needs to reach a consumer outside the emitting module — another module's domain logic, an external integration, a webhook. It is not the default mechanism for domain events.
+
+A module that has no cross-module consumers for its events **does not implement an outbox table or worker**. Identity in the MVP is an example: its seven events (`UserCreated`, `UserPasswordChanged`, ...) are recorded in the audit log only.
+
+When a cross-module consumer is identified, the emitting module adds the outbox infrastructure:
+
+```sql
+CREATE TABLE {module}.outbox_messages (
     id              UUID PRIMARY KEY,
     occurred_at     TIMESTAMPTZ NOT NULL,
     event_type      VARCHAR(200) NOT NULL,
@@ -179,30 +309,15 @@ CREATE TABLE operations.outbox_messages (
 );
 
 CREATE INDEX ix_outbox_messages_unprocessed
-    ON operations.outbox_messages(occurred_at)
+    ON {module}.outbox_messages(occurred_at)
     WHERE processed_at IS NULL;
 ```
 
-Events are written to outbox in the same transaction as aggregate changes via `SaveChangesAsync` override:
+The same `ISaveChangesInterceptor` is extended to also write outbox rows for events that have at least one cross-module subscriber. Audit log and outbox can coexist on the same event: the audit row records that the event happened; the outbox row drives the asynchronous dispatch. They are independent in purpose.
 
-```csharp
-public override async Task<int> SaveChangesAsync(CancellationToken cancellationToken = default)
-{
-    var aggregates = ChangeTracker.Entries<AggregateRoot>()
-        .Select(e => e.Entity)
-        .Where(a => a.DomainEvents.Count > 0)
-        .ToList();
+Dispatch is handled by an `OutboxProcessor` `BackgroundService` registered in `Host`, which polls unprocessed messages and invokes the registered handlers. At-least-once delivery: handlers must be idempotent.
 
-    var events = aggregates.SelectMany(a => a.DomainEvents).ToList();
-    foreach (var domainEvent in events)
-        OutboxMessages.Add(OutboxMessage.From(domainEvent, _clock.UtcNow));
-
-    aggregates.ForEach(a => a.ClearDomainEvents());
-    return await base.SaveChangesAsync(cancellationToken);
-}
-```
-
-An `OutboxProcessor` `BackgroundService` reads unprocessed events and dispatches to handlers. At-least-once delivery: handlers must be idempotent.
+The decision to add an outbox to a module is documented in an ADR, with the cross-module consumer(s) named.
 
 ## Migrations
 
@@ -219,6 +334,7 @@ dotnet ef migrations add AddTripsTable \
 ```
 
 Rules:
+
 - Forward-only: never edit a migration after merging to main.
 - For destructive changes (drop column, rename table), produce two migrations across two releases: additive first, cleanup second.
 - Apply: dev auto on startup via `MigrateAsync()`; prod via dedicated pre-deploy job. Never `EnsureCreated()`.
@@ -246,7 +362,7 @@ Connection string is dummy; only used to scaffold migrations.
 
 ## Query performance
 
-- `.AsNoTracking()` on every read-only query.
+- `.AsNoTracking()` on every read-only query. With direct `DbContext` access, this is now the responsibility of each handler — there is no central layer that applies it automatically.
 - `.AsSplitQuery()` when multiple Include cause cartesian explosion warning.
 - Indexes declared explicitly via `.HasIndex(...)`. Never rely on EF defaults.
 - Partial indexes for soft-deleted filters: `.HasFilter("soft_deleted_at IS NULL")`.

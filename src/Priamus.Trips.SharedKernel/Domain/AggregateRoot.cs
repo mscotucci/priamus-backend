@@ -18,7 +18,7 @@ public abstract class AggregateRoot
     public IReadOnlyList<IDomainEvent> DomainEvents => _domainEvents;
 
     /// <summary>
-    /// Optimistic-concurrency token. EF Core maps this to <c>xmin</c> on PostgreSQL.
+    /// Optimistic-concurrency token. EF Core maps this to <c>integer</c> on PostgreSQL.
     /// The setter is <c>protected</c> so EF Core can hydrate it and aggregates can
     /// increment it via <see cref="IncrementVersion"/>; consumers outside the aggregate
     /// cannot mutate it.
