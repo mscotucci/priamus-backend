@@ -22,9 +22,12 @@ namespace Priamus.Trips.Identity.Domain.Users.ValueObjects;
 /// </list>
 /// </para>
 /// </remarks>
-/// <param name="Value">The normalized username. Guaranteed to satisfy the rules above.</param>
-public sealed partial record Username(string Value)
+public sealed partial record Username
 {
+    public string Value { get; }
+
+    private Username(string value) => Value = value;
+
     /// <summary>Inclusive minimum length after normalization.</summary>
     public const int MinLength = 3;
 

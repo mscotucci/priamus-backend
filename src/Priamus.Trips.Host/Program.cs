@@ -1,5 +1,38 @@
-// Placeholder Host bootstrap. Real wiring is added by the feature-implementer agent.
+using Priamus.Trips.Host.Infrastructure.Stubs;
+using Priamus.Trips.Identity.DependencyInjection;
+using Priamus.Trips.Registry.Contracts;
+using Serilog;
+
 var builder = WebApplication.CreateBuilder(args);
+
+// ── Logging ──────────────────────────────────────────────────────────────────
+builder.Host.UseSerilog((ctx, lc) =>
+    lc.ReadFrom.Configuration(ctx.Configuration));
+
+// ── OpenAPI ───────────────────────────────────────────────────────────────────
+builder.Services.AddOpenApi();
+
+// ── DTO validation (Microsoft.Extensions.Validation source generator) ─────────
+builder.Services.AddValidation();
+
+// ── Temporary stubs (replaced when respective modules land) ──────────────────
+// TODO: replace when Registry module lands (ADR 0008)
+builder.Services.AddSingleton<IDriverLookup, NullDriverLookup>();
+
+// ── Identity module ───────────────────────────────────────────────────────────
+builder.Services.AddIdentityModule(builder.Configuration);
+
 var app = builder.Build();
-// Endpoints are registered by each module via {Module}ModuleEndpoints.Map{Module}Endpoints(app). No endpoints exist yet because no module has shipped its first feature.
+
+// ── Middleware ────────────────────────────────────────────────────────────────
+app.UseAuthentication();
+app.UseAuthorization();
+app.MapOpenApi();
+
+// ── Identity endpoints ────────────────────────────────────────────────────────
+app.MapIdentityEndpoints();
+
 app.Run();
+
+// Expose Program for integration test WebApplicationFactory
+public partial class Program;

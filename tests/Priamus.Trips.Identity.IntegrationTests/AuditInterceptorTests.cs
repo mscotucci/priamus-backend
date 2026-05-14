@@ -22,6 +22,8 @@ namespace Priamus.Trips.Identity.IntegrationTests;
 /// </summary>
 public sealed class AuditInterceptorTests : IdentityIntegrationTestBase
 {
+    public AuditInterceptorTests(PostgresFixture fixture) : base(fixture) { }
+
     // ── UserCreated ──────────────────────────────────────────────────────────
 
     [Fact]

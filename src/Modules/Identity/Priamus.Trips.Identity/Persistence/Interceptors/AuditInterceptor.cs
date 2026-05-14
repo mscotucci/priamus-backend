@@ -1,6 +1,5 @@
 using System.Diagnostics;
 using System.Text.Json;
-using System.Text.Json.Serialization;
 using Microsoft.EntityFrameworkCore.Diagnostics;
 using Priamus.Trips.Identity.Domain.RefreshTokens.Events;
 using Priamus.Trips.Identity.Domain.Users.Events;
@@ -29,12 +28,9 @@ namespace Priamus.Trips.Identity.Persistence.Interceptors;
 /// </remarks>
 public sealed class AuditInterceptor : ISaveChangesInterceptor
 {
-    // Configured once at class level; camelCase, no polymorphic discriminators.
-    private static readonly JsonSerializerOptions SerializerOptions = new()
-    {
-        PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
-        DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
-    };
+    // Use the shared options from AuditSerializerOptions so that domain-event rows
+    // and handler-written non-domain rows share an identical serialization format.
+    private static readonly JsonSerializerOptions SerializerOptions = AuditSerializerOptions.Default;
 
     private readonly ICurrentUser _currentUser;
 

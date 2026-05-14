@@ -40,6 +40,16 @@ public readonly struct Result
         return new Result(false, error);
     }
 
+    /// <summary>
+    /// Pattern-matches on success or failure to produce a value of type <typeparamref name="TOut"/>.
+    /// </summary>
+    public TOut Match<TOut>(Func<TOut> onSuccess, Func<Error, TOut> onFailure)
+    {
+        ArgumentNullException.ThrowIfNull(onSuccess);
+        ArgumentNullException.ThrowIfNull(onFailure);
+        return IsSuccess ? onSuccess() : onFailure(Error);
+    }
+
     /// <summary>Implicit conversion from an <see cref="Error"/> to a failed <see cref="Result"/>.</summary>
     public static implicit operator Result(Error error) => Failure(error);
 }

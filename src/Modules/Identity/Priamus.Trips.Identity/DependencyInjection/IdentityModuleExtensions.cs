@@ -1,0 +1,114 @@
+using System.Text;
+using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.Authorization;
+using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.IdentityModel.Tokens;
+using Priamus.Trips.Identity.Application.Abstractions;
+using Priamus.Trips.Identity.Domain.Users;
+using Priamus.Trips.Identity.Infrastructure;
+using Priamus.Trips.Identity.Persistence.DependencyInjection;
+using Priamus.Trips.SharedKernel.Security;
+using Priamus.Trips.SharedKernel.Time;
+
+namespace Priamus.Trips.Identity.DependencyInjection;
+
+/// <summary>
+/// Extension methods for registering Identity module services.
+/// </summary>
+public static class IdentityModuleExtensions
+{
+    /// <summary>
+    /// Registers all Identity module services: persistence, JWT infrastructure,
+    /// application abstractions, authorization policies, and handlers (via Scrutor).
+    /// </summary>
+    /// <param name="services">The service collection to configure.</param>
+    /// <param name="configuration">Application configuration (provides the "Jwt" section).</param>
+    /// <returns>The same <paramref name="services"/> for chaining.</returns>
+    public static IServiceCollection AddIdentityModule(this IServiceCollection services, IConfiguration configuration)
+    {
+        // ── Persistence ──────────────────────────────────────────────────────────
+        var connectionString = configuration.GetConnectionString("Identity")
+            ?? throw new InvalidOperationException(
+                "Connection string 'Identity' is required for the Identity module.");
+
+        services.AddIdentityPersistence(connectionString);
+
+        // ── JWT options ──────────────────────────────────────────────────────────
+        services
+            .AddOptions<JwtOptions>()
+            .BindConfiguration("Jwt")
+            .ValidateDataAnnotations()
+            .ValidateOnStart();
+
+        // ── Infrastructure ───────────────────────────────────────────────────────
+        services.AddSingleton<IJwtTokenIssuer, JwtTokenIssuer>();
+        services.AddSingleton<IRefreshTokenHasher, Sha256RefreshTokenHasher>();
+        services.AddScoped<
+            Microsoft.AspNetCore.Identity.IPasswordHasher<User>,
+            Microsoft.AspNetCore.Identity.PasswordHasher<User>>();
+
+        // ── IClock ───────────────────────────────────────────────────────────────
+        // Registered as singleton so all handlers share the same production clock.
+        services.AddSingleton<IClock, SystemClock>();
+
+        // ── ICurrentUser ─────────────────────────────────────────────────────────
+        services.AddHttpContextAccessor();
+        services.AddScoped<ICurrentUser, HttpContextCurrentUser>();
+
+        // ── JWT Bearer authentication ─────────────────────────────────────────────
+        // Read raw config values for JwtBearer middleware setup. The options object
+        // is separately validated at startup via ValidateOnStart(); here we only need
+        // the values to configure the TokenValidationParameters.
+        var jwtSection = configuration.GetSection("Jwt");
+        var jwtIssuer = jwtSection["Issuer"] ?? string.Empty;
+        var jwtAudience = jwtSection["Audience"] ?? string.Empty;
+        // Use a placeholder key if the signing key is not configured; ValidateOnStart()
+        // will reject the application before it can serve requests with an invalid key.
+        var jwtSigningKey = jwtSection["SigningKey"] ?? new string('x', 32);
+
+        services
+            .AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
+            .AddJwtBearer(options =>
+            {
+                options.MapInboundClaims = false; // preserve original claim types (e.g. "sub", not ClaimTypes.NameIdentifier)
+                options.TokenValidationParameters = new TokenValidationParameters
+                {
+                    ValidateIssuer = true,
+                    ValidIssuer = jwtIssuer,
+                    ValidateAudience = true,
+                    ValidAudience = jwtAudience,
+                    ValidateLifetime = true,
+                    ValidateIssuerSigningKey = true,
+                    IssuerSigningKey = new SymmetricSecurityKey(
+                        Encoding.UTF8.GetBytes(jwtSigningKey)),
+                    // JsonWebTokenHandler does not auto-remap to legacy ClaimTypes URIs;
+                    // configure short-name claim types so ICurrentUser can read them directly.
+                    NameClaimType = "sub",
+                    RoleClaimType = "role",
+                };
+            });
+
+        // ── Authorization policies ───────────────────────────────────────────────
+        services.AddAuthorization(options =>
+        {
+            options.AddPolicy(
+                "BackOfficeOrAdmin",
+                policy => policy.RequireRole(
+                    UserRole.BackOffice.ToString(),
+                    UserRole.Admin.ToString()));
+        });
+
+        // ── Handlers (Scrutor scan) ──────────────────────────────────────────────
+        services.Scan(scan => scan
+            .FromAssemblyOf<IdentityModuleMarker>()
+            .AddClasses(c => c.Where(t => t.Name.EndsWith("Handler")))
+            .AsSelf()
+            .WithScopedLifetime());
+
+        return services;
+    }
+}
+
+/// <summary>Marker class for assembly scanning.</summary>
+internal sealed class IdentityModuleMarker;

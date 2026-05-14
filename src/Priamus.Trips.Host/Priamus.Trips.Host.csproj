@@ -2,11 +2,16 @@
 
   <PropertyGroup>
     <OutputType>Exe</OutputType>
+    <!-- Microsoft.Extensions.Validation is used transitively via [ValidatableType] in Identity module.
+         The package analyzer emits NU1510 because source-generator usage isn't detected statically.
+         Suppressed here per the known-failure note in the Identity feature brief. -->
+    <NoWarn>$(NoWarn);NU1510</NoWarn>
   </PropertyGroup>
 
   <ItemGroup>
     <PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer" />
     <PackageReference Include="Microsoft.AspNetCore.OpenApi" />
+    <PackageReference Include="Microsoft.Extensions.Validation" />
     <PackageReference Include="Serilog.AspNetCore" />
   </ItemGroup>
 

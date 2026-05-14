@@ -56,4 +56,22 @@ public static class UserErrors
     public static readonly Error UsernameAlreadyTaken = Error.Conflict(
         "User.UsernameAlreadyTaken",
         "The chosen username is already in use.");
+
+    // ─── Authentication errors ────────────────────────────────────────────
+
+    /// <summary>
+    /// The supplied credentials are invalid (username not found OR password wrong).
+    /// Used for BOTH unknown username and wrong password to prevent username enumeration.
+    /// The handler distinguishes internally for audit logging only (the API surface must not).
+    /// </summary>
+    public static readonly Error InvalidCredentials = Error.Unauthorized(
+        "User.InvalidCredentials",
+        "Invalid username or password.");
+
+    /// <summary>
+    /// Login or refresh was rejected because the user account is disabled.
+    /// </summary>
+    public static readonly Error AccountDisabled = Error.Unauthorized(
+        "User.AccountDisabled",
+        "The user account is disabled. Please contact an administrator.");
 }

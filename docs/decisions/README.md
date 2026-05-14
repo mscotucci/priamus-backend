@@ -27,6 +27,8 @@ Each ADR follows this structure:
 | [0007](0007-glossary-sync-strategy.md)                         | Glossary synchronization between backend and frontend repositories | Accepted | 2026-05 |
 | [0008](0008-cross-module-identity-driver-linkage.md)           | Cross-module identity-driver linkage and JWT claim enrichment      | Accepted | 2026-05 |
 | [0009](0009-no-repository-pattern.md)                          | No repository pattern; handlers depend on DbContext directly       | Accepted | 2026-05 |
+| [0010](0010-refresh-claim-enrichment-requery.md)               | Refresh-token claim enrichment via re-query at refresh             | Accepted | 2026-05 |
+| [0011](0011-0011-handler-is-commit-point.md)                   | Unit of work: the handler is the commit point                      | Accepted | 2026-05 |
 
 ## When to write a new ADR
 

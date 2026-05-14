@@ -1,56 +1,95 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
+using Npgsql;
 using Priamus.Trips.Identity.Persistence;
 using Priamus.Trips.Identity.Persistence.DependencyInjection;
 using Priamus.Trips.SharedKernel.Security;
-using Testcontainers.PostgreSql;
 using Xunit;
 
 namespace Priamus.Trips.Identity.IntegrationTests.Infrastructure;
 
 /// <summary>
-/// Base class for Identity integration tests. Spins up a Testcontainers PostgreSQL 16
-/// instance, applies migrations, and provides a factory for creating fresh
-/// <see cref="IServiceScope"/> instances so each test works in an isolated EF Core scope.
+/// Base class for Identity integration tests. Receives the shared <see cref="PostgresFixture"/>
+/// and creates an isolated per-test database cloned from the migrated template, giving each
+/// test a clean schema with zero migration overhead.
 /// </summary>
+[Collection("IdentityIntegrationTests")]
 public abstract class IdentityIntegrationTestBase : IAsyncLifetime
 {
-    private readonly PostgreSqlContainer _postgres = new PostgreSqlBuilder()
-        .WithImage("postgres:16-alpine")
-        .Build();
-
+    private readonly PostgresFixture _fixture;
+    private readonly string _databaseName = "test_" + Guid.NewGuid().ToString("N")[..16];
     private ServiceProvider _rootProvider = null!;
 
+    /// <summary>Connection string scoped to this test's isolated database.</summary>
+    protected string ConnectionString { get; private set; } = null!;
+
+    protected IdentityIntegrationTestBase(PostgresFixture fixture)
+    {
+        _fixture = fixture;
+    }
+
     /// <summary>
-    /// Creates a new <see cref="IServiceScope"/> backed by the running Postgres container.
+    /// Returns a fresh <see cref="IdentityDbContext"/> from DI, configured against this
+    /// test's isolated database. Callers are responsible for disposing the scope.
+    /// </summary>
+    protected IdentityDbContext CreateDbContext()
+    {
+        var scope = _rootProvider.CreateScope();
+        return scope.ServiceProvider.GetRequiredService<IdentityDbContext>();
+    }
+
+    /// <summary>
+    /// Creates a new <see cref="IServiceScope"/> backed by this test's isolated database.
     /// Callers must dispose the scope when done.
     /// </summary>
     protected IServiceScope CreateScope() => _rootProvider.CreateScope();
 
+    /// <summary>
+    /// Creates a new async-disposable scope backed by this test's isolated database.
+    /// Use with <c>await using var scope = CreateAsyncScope();</c>.
+    /// </summary>
+    protected AsyncServiceScope CreateAsyncScope() => _rootProvider.CreateAsyncScope();
+
     /// <inheritdoc />
     public async ValueTask InitializeAsync()
     {
-        await _postgres.StartAsync();
+        await using var adminConn = new NpgsqlConnection(_fixture.AdminConnectionString);
+        await adminConn.OpenAsync();
+
+        await using (var cmd = adminConn.CreateCommand())
+        {
+            cmd.CommandText =
+                $"CREATE DATABASE \"{_databaseName}\" TEMPLATE {_fixture.TemplateDatabaseName};";
+            await cmd.ExecuteNonQueryAsync();
+        }
+
+        // Pooling=false prevents Npgsql from holding connections in the pool across scopes,
+        // which would cause DROP DATABASE to fail with "database is being accessed by other users".
+        ConnectionString = new NpgsqlConnectionStringBuilder(_fixture.AdminConnectionString)
+        {
+            Database = _databaseName,
+            Pooling = false,
+        }.ConnectionString;
 
         var services = new ServiceCollection();
-
-        // Register the test stub so the AuditInterceptor gets a known actor id.
         services.AddScoped<ICurrentUser, FakeCurrentUser>();
-
-        services.AddIdentityPersistence(_postgres.GetConnectionString());
+        services.AddIdentityPersistence(ConnectionString);
 
         _rootProvider = services.BuildServiceProvider();
-
-        // Apply migrations (never EnsureCreated).
-        await using var scope = _rootProvider.CreateAsyncScope();
-        var db = scope.ServiceProvider.GetRequiredService<IdentityDbContext>();
-        await db.Database.MigrateAsync();
     }
 
     /// <inheritdoc />
     public async ValueTask DisposeAsync()
     {
         await _rootProvider.DisposeAsync();
-        await _postgres.DisposeAsync();
+
+        await using var adminConn = new NpgsqlConnection(_fixture.AdminConnectionString);
+        await adminConn.OpenAsync();
+
+        await using var cmd = adminConn.CreateCommand();
+        // WITH (FORCE) terminates any remaining backend connections before dropping (Postgres 13+).
+        // The Postgres 16 image used by PostgresFixture supports this option.
+        cmd.CommandText = $"DROP DATABASE \"{_databaseName}\" WITH (FORCE);";
+        await cmd.ExecuteNonQueryAsync();
     }
 }

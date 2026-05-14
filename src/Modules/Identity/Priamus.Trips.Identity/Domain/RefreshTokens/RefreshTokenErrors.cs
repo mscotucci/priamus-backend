@@ -76,4 +76,32 @@ public static class RefreshTokenErrors
     public static readonly Error NotFound = Error.NotFound(
         "RefreshToken.NotFound",
         "The requested refresh token was not found.");
+
+    // ─── Application-layer authentication errors ──────────────────────────
+
+    /// <summary>
+    /// The refresh token has expired. Application-layer counterpart to the aggregate's
+    /// <see cref="CannotRotateExpiredToken"/> domain error — used before calling <c>Rotate</c>
+    /// when the handler detects expiry from the <see cref="RefreshToken.IsActive"/> check.
+    /// </summary>
+    public static readonly Error Expired = Error.Unauthorized(
+        "RefreshToken.Expired",
+        "The refresh token has expired. Please log in again.");
+
+    /// <summary>
+    /// The refresh token is no longer valid (it has been revoked or already rotated).
+    /// Distinct code from <see cref="NotFound"/> for audit clarity: the token exists
+    /// but is unusable. HTTP mapping is 401 (same as <see cref="Expired"/>).
+    /// </summary>
+    public static readonly Error NoLongerValid = Error.Unauthorized(
+        "RefreshToken.NoLongerValid",
+        "The refresh token is no longer valid. Please log in again.");
+
+    /// <summary>
+    /// A concurrent request rotated the same refresh token before this request could.
+    /// The client should retry the refresh operation.
+    /// </summary>
+    public static readonly Error ConcurrentRefresh = Error.Conflict(
+        "RefreshToken.ConcurrentRefresh",
+        "The refresh token was rotated by a concurrent request. Please retry.");
 }

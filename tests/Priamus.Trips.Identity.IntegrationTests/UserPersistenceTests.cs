@@ -19,6 +19,7 @@ namespace Priamus.Trips.Identity.IntegrationTests;
 /// </summary>
 public sealed class UserPersistenceTests : IdentityIntegrationTestBase
 {
+    public UserPersistenceTests(PostgresFixture fixture) : base(fixture) { }
     // ── Basic round-trip ─────────────────────────────────────────────────────
 
     [Fact]

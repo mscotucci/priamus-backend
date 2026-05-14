@@ -16,7 +16,7 @@ public sealed class UsernameConverter : ValueConverter<Username, string>
 {
     /// <summary>Initializes a new instance of <see cref="UsernameConverter"/>.</summary>
     public UsernameConverter()
-        : base(v => v.Value, s => new Username(s))
+        : base(v => v.Value, s => Username.Create(s))
     {
     }
 }

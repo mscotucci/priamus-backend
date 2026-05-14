@@ -1,5 +1,12 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
+  <PropertyGroup>
+    <!-- Microsoft.Extensions.Validation is used via [ValidatableType] source generator;
+         the package analyzer cannot detect source-generator usage and emits NU1510.
+         Suppressed here per the known-failure note in the Identity feature brief. -->
+    <NoWarn>$(NoWarn);NU1510;ASP0029</NoWarn>
+  </PropertyGroup>
+
   <ItemGroup>
     <FrameworkReference Include="Microsoft.AspNetCore.App" />
   </ItemGroup>
@@ -13,13 +20,20 @@
     <PackageReference Include="Microsoft.EntityFrameworkCore.Relational" />
     <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" />
     <PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer" />
+    <PackageReference Include="Microsoft.Extensions.Validation" />
     <PackageReference Include="Scrutor" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="Priamus.Trips.Identity.IntegrationTests" />
+    <InternalsVisibleTo Include="Priamus.Trips.Identity.UnitTests" />
   </ItemGroup>
 
   <ItemGroup>
     <ProjectReference Include="..\..\..\Priamus.Trips.SharedKernel\Priamus.Trips.SharedKernel.csproj" />
     <ProjectReference Include="..\..\..\Priamus.Trips.SharedKernel.Http\Priamus.Trips.SharedKernel.Http.csproj" />
     <ProjectReference Include="..\Priamus.Trips.Identity.Contracts\Priamus.Trips.Identity.Contracts.csproj" />
+    <ProjectReference Include="..\..\Registry\Priamus.Trips.Registry.Contracts\Priamus.Trips.Registry.Contracts.csproj" />
   </ItemGroup>
 
 </Project>

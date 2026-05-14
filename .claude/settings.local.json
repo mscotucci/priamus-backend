@@ -9,7 +9,8 @@
       "Bash(dotnet nuget *)",
       "Bash(dotnet test *)",
       "Bash(dotnet tool *)",
-      "Bash(docker info *)"
+      "Bash(docker info *)",
+      "PowerShell(dotnet build *)"
     ]
   }
 }

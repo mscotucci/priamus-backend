@@ -27,6 +27,20 @@ public static class AuditEventTypes
 
     /// <summary>A refresh token was explicitly revoked.</summary>
     public const string RefreshTokenRevoked = "identity.refresh_token.revoked";
+
+    // ─── Handler-written non-domain intent events ─────────────────────────
+
+    /// <summary>A user successfully authenticated at login.</summary>
+    public const string UserLoggedIn = "identity.user.logged_in";
+
+    /// <summary>A login attempt failed (known user, bad password or disabled account).</summary>
+    public const string LoginFailed = "identity.user.login_failed";
+
+    /// <summary>A refresh token was revoked by the token owner (self-service logout).</summary>
+    public const string TokenRevokedByOwner = "identity.refresh_token.revoked_by_owner";
+
+    /// <summary>A refresh token was revoked by a back-office user or admin.</summary>
+    public const string TokenRevokedByAdmin = "identity.refresh_token.revoked_by_admin";
 }
 
 /// <summary>
@@ -89,4 +103,26 @@ public sealed class AuditLogEntry
 
     /// <summary>Full event serialized as JSON (camelCase, no type discriminator).</summary>
     public string Payload { get; private set; }
+
+    /// <summary>
+    /// Convenience factory for non-domain intent events written directly by handlers
+    /// (e.g. <c>UserLoggedIn</c>, <c>LoginFailed</c>, <c>TokenRevokedByOwner</c>).
+    /// Serializes <paramref name="payload"/> using <see cref="AuditSerializerOptions.Default"/>.
+    /// </summary>
+    /// <typeparam name="TPayload">Anonymous or named type carrying the audit payload fields.</typeparam>
+    /// <param name="eventType">Stable event-type constant from <see cref="AuditEventTypes"/>.</param>
+    /// <param name="occurredAt">UTC instant of the event.</param>
+    /// <param name="actorId">The actor performing the action, or <c>null</c> for unauthenticated operations.</param>
+    /// <param name="subjectId">The affected user's identifier.</param>
+    /// <param name="payload">The payload object to serialize.</param>
+    public static AuditLogEntry ForNonDomainEvent<TPayload>(
+        string eventType,
+        DateTime occurredAt,
+        Guid? actorId,
+        Guid subjectId,
+        TPayload payload)
+    {
+        var json = System.Text.Json.JsonSerializer.Serialize(payload, AuditSerializerOptions.Default);
+        return new AuditLogEntry(Guid.NewGuid(), occurredAt, actorId, subjectId, eventType, json);
+    }
 }
