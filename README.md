@@ -40,8 +40,6 @@ dotnet test
 
 Start with [`docs/context.md`](docs/context.md). The appendices in `docs/appendices/` provide deep detail on persistence, slices, pricing, testing, and the architecture audit rules.
 
-The original step-by-step bootstrap procedure is preserved in [`SETUP.md`](SETUP.md) for historical reference.
-
 ## License
 
-Proprietary. © Priamus Ecologica S.r.l.
+Proprietary. © Fixato di Scotucci Michele
