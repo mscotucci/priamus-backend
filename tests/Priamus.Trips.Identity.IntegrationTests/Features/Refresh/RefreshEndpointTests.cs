@@ -80,7 +80,7 @@ public sealed class RefreshEndpointTests : IdentityIntegrationTestBase
         var tokenHash = hasher.Hash(rawToken);
 
         var user = TestDataBuilders.AUser().WithRole(role).Build();
-        var issueClock = new FixedClockStub(new DateTime(2026, 5, 14, 8, 0, 0, DateTimeKind.Utc));
+        var issueClock = new FixedClockStub(new DateTime(DateTime.UtcNow.Year, DateTime.UtcNow.Month, DateTime.UtcNow.Day, 8, 0, 0, DateTimeKind.Utc));
         var refreshToken = RefreshToken.Issue(
             RefreshTokenId.New(),
             user.Id,

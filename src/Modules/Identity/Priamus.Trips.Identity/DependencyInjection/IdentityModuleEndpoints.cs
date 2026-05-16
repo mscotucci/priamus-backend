@@ -1,5 +1,6 @@
 using Microsoft.AspNetCore.Routing;
 using Priamus.Trips.Identity.Features.AdminRevoke;
+using Priamus.Trips.Identity.Features.CreateUser;
 using Priamus.Trips.Identity.Features.Login;
 using Priamus.Trips.Identity.Features.Refresh;
 using Priamus.Trips.Identity.Features.Revoke;
@@ -20,6 +21,7 @@ public static class IdentityModuleEndpoints
         app.MapRefresh();
         app.MapRevoke();
         app.MapAdminRevoke();
+        app.MapCreateUser();
         return app;
     }
 }

@@ -12,8 +12,10 @@ builder.Host.UseSerilog((ctx, lc) =>
 // ── OpenAPI ───────────────────────────────────────────────────────────────────
 builder.Services.AddOpenApi();
 
-// ── DTO validation (Microsoft.Extensions.Validation source generator) ─────────
-builder.Services.AddValidation();
+// DTO validation is registered per-module (e.g. AddIdentityModule). The
+// Microsoft.Extensions.Validation source generator only sees [ValidatableType]
+// declarations in the assembly that hosts the AddValidation() call site,
+// so each module owns its own call to keep its DTOs discoverable.
 
 // ── Temporary stubs (replaced when respective modules land) ──────────────────
 // TODO: replace when Registry module lands (ADR 0008)

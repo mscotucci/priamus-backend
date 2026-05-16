@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Validation;
 using Microsoft.IdentityModel.Tokens;
 using Priamus.Trips.Identity.Application.Abstractions;
 using Priamus.Trips.Identity.Domain.Users;
@@ -27,6 +28,13 @@ public static class IdentityModuleExtensions
     /// <returns>The same <paramref name="services"/> for chaining.</returns>
     public static IServiceCollection AddIdentityModule(this IServiceCollection services, IConfiguration configuration)
     {
+        // ── DTO validation (Microsoft.Extensions.Validation source generator) ────
+        // Called per-module so that the source generator runs in THIS assembly and
+        // discovers every [ValidatableType] declared here. The generator emits a
+        // resolver scoped to the assembly that hosts the AddValidation() call site,
+        // so a single host-level invocation would only see types in the Host project.
+        services.AddValidation();
+
         // ── Persistence ──────────────────────────────────────────────────────────
         var connectionString = configuration.GetConnectionString("Identity")
             ?? throw new InvalidOperationException(
@@ -97,6 +105,10 @@ public static class IdentityModuleExtensions
                 policy => policy.RequireRole(
                     UserRole.BackOffice.ToString(),
                     UserRole.Admin.ToString()));
+
+            options.AddPolicy(
+                "AdminOnly",
+                policy => policy.RequireRole(UserRole.Admin.ToString()));
         });
 
         // ── Handlers (Scrutor scan) ──────────────────────────────────────────────

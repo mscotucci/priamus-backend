@@ -74,7 +74,6 @@ public abstract class IdentityIntegrationTestBase : IAsyncLifetime
         var services = new ServiceCollection();
         services.AddScoped<ICurrentUser, FakeCurrentUser>();
         services.AddIdentityPersistence(ConnectionString);
-
         _rootProvider = services.BuildServiceProvider();
     }
 

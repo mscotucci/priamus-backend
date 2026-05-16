@@ -155,7 +155,7 @@ public sealed class AdminRevokeHandlerTests : IdentityIntegrationTestBase
         var rawToken = GenerateRawToken();
         var tokenHash = hasher.Hash(rawToken);
         var tokenId = RefreshTokenId.New();
-        var issueClock = new FixedClockStub(new DateTime(2026, 5, 13, 8, 0, 0, DateTimeKind.Utc));
+        var issueClock = new FixedClockStub(new DateTime(DateTime.UtcNow.Year, DateTime.UtcNow.Month, DateTime.UtcNow.Day, 8, 0, 0, DateTimeKind.Utc));
         var token = RefreshToken.Issue(
             tokenId,
             user.Id,
@@ -181,8 +181,8 @@ public sealed class AdminRevokeHandlerTests : IdentityIntegrationTestBase
         var handler = BuildHandler(db, currentUser: currentUser);
         var result = await handler.HandleAsync(tokenId.Value, ct);
 
-        // Assert: domain error because CannotRevokeRotatedToken
+        // Assert: Conflict error because refresh token was already rotated and the Revoke method emits a RefreshTokenErrors.CannotRevokeRotatedToken(Conflict)
         result.IsFailure.ShouldBeTrue();
-        result.Error.Type.ShouldBe(ErrorType.Domain);
+        result.Error.Type.ShouldBe(ErrorType.Conflict);
     }
 }
