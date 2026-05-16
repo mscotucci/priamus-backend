@@ -482,3 +482,6 @@ $RECYCLE.BIN/
 *.swp
 /docs/work
 /docs/plans
+
+# Claude Code per-machine local settings
+.claude/settings.local.json
