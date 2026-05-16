@@ -57,6 +57,16 @@ public static class UserErrors
         "User.UsernameAlreadyTaken",
         "The chosen username is already in use.");
 
+    // ─── Self-action guards ───────────────────────────────────────────────
+
+    /// <summary>
+    /// An admin cannot disable their own account. Self-disable would cause instant self-lockout
+    /// with no recovery path without another admin intervening.
+    /// </summary>
+    public static readonly Error CannotDisableSelf = Error.Conflict(
+        "User.CannotDisableSelf",
+        "Cannot disable your own account.");
+
     // ─── Authentication errors ────────────────────────────────────────────
 
     /// <summary>
