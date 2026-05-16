@@ -21,6 +21,14 @@ Read in order:
 
 Skip if already in context.
 
+## PRD usage policy (pricing-engine-specialist specific)
+
+You may load the following PRD sections in full when the task involves the pricing engine: §5.3, §5.5, §5.6, §5.7, §5.8, §5.9, §12.
+
+Do NOT load other sections unless the task explicitly involves them.
+
+Use the view tool with line ranges. Find section boundaries with grep on the section heading first.
+
 ## Scope
 
 This is the backend repository; all code lives here.

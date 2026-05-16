@@ -16,6 +16,18 @@ Read in order:
 
 Skip if already in context.
 
+## PRD usage policy
+
+The PRD (`docs/PRD.md`) is the canonical source of product requirements. It is large (~30k tokens) and should NOT be loaded in full unless the task explicitly requires it.
+
+When the appendices or context cite a PRD section (e.g. "PRD §5.2" or "RF-08quater"), read ONLY that section by using the view tool with a line range. Use grep or Glob to find the section first, then read narrowly.
+
+Load the full PRD only if:
+- The user explicitly asks you to
+- The task is to design a feature for which the appendices have insufficient detail and a broad read of PRD is the only way
+
+Default behavior: appendices and context.md describe the relevant rules. The PRD is the source if you need to verify exact wording or numbers.
+
 ## Scope
 
 This is the backend repository; all code lives here. You audit code under `src/` and `tests/`. The frontend lives in a separate repository and is out of scope.
