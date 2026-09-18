@@ -95,6 +95,99 @@ The JSON converter uses `System.Text.Json` (never Newtonsoft) with custom conver
 
 Never store sealed types in JSON when their fields need to be queried.
 
+## Querying inside a value object
+
+A `ValueConverter<TVO, string>` (or any `ValueConverter<TVO, TStore>`) maps the
+value object as a single atomic property in the EF Core model. Equality
+comparisons and ordering on the whole VO translate naturally:
+
+```csharp
+query.Where(u => u.Username == knownUsername)   // ✅ translates
+query.OrderBy(u => u.Username)                  // ✅ translates via converter
+```
+
+But the LINQ-to-SQL translator **cannot decompose member access** on a
+converted property. Any expression like
+
+```csharp
+query.Where(u => u.Username.Value.Contains(needle))  // ❌ untranslatable
+query.OrderBy(u => u.Username.Value)                 // ❌ untranslatable
+```
+
+fails at runtime with `InvalidOperationException: The LINQ expression … could
+not be translated`. This is a known EF Core limitation (see efcore#33788).
+
+### Pattern: `Unwrap` extension + `HasDbFunction`
+
+Expose a query-only extension on the VO that gets routed through a `DbFunction`
+translation. The extension throws when called client-side, mirroring the
+`EF.Functions.*` convention:
+
+```csharp
+// Domain/Users/ValueObjects/Username.cs
+public static class UsernameQueryExtensions
+{
+    /// <summary>
+    /// Translated to the underlying <c>username</c> column in EF Core LINQ
+    /// queries. Never call this method client-side — it throws.
+    /// </summary>
+    public static string Unwrap(this Username? username) =>
+        throw new NotSupportedException(
+            "Unwrap is a SQL-only translation marker. Use Username.Value for in-memory access.");
+}
+```
+
+Register the translation in the owning `DbContext`'s `OnModelCreating`:
+
+```csharp
+modelBuilder
+    .HasDbFunction(typeof(UsernameQueryExtensions)
+        .GetMethod(nameof(UsernameQueryExtensions.Unwrap), [typeof(Username)])!)
+    .HasTranslation(args => new SqlFunctionExpression(
+        functionName: string.Empty,
+        arguments: args,
+        nullable: false,
+        argumentsPropagateNullability: new[] { false },
+        type: typeof(string),               // ← key: retypes the SQL expression as string
+        typeMapping: null))
+    .HasParameter("username")
+        .HasStoreType("varchar(64)");       // ← key: bypasses the VO ValueConverter on the parameter
+```
+
+Use in queries — `Contains`, `StartsWith`, `EndsWith` compose as ordinary SQL `LIKE`:
+
+```csharp
+var needle = request.UsernameContains.Trim().ToLowerInvariant();
+query = query.Where(u => u.Username.Unwrap().Contains(needle));
+```
+
+### Why each piece is needed
+
+| Piece | Why |
+|---|---|
+| `HasStoreType` on the parameter | EF Core does not consult the property-level `ValueConverter` when binding `DbFunction` parameters (efcore#33788). Declaring the store type bypasses the converter and lets the provider send a plain string parameter. |
+| `SqlFunctionExpression` wrapper with `type: typeof(string)` | Without this, `args[0]` keeps the VO's model type and downstream `string` operators (`Contains`, `LIKE`) refuse to compose. Wrapping retypes the SQL-side expression. |
+| `functionName: string.Empty` | Produces `(column)` at the SQL level — i.e. the column wrapped in parentheses, no function emitted. Postgres tolerates the redundant parens; the result is an ordinary column reference that downstream operators consume normally. |
+| `throw` in the extension body | Mirrors the `EF.Functions` convention. Client-side calls (e.g. accidentally filtering an already-materialized list) fail fast with a clear message rather than silently doing the right thing in memory while bypassing the database. |
+
+### When to use this pattern
+
+Only when a VO mapped through `ValueConverter` needs **partial-match** queries
+(`Contains` / `StartsWith` / `EndsWith` / `Like`). Whole-value equality and
+ordering already work without `Unwrap`.
+
+For VOs that are queried this way frequently, consider whether the underlying
+column should be a plain `string` with a domain factory (`Username.Create`)
+called at write time instead. The `Unwrap` pattern is the right answer when
+the VO **must** remain a distinct type in the domain model.
+
+### Reference implementation
+
+`Username.Unwrap` in `Identity` is the canonical example. See:
+- `src/Modules/Identity/Priamus.Trips.Identity/Domain/Users/ValueObjects/Username.cs`
+- `src/Modules/Identity/Priamus.Trips.Identity/Persistence/IdentityDbContext.cs` (`OnModelCreating`)
+- `src/Modules/Identity/Priamus.Trips.Identity/Features/ListUsers/ListUsersHandler.cs`
+
 ## Decimal precision
 
 | Type              | Precision             |

@@ -7,20 +7,32 @@ Standard pagination types live in SharedKernel under `Priamus.Trips.SharedKernel
 ```csharp
 public enum SortDirection { Ascending = 0, Descending = 1 }
 
-public sealed class PagedRequest
+public class PagedRequest
 {
-    // Page: minimum 1, coerced if invalid
-    public int Page { get; set; }
+    public const int DefaultPage = 1;
+    public const int DefaultPageSize = 20;
+    public const int MaxPageSize = 100;
 
-    // PageSize: minimum 1, maximum 100, default 20, coerced if invalid
-    public int PageSize { get; set; }
+    // Page: optional on the wire (nullable for [AsParameters] binding);
+    // setter coerces values < 1 to DefaultPage.
+    public int? Page { get; set; }
+
+    // PageSize: optional on the wire; setter coerces non-positive to
+    // DefaultPageSize and values > MaxPageSize to MaxPageSize.
+    public int? PageSize { get; set; }
 
     public string? SortColumn { get; set; }
 
-    public SortDirection SortDirection { get; set; } = SortDirection.Ascending;
+    // Optional on the wire; readers use IsAscending.
+    public SortDirection? SortDirection { get; set; }
 
-    public int Skip => (Page - 1) * PageSize;
-    public bool IsAscending => SortDirection == SortDirection.Ascending;
+    // Resolved accessors used by handlers — never read Page/PageSize directly
+    // from a handler.
+    public int EffectivePage     => Page     ?? DefaultPage;
+    public int EffectivePageSize => PageSize ?? DefaultPageSize;
+
+    public int  Skip        => (EffectivePage - 1) * EffectivePageSize;
+    public bool IsAscending => (SortDirection ?? SortDirection.Ascending) == SortDirection.Ascending;
 }
 
 public sealed record PagedResponse<T>(
@@ -37,9 +49,20 @@ public sealed record PagedResponse<T>(
 }
 ```
 
-`PagedRequest` is a mutable class (not record) because ASP.NET Core query-string model binding populates public setters. Setters validate values to coerce invalid input to safe defaults rather than throwing.
+`PagedRequest` is a mutable class (not record, not sealed) because ASP.NET Core
+query-string model binding populates public setters and slices subclass it
+for filters. Setters coerce invalid input to safe defaults rather than throwing.
 
 `PagedResponse<T>` is an immutable record.
+
+### Why `Page`, `PageSize`, and `SortDirection` are nullable
+
+ASP.NET Core 10 minimal-API `[AsParameters]` binding treats every non-nullable
+value-type property as a **required** query parameter and returns 400 if it is
+omitted, *before* any setter coercion can run. Declaring these as nullable
+makes them optional on the wire; the resolved defaults are exposed through
+`EffectivePage`, `EffectivePageSize`, and `IsAscending`. **Handlers must read
+through these accessors**, never through the nullable underlying properties.
 
 ## Custom paginated requests
 
@@ -89,9 +112,13 @@ public sealed class ListDriverTripsHandler
 
         var totalCount = await query.CountAsync(cancellationToken);
 
+        // Read resolved values once — never use request.Page / request.PageSize directly.
+        var effectivePage     = request.EffectivePage;
+        var effectivePageSize = request.EffectivePageSize;
+
         var data = await ApplySorting(query, request)
             .Skip(request.Skip)
-            .Take(request.PageSize)
+            .Take(effectivePageSize)
             .Select(t => new TripListItemDto(
                 t.Id.Value,
                 t.ReferenceNumber,
@@ -100,7 +127,7 @@ public sealed class ListDriverTripsHandler
                 t.Issues.Any(i => i.Status == IssueStatus.Open)))
             .ToListAsync(cancellationToken);
 
-        return new PagedResponse<TripListItemDto>(data, totalCount, request.Page, request.PageSize);
+        return new PagedResponse<TripListItemDto>(data, totalCount, effectivePage, effectivePageSize);
     }
 
     private static IQueryable<Trip> ApplySorting(IQueryable<Trip> query, PagedRequest request)

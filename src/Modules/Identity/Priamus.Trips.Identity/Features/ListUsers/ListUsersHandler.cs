@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
+using Priamus.Trips.Identity.Domain.Users.ValueObjects;
 using Priamus.Trips.Identity.Persistence;
 using Priamus.Trips.SharedKernel.Paging;
 using Priamus.Trips.SharedKernel.Results;
@@ -52,10 +53,14 @@ public sealed class ListUsersHandler
 
         if (!string.IsNullOrWhiteSpace(request.UsernameContains))
         {
-            // Username.Value is already stored as lowercased (domain normalization invariant).
-            // Lowercasing the needle ensures case-insensitive containment without EF.Functions.ILike.
+            // The Username VO stores its value normalised to lowercase (see Username.Create),
+            // so lowercasing the needle yields a case-insensitive substring match without
+            // EF.Functions.ILike. The .Unwrap() extension is registered as a DbFunction
+            // on the IdentityDbContext and is translated to the underlying varchar column
+            // (see IdentityDbContext.OnModelCreating), letting Contains compose as a
+            // standard SQL LIKE despite Username being mapped via a ValueConverter.
             var needle = request.UsernameContains.Trim().ToLowerInvariant();
-            query = query.Where(u => u.Username.Value.Contains(needle));
+            query = query.Where(u => u.Username.Unwrap().Contains(needle));
         }
 
         // ── Total count before paging ────────────────────────────────────────
@@ -71,10 +76,13 @@ public sealed class ListUsersHandler
 
         var ascending = request.IsAscending;
 
+        // Sort on Username uses the value-object property directly: EF Core translates
+        // the ORDER BY through the UsernameConverter into ORDER BY on the underlying
+        // varchar column.
         query = (sortColumn, ascending) switch
         {
-            ("username",       true)  => query.OrderBy(u => u.Username.Value),
-            ("username",       false) => query.OrderByDescending(u => u.Username.Value),
+            ("username",       true)  => query.OrderBy(u => u.Username),
+            ("username",       false) => query.OrderByDescending(u => u.Username),
             ("role",           true)  => query.OrderBy(u => u.Role),
             ("role",           false) => query.OrderByDescending(u => u.Role),
             ("status",         true)  => query.OrderBy(u => u.Status),
@@ -87,9 +95,12 @@ public sealed class ListUsersHandler
         };
 
         // ── Project, page, and materialise ───────────────────────────────────
+        var effectivePage = request.EffectivePage;
+        var effectivePageSize = request.EffectivePageSize;
+
         var items = await query
             .Skip(request.Skip)
-            .Take(request.PageSize)
+            .Take(effectivePageSize)
             .Select(u => new UserListItemDto(
                 u.Id.Value,
                 u.Username.Value,
@@ -102,11 +113,11 @@ public sealed class ListUsersHandler
         _logger.LogInformation(
             "Listed {Count} users (page {Page}/{TotalPages}, filters: role={Role}, status={Status})",
             items.Count,
-            request.Page,
-            (int)Math.Ceiling((double)totalCount / request.PageSize),
+            effectivePage,
+            (int)Math.Ceiling((double)totalCount / effectivePageSize),
             request.Role?.ToString() ?? "any",
             request.Status?.ToString() ?? "any");
 
-        return new PagedResponse<UserListItemDto>(items, totalCount, request.Page, request.PageSize);
+        return new PagedResponse<UserListItemDto>(items, totalCount, effectivePage, effectivePageSize);
     }
 }
