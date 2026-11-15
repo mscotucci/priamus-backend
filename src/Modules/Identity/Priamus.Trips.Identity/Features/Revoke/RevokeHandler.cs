@@ -12,11 +12,11 @@ using Priamus.Trips.SharedKernel.Time;
 namespace Priamus.Trips.Identity.Features.Revoke;
 
 /// <summary>
-/// Handles <c>POST /api/auth/revoke</c>: the authenticated user revokes one of their own
+/// Handles <c>POST /api/identity/auth/revoke</c>: the authenticated user revokes one of their own
 /// refresh tokens (self-service logout). Enforces ownership: the token must belong to the
 /// caller.
 /// </summary>
-public sealed class RevokeHandler
+internal sealed class RevokeHandler
 {
     private readonly IdentityDbContext _db;
     private readonly IRefreshTokenHasher _refreshTokenHasher;
@@ -70,9 +70,7 @@ public sealed class RevokeHandler
                 "User {CallerId} attempted to revoke token {TokenId} owned by {OwnerId}",
                 callerId.Value, refreshToken.Id.Value, refreshToken.UserId.Value);
 
-            return Error.Forbidden(
-                "RefreshToken.NotOwner",
-                "You can only revoke your own refresh tokens.");
+            return RefreshTokenErrors.NotOwner;
         }
 
         // ── 3. Revoke the token ───────────────────────────────────────────────
@@ -82,7 +80,7 @@ public sealed class RevokeHandler
         }
         catch (DomainException ex)
         {
-            return Error.Domain(ex.ErrorCode, ex.Message);
+            return ex.Error;
         }
 
         // ── 4. Write intent audit row ─────────────────────────────────────────

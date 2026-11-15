@@ -23,7 +23,7 @@ using Xunit;
 namespace Priamus.Trips.Identity.IntegrationTests.Features.DisableUser;
 
 /// <summary>
-/// Integration tests for <c>POST /api/users/{id:guid}/disable</c> (endpoint slice) and
+/// Integration tests for <c>POST /api/identity/users/{id:guid}/disable</c> (endpoint slice) and
 /// the <see cref="DisableUserHandler"/> (handler slice).
 ///
 /// Each test method that needs a real HTTP layer uses a <see cref="WebApplicationFactory{TEntryPoint}"/>;
@@ -32,9 +32,6 @@ namespace Priamus.Trips.Identity.IntegrationTests.Features.DisableUser;
 /// </summary>
 public sealed class DisableUserEndpointTests : IdentityIntegrationTestBase
 {
-    private const string TestSigningKey = "test-signing-key-endpoint-32chars!!";
-    private const string TestIssuer    = "test-issuer";
-    private const string TestAudience  = "test-audience";
 
     private static readonly DateTime FixedNow =
         new(2026, 5, 16, 12, 0, 0, DateTimeKind.Utc);
@@ -46,21 +43,7 @@ public sealed class DisableUserEndpointTests : IdentityIntegrationTestBase
     private WebApplicationFactory<Program> CreateFactory(
         Action<IServiceCollection>? configureServices = null)
     {
-        return new WebApplicationFactory<Program>()
-            .WithWebHostBuilder(builder =>
-            {
-                builder.UseSetting("ConnectionStrings:Identity", ConnectionString);
-                builder.UseSetting("Jwt:Issuer",     TestIssuer);
-                builder.UseSetting("Jwt:Audience",   TestAudience);
-                builder.UseSetting("Jwt:SigningKey",  TestSigningKey);
-                builder.UseSetting("Jwt:AccessTokenLifetime",  "01:00:00");
-                builder.UseSetting("Jwt:RefreshTokenLifetime", "12:00:00");
-
-                if (configureServices is not null)
-                {
-                    builder.ConfigureServices(configureServices);
-                }
-            });
+        return ApiFactory.Create(ConnectionString, configureServices);
     }
 
     /// <summary>
@@ -107,7 +90,7 @@ public sealed class DisableUserEndpointTests : IdentityIntegrationTestBase
     }
 
     /// <summary>
-    /// Calls <c>POST /api/auth/login</c> and returns the <see cref="LoginResponse"/>.
+    /// Calls <c>POST /api/identity/auth/login</c> and returns the <see cref="LoginResponse"/>.
     /// Asserts 200 OK so that test failures are surfaced clearly.
     /// </summary>
     private static async Task<LoginResponse> LoginAsync(
@@ -117,7 +100,7 @@ public sealed class DisableUserEndpointTests : IdentityIntegrationTestBase
         CancellationToken ct)
     {
         var resp = await client.PostAsJsonAsync(
-            "/api/auth/login", new LoginRequest(username, password), ct);
+            "/api/identity/auth/login", new LoginRequest(username, password), ct);
         resp.StatusCode.ShouldBe(HttpStatusCode.OK,
             $"Login must succeed for user '{username}' to obtain a JWT for this test.");
         var body = await resp.Content.ReadFromJsonAsync<LoginResponse>(ct);
@@ -310,7 +293,7 @@ public sealed class DisableUserEndpointTests : IdentityIntegrationTestBase
 
         // Act
         var response = await client.PostAsync(
-            $"/api/users/{targetUser.Id.Value:D}/disable", content: null, ct);
+            $"/api/identity/users/{targetUser.Id.Value:D}/disable", content: null, ct);
 
         // Assert — HTTP status
         response.StatusCode.ShouldBe(HttpStatusCode.NoContent,
@@ -379,7 +362,7 @@ public sealed class DisableUserEndpointTests : IdentityIntegrationTestBase
 
         // Act
         var response = await client.PostAsync(
-            $"/api/users/{targetUser.Id.Value:D}/disable", content: null, ct);
+            $"/api/identity/users/{targetUser.Id.Value:D}/disable", content: null, ct);
 
         // Assert — HTTP status
         response.StatusCode.ShouldBe(HttpStatusCode.NoContent,
@@ -420,7 +403,7 @@ public sealed class DisableUserEndpointTests : IdentityIntegrationTestBase
 
         // Act — disable with the admin's own id
         var response = await client.PostAsync(
-            $"/api/users/{adminUser.Id.Value:D}/disable", content: null, ct);
+            $"/api/identity/users/{adminUser.Id.Value:D}/disable", content: null, ct);
 
         // Assert — HTTP status
         response.StatusCode.ShouldBe(HttpStatusCode.Conflict,
@@ -456,7 +439,7 @@ public sealed class DisableUserEndpointTests : IdentityIntegrationTestBase
 
         // Act
         var response = await client.PostAsync(
-            $"/api/users/{nonExistentId:D}/disable", content: null, ct);
+            $"/api/identity/users/{nonExistentId:D}/disable", content: null, ct);
 
         // Assert
         response.StatusCode.ShouldBe(HttpStatusCode.NotFound,
@@ -483,7 +466,7 @@ public sealed class DisableUserEndpointTests : IdentityIntegrationTestBase
 
         // Act — no Authorization header
         var response = await client.PostAsync(
-            $"/api/users/{anyId:D}/disable", content: null, ct);
+            $"/api/identity/users/{anyId:D}/disable", content: null, ct);
 
         // Assert
         response.StatusCode.ShouldBe(HttpStatusCode.Unauthorized,
@@ -497,7 +480,7 @@ public sealed class DisableUserEndpointTests : IdentityIntegrationTestBase
     {
         var ct = TestContext.Current.CancellationToken;
 
-        // Arrange: Driver role does not satisfy the AdminOnly policy
+        // Arrange: Driver role does not satisfy the Admin policy
         var (driverUser, driverPassword) =
             await SeedUserAsync(UserRole.Driver, "Driv3r!Pass3", ct: ct);
 
@@ -512,11 +495,11 @@ public sealed class DisableUserEndpointTests : IdentityIntegrationTestBase
 
         // Act
         var response = await client.PostAsync(
-            $"/api/users/{anyId:D}/disable", content: null, ct);
+            $"/api/identity/users/{anyId:D}/disable", content: null, ct);
 
         // Assert
         response.StatusCode.ShouldBe(HttpStatusCode.Forbidden,
-            "A Driver JWT must not satisfy the AdminOnly policy.");
+            "A Driver JWT must not satisfy the Admin policy.");
     }
 
     // ── Endpoint Test 7: 403 BackOffice JWT ──────────────────────────────────
@@ -526,7 +509,7 @@ public sealed class DisableUserEndpointTests : IdentityIntegrationTestBase
     {
         var ct = TestContext.Current.CancellationToken;
 
-        // Arrange: BackOffice role does not satisfy the AdminOnly policy
+        // Arrange: BackOffice role does not satisfy the Admin policy
         var (backOfficeUser, backOfficePassword) =
             await SeedUserAsync(UserRole.BackOffice, "B4ckOffice!Pass1", ct: ct);
 
@@ -541,10 +524,10 @@ public sealed class DisableUserEndpointTests : IdentityIntegrationTestBase
 
         // Act
         var response = await client.PostAsync(
-            $"/api/users/{anyId:D}/disable", content: null, ct);
+            $"/api/identity/users/{anyId:D}/disable", content: null, ct);
 
         // Assert
         response.StatusCode.ShouldBe(HttpStatusCode.Forbidden,
-            "A BackOffice JWT must not satisfy the AdminOnly policy.");
+            "A BackOffice JWT must not satisfy the Admin policy.");
     }
 }

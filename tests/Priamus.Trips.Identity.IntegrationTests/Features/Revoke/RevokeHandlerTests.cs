@@ -146,7 +146,7 @@ public sealed class RevokeHandlerTests : IdentityIntegrationTestBase
     }
 
     [Fact]
-    public async Task HandleAsync_AlreadyRotatedToken_ReturnsDomainError()
+    public async Task HandleAsync_AlreadyRotatedToken_ReturnsCannotRevokeRotatedToken()
     {
         var ct = TestContext.Current.CancellationToken;
         await using var scope = CreateAsyncScope();
@@ -187,8 +187,8 @@ public sealed class RevokeHandlerTests : IdentityIntegrationTestBase
         // Act
         var result = await handler.HandleAsync(request, ct);
 
-        // Assert: domain error because CannotRevokeRotatedToken
+        // Assert: the domain error reaches the caller unchanged
         result.IsFailure.ShouldBeTrue();
-        result.Error.Type.ShouldBe(SharedKernel.Results.ErrorType.Domain);
+        result.Error.ShouldBe(RefreshTokenErrors.CannotRevokeRotatedToken);
     }
 }

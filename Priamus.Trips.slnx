@@ -26,6 +26,7 @@
     <Project Path="tests/Priamus.Trips.BackOffice.UnitTests/Priamus.Trips.BackOffice.UnitTests.csproj" />
     <Project Path="tests/Priamus.Trips.Identity.IntegrationTests/Priamus.Trips.Identity.IntegrationTests.csproj" />
     <Project Path="tests/Priamus.Trips.Identity.UnitTests/Priamus.Trips.Identity.UnitTests.csproj" />
+    <Project Path="tests/Priamus.Trips.IntegrationTesting/Priamus.Trips.IntegrationTesting.csproj" />
     <Project Path="tests/Priamus.Trips.Operations.IntegrationTests/Priamus.Trips.Operations.IntegrationTests.csproj" />
     <Project Path="tests/Priamus.Trips.Operations.UnitTests/Priamus.Trips.Operations.UnitTests.csproj" />
     <Project Path="tests/Priamus.Trips.Registry.IntegrationTests/Priamus.Trips.Registry.IntegrationTests.csproj" />

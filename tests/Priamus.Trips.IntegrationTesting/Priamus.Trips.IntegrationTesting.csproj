@@ -1,0 +1,23 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <IsPackable>false</IsPackable>
+    <IsTestProject>false</IsTestProject>
+    <GenerateDocumentationFile>false</GenerateDocumentationFile>
+    <RootNamespace>Priamus.Trips.IntegrationTesting</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="xunit.v3.extensibility.core" />
+    <PackageReference Include="Shouldly" />
+    <PackageReference Include="Testcontainers.PostgreSql" />
+    <PackageReference Include="Microsoft.AspNetCore.Mvc.Testing" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\Priamus.Trips.Host\Priamus.Trips.Host.csproj" />
+    <ProjectReference Include="..\..\src\Modules\Identity\Priamus.Trips.Identity\Priamus.Trips.Identity.csproj" />
+    <ProjectReference Include="..\..\src\Priamus.Trips.SharedKernel\Priamus.Trips.SharedKernel.csproj" />
+  </ItemGroup>
+
+</Project>

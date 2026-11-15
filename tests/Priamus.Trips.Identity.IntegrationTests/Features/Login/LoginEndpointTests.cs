@@ -22,16 +22,13 @@ using Xunit;
 namespace Priamus.Trips.Identity.IntegrationTests.Features.Login;
 
 /// <summary>
-/// Endpoint integration tests for <c>POST /api/auth/login</c>.
+/// Endpoint integration tests for <c>POST /api/identity/auth/login</c>.
 /// Uses <see cref="WebApplicationFactory{TEntryPoint}"/> wired to the per-test PostgreSQL
 /// database produced by <see cref="PostgresFixture"/> / <see cref="IdentityIntegrationTestBase"/>.
 /// </summary>
 public sealed class LoginEndpointTests : IdentityIntegrationTestBase
 {
     // JWT signing key that satisfies JwtOptions [MinLength(32)] validation.
-    private const string TestSigningKey = "test-signing-key-endpoint-32chars!!";
-    private const string TestIssuer    = "test-issuer";
-    private const string TestAudience  = "test-audience";
 
     public LoginEndpointTests(PostgresFixture fixture) : base(fixture) { }
 
@@ -48,21 +45,7 @@ public sealed class LoginEndpointTests : IdentityIntegrationTestBase
     private WebApplicationFactory<Program> CreateFactory(
         Action<IServiceCollection>? configureServices = null)
     {
-        return new WebApplicationFactory<Program>()
-            .WithWebHostBuilder(builder =>
-            {
-                builder.UseSetting("ConnectionStrings:Identity", ConnectionString);
-                builder.UseSetting("Jwt:Issuer",     TestIssuer);
-                builder.UseSetting("Jwt:Audience",   TestAudience);
-                builder.UseSetting("Jwt:SigningKey",  TestSigningKey);
-                builder.UseSetting("Jwt:AccessTokenLifetime",  "01:00:00");
-                builder.UseSetting("Jwt:RefreshTokenLifetime", "12:00:00");
-
-                if (configureServices is not null)
-                {
-                    builder.ConfigureServices(configureServices);
-                }
-            });
+        return ApiFactory.Create(ConnectionString, configureServices);
     }
 
     /// <summary>
@@ -113,7 +96,7 @@ public sealed class LoginEndpointTests : IdentityIntegrationTestBase
         var request = new LoginRequest(user.Username.Value, password);
 
         // Act
-        var response = await client.PostAsJsonAsync("/api/auth/login", request, ct);
+        var response = await client.PostAsJsonAsync("/api/identity/auth/login", request, ct);
 
         // Assert
         response.StatusCode.ShouldBe(HttpStatusCode.OK);
@@ -142,7 +125,7 @@ public sealed class LoginEndpointTests : IdentityIntegrationTestBase
         var request = new LoginRequest(user.Username.Value, "wrong-password");
 
         // Act
-        var response = await client.PostAsJsonAsync("/api/auth/login", request, ct);
+        var response = await client.PostAsJsonAsync("/api/identity/auth/login", request, ct);
 
         // Assert — HTTP layer
         response.StatusCode.ShouldBe(HttpStatusCode.Unauthorized);
@@ -183,7 +166,7 @@ public sealed class LoginEndpointTests : IdentityIntegrationTestBase
         var request = new LoginRequest(unknownUsername, "any-password");
 
         // Act
-        var response = await client.PostAsJsonAsync("/api/auth/login", request, ct);
+        var response = await client.PostAsJsonAsync("/api/identity/auth/login", request, ct);
 
         // Assert — HTTP layer: same 401 as wrong password (no username enumeration)
         response.StatusCode.ShouldBe(HttpStatusCode.Unauthorized);
@@ -234,7 +217,7 @@ public sealed class LoginEndpointTests : IdentityIntegrationTestBase
         var request = new LoginRequest(user.Username.Value, password);
 
         // Act
-        var response = await client.PostAsJsonAsync("/api/auth/login", request, ct);
+        var response = await client.PostAsJsonAsync("/api/identity/auth/login", request, ct);
 
         // Assert — HTTP layer
         response.StatusCode.ShouldBe(HttpStatusCode.OK);
@@ -276,7 +259,7 @@ public sealed class LoginEndpointTests : IdentityIntegrationTestBase
         var request = new LoginRequest(user.Username.Value, password);
 
         // Act
-        var response = await client.PostAsJsonAsync("/api/auth/login", request, ct);
+        var response = await client.PostAsJsonAsync("/api/identity/auth/login", request, ct);
 
         // Assert — HTTP layer
         response.StatusCode.ShouldBe(HttpStatusCode.OK);

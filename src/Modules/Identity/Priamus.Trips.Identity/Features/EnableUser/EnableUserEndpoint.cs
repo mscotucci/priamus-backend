@@ -1,13 +1,15 @@
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Routing;
+using Priamus.Trips.Identity.Contracts;
 using Priamus.Trips.Identity.Domain.Users;
 using Priamus.Trips.SharedKernel.Http;
 
 namespace Priamus.Trips.Identity.Features.EnableUser;
 
 /// <summary>
-/// HTTP endpoint for <c>POST /api/users/{id:guid}/enable</c>.
+/// HTTP endpoint for <c>POST /api/identity/users/{id:guid}/enable</c>.
 /// </summary>
 public static class EnableUserEndpoint
 {
@@ -21,10 +23,10 @@ public static class EnableUserEndpoint
     /// </remarks>
     public static IEndpointRouteBuilder MapEnableUser(this IEndpointRouteBuilder app)
     {
-        app.MapPost("/api/users/{id:guid}/enable", HandleAsync)
-            .RequireAuthorization("AdminOnly")
+        app.MapPost("/api/identity/users/{id:guid}/enable", HandleAsync)
+            .RequireAuthorization(AuthorizationPolicies.Admin)
             .WithName("EnableUser")
-            .WithTags("Users")
+            .WithTags("Identity.Users")
             .Produces(StatusCodes.Status204NoContent)
             .ProducesProblem(StatusCodes.Status401Unauthorized)
             .ProducesProblem(StatusCodes.Status403Forbidden)
@@ -35,7 +37,7 @@ public static class EnableUserEndpoint
 
     private static async Task<IResult> HandleAsync(
         Guid id,
-        EnableUserHandler handler,
+        [FromServices] EnableUserHandler handler,
         CancellationToken cancellationToken)
     {
         var result = await handler.HandleAsync(id, cancellationToken);

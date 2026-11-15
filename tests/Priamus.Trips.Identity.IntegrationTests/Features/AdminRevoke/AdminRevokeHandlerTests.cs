@@ -142,7 +142,7 @@ public sealed class AdminRevokeHandlerTests : IdentityIntegrationTestBase
     }
 
     [Fact]
-    public async Task HandleAsync_AlreadyRotatedToken_ReturnsDomainError()
+    public async Task HandleAsync_AlreadyRotatedToken_ReturnsCannotRevokeRotatedToken()
     {
         var ct = TestContext.Current.CancellationToken;
         await using var scope = CreateAsyncScope();
@@ -183,6 +183,6 @@ public sealed class AdminRevokeHandlerTests : IdentityIntegrationTestBase
 
         // Assert: Conflict error because refresh token was already rotated and the Revoke method emits a RefreshTokenErrors.CannotRevokeRotatedToken(Conflict)
         result.IsFailure.ShouldBeTrue();
-        result.Error.Type.ShouldBe(ErrorType.Conflict);
+        result.Error.ShouldBe(RefreshTokenErrors.CannotRevokeRotatedToken);
     }
 }

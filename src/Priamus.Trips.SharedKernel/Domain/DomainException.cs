@@ -20,9 +20,13 @@ public sealed class DomainException : Exception
     public DomainException(Error error)
         : base((error ?? throw new ArgumentNullException(nameof(error))).Description)
     {
-        ErrorCode = error.Code;
+        Error = error;
     }
 
     /// <summary>The machine-readable error code, e.g. <c>"Trip.TrailerRequired"</c>.</summary>
-    public string ErrorCode { get; }
+    /// <summary>The error that describes the violated invariant, unchanged.</summary>
+    public Error Error { get; }
+
+    /// <summary>The code of <see cref="Error"/>.</summary>
+    public string ErrorCode => Error.Code;
 }

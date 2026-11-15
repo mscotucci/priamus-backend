@@ -24,16 +24,13 @@ using Xunit;
 namespace Priamus.Trips.Identity.IntegrationTests.Features.Refresh;
 
 /// <summary>
-/// Endpoint integration tests for <c>POST /api/auth/refresh</c>.
+/// Endpoint integration tests for <c>POST /api/identity/auth/refresh</c>.
 /// Uses <see cref="WebApplicationFactory{TEntryPoint}"/> wired to the per-test PostgreSQL
 /// database produced by <see cref="PostgresFixture"/> / <see cref="IdentityIntegrationTestBase"/>.
 /// </summary>
 public sealed class RefreshEndpointTests : IdentityIntegrationTestBase
 {
     // JWT signing key that satisfies JwtOptions [MinLength(32)] validation.
-    private const string TestSigningKey = "test-signing-key-endpoint-32chars!!";
-    private const string TestIssuer    = "test-issuer";
-    private const string TestAudience  = "test-audience";
 
     public RefreshEndpointTests(PostgresFixture fixture) : base(fixture) { }
 
@@ -50,21 +47,7 @@ public sealed class RefreshEndpointTests : IdentityIntegrationTestBase
     private WebApplicationFactory<Program> CreateFactory(
         Action<IServiceCollection>? configureServices = null)
     {
-        return new WebApplicationFactory<Program>()
-            .WithWebHostBuilder(builder =>
-            {
-                builder.UseSetting("ConnectionStrings:Identity", ConnectionString);
-                builder.UseSetting("Jwt:Issuer",     TestIssuer);
-                builder.UseSetting("Jwt:Audience",   TestAudience);
-                builder.UseSetting("Jwt:SigningKey",  TestSigningKey);
-                builder.UseSetting("Jwt:AccessTokenLifetime",  "01:00:00");
-                builder.UseSetting("Jwt:RefreshTokenLifetime", "12:00:00");
-
-                if (configureServices is not null)
-                {
-                    builder.ConfigureServices(configureServices);
-                }
-            });
+        return ApiFactory.Create(ConnectionString, configureServices);
     }
 
     /// <summary>
@@ -120,7 +103,7 @@ public sealed class RefreshEndpointTests : IdentityIntegrationTestBase
         var request = new RefreshRequest(rawToken);
 
         // Act
-        var response = await client.PostAsJsonAsync("/api/auth/refresh", request, ct);
+        var response = await client.PostAsJsonAsync("/api/identity/auth/refresh", request, ct);
 
         // Assert — HTTP response
         response.StatusCode.ShouldBe(HttpStatusCode.OK);
@@ -162,7 +145,7 @@ public sealed class RefreshEndpointTests : IdentityIntegrationTestBase
         var request = new RefreshRequest(unknownToken);
 
         // Act
-        var response = await client.PostAsJsonAsync("/api/auth/refresh", request, ct);
+        var response = await client.PostAsJsonAsync("/api/identity/auth/refresh", request, ct);
 
         // Assert
         response.StatusCode.ShouldBe(HttpStatusCode.NotFound);
@@ -243,7 +226,7 @@ public sealed class RefreshEndpointTests : IdentityIntegrationTestBase
         var request = new RefreshRequest(consumedRawToken);
 
         // Act
-        var response = await client.PostAsJsonAsync("/api/auth/refresh", request, ct);
+        var response = await client.PostAsJsonAsync("/api/identity/auth/refresh", request, ct);
 
         // Assert — HTTP error
         response.StatusCode.ShouldBe(HttpStatusCode.Unauthorized);
@@ -305,7 +288,7 @@ public sealed class RefreshEndpointTests : IdentityIntegrationTestBase
         var request = new RefreshRequest(rawToken);
 
         // Act
-        var response = await client.PostAsJsonAsync("/api/auth/refresh", request, ct);
+        var response = await client.PostAsJsonAsync("/api/identity/auth/refresh", request, ct);
 
         // Assert
         response.StatusCode.ShouldBe(HttpStatusCode.Unauthorized);
@@ -345,7 +328,7 @@ public sealed class RefreshEndpointTests : IdentityIntegrationTestBase
         var request = new RefreshRequest(rawToken);
 
         // Act
-        var response = await client.PostAsJsonAsync("/api/auth/refresh", request, ct);
+        var response = await client.PostAsJsonAsync("/api/identity/auth/refresh", request, ct);
 
         // Assert — HTTP response
         response.StatusCode.ShouldBe(HttpStatusCode.OK);

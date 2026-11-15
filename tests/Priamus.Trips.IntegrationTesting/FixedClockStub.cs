@@ -1,11 +1,11 @@
 using Priamus.Trips.SharedKernel.Time;
 
-namespace Priamus.Trips.Identity.IntegrationTests.Infrastructure;
+namespace Priamus.Trips.IntegrationTesting;
 
 /// <summary>
 /// Test stub for <see cref="IClock"/> that returns a fixed instant.
 /// </summary>
-internal sealed class FixedClockStub : IClock
+public sealed class FixedClockStub : IClock
 {
     private readonly DateTime _utcNow;
 

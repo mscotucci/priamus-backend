@@ -1,5 +1,6 @@
 using System.ComponentModel.DataAnnotations;
 using System.Text.RegularExpressions;
+using Priamus.Trips.Identity.Resources;
 
 namespace Priamus.Trips.Identity.Features.CreateUser;
 
@@ -77,6 +78,5 @@ public sealed partial class StrongPasswordAttribute : ValidationAttribute
         return ValidationResult.Success;
     }
 
-    private static string GetErrorMessage() =>
-        "La password deve contenere tra 8 e 128 caratteri, almeno una lettera, un numero e un carattere speciale.";
+    private static string GetErrorMessage() => IdentityMessages.Validation_StrongPassword;
 }

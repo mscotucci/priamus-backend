@@ -25,16 +25,13 @@ using Xunit;
 namespace Priamus.Trips.Identity.IntegrationTests.Features.Revoke;
 
 /// <summary>
-/// Endpoint integration tests for <c>POST /api/auth/revoke</c>.
+/// Endpoint integration tests for <c>POST /api/identity/auth/revoke</c>.
 /// Uses <see cref="WebApplicationFactory{TEntryPoint}"/> wired to the per-test PostgreSQL
 /// database produced by <see cref="PostgresFixture"/> / <see cref="IdentityIntegrationTestBase"/>.
 /// </summary>
 public sealed class RevokeEndpointTests : IdentityIntegrationTestBase
 {
     // JWT signing key that satisfies JwtOptions [MinLength(32)] validation.
-    private const string TestSigningKey = "test-signing-key-endpoint-32chars!!";
-    private const string TestIssuer    = "test-issuer";
-    private const string TestAudience  = "test-audience";
 
     public RevokeEndpointTests(PostgresFixture fixture) : base(fixture) { }
 
@@ -49,16 +46,7 @@ public sealed class RevokeEndpointTests : IdentityIntegrationTestBase
     /// </summary>
     private WebApplicationFactory<Program> CreateFactory()
     {
-        return new WebApplicationFactory<Program>()
-            .WithWebHostBuilder(builder =>
-            {
-                builder.UseSetting("ConnectionStrings:Identity", ConnectionString);
-                builder.UseSetting("Jwt:Issuer",     TestIssuer);
-                builder.UseSetting("Jwt:Audience",   TestAudience);
-                builder.UseSetting("Jwt:SigningKey",  TestSigningKey);
-                builder.UseSetting("Jwt:AccessTokenLifetime",  "01:00:00");
-                builder.UseSetting("Jwt:RefreshTokenLifetime", "12:00:00");
-            });
+        return ApiFactory.Create(ConnectionString);
     }
 
     /// <summary>
@@ -92,7 +80,7 @@ public sealed class RevokeEndpointTests : IdentityIntegrationTestBase
     }
 
     /// <summary>
-    /// Calls <c>POST /api/auth/login</c> with the given credentials and returns the
+    /// Calls <c>POST /api/identity/auth/login</c> with the given credentials and returns the
     /// <see cref="LoginResponse"/>. Asserts that the response is 200 OK.
     /// </summary>
     private static async Task<LoginResponse> LoginAsync(
@@ -102,7 +90,7 @@ public sealed class RevokeEndpointTests : IdentityIntegrationTestBase
         CancellationToken ct)
     {
         var loginRequest = new LoginRequest(username, password);
-        var loginResponse = await client.PostAsJsonAsync("/api/auth/login", loginRequest, ct);
+        var loginResponse = await client.PostAsJsonAsync("/api/identity/auth/login", loginRequest, ct);
         loginResponse.StatusCode.ShouldBe(HttpStatusCode.OK);
         var body = await loginResponse.Content.ReadFromJsonAsync<LoginResponse>(ct);
         body.ShouldNotBeNull();
@@ -111,7 +99,7 @@ public sealed class RevokeEndpointTests : IdentityIntegrationTestBase
 
     /// <summary>
     /// Seeds a raw refresh token for <paramref name="userId"/> directly in the DB
-    /// and returns the raw token string that can be submitted to <c>/api/auth/revoke</c>.
+    /// and returns the raw token string that can be submitted to <c>/api/identity/auth/revoke</c>.
     /// </summary>
     private async Task<string> SeedRawRefreshTokenForUserAsync(
         UserId userId,
@@ -174,7 +162,7 @@ public sealed class RevokeEndpointTests : IdentityIntegrationTestBase
         }
 
         var revokeRequest = new RevokeRequest(rawRefreshToken);
-        var httpRequest = new HttpRequestMessage(HttpMethod.Post, "/api/auth/revoke")
+        var httpRequest = new HttpRequestMessage(HttpMethod.Post, "/api/identity/auth/revoke")
         {
             Content = JsonContent.Create(revokeRequest),
         };
@@ -247,7 +235,7 @@ public sealed class RevokeEndpointTests : IdentityIntegrationTestBase
             .Replace('+', '-').Replace('/', '_');
 
         var revokeRequest = new RevokeRequest(nonExistentToken);
-        var httpRequest = new HttpRequestMessage(HttpMethod.Post, "/api/auth/revoke")
+        var httpRequest = new HttpRequestMessage(HttpMethod.Post, "/api/identity/auth/revoke")
         {
             Content = JsonContent.Create(revokeRequest),
         };
@@ -301,7 +289,7 @@ public sealed class RevokeEndpointTests : IdentityIntegrationTestBase
 
         // User A attempts to revoke user B's token.
         var revokeRequest = new RevokeRequest(userBRawToken);
-        var httpRequest = new HttpRequestMessage(HttpMethod.Post, "/api/auth/revoke")
+        var httpRequest = new HttpRequestMessage(HttpMethod.Post, "/api/identity/auth/revoke")
         {
             Content = JsonContent.Create(revokeRequest),
         };
@@ -315,9 +303,9 @@ public sealed class RevokeEndpointTests : IdentityIntegrationTestBase
 
         var problemJson = await response.Content.ReadAsStringAsync(ct);
         using var doc = JsonDocument.Parse(problemJson);
-        // The handler returns Error.Forbidden("RefreshToken.NotOwner", ...) inline.
+        // The handler returns RefreshTokenErrors.NotOwner.
         doc.RootElement.GetProperty("errorCode").GetString()
-           .ShouldBe("RefreshToken.NotOwner");
+           .ShouldBe(RefreshTokenErrors.NotOwner.Code);
 
         // Assert — no TokenRevokedByOwner audit row written for either user
         await using (var scope = CreateAsyncScope())
@@ -338,7 +326,7 @@ public sealed class RevokeEndpointTests : IdentityIntegrationTestBase
         }
     }
 
-    // ── Test 4: Token already rotated → 422 with RefreshToken.CannotRevokeRotatedToken, no audit row ──
+    // ── Test 4: Token already rotated → 409 with RefreshToken.CannotRevokeRotatedToken, no audit row ──
     //
     // NOTE — deviation from the brief:
     // The brief says "token already revoked". In the production domain, RefreshToken.Revoke()
@@ -346,12 +334,12 @@ public sealed class RevokeEndpointTests : IdentityIntegrationTestBase
     // without error or event. The only state that causes a domain error from Revoke() is when
     // the token has been *rotated* (ReplacedByTokenId is set), which throws
     // RefreshTokenErrors.CannotRevokeRotatedToken. This test therefore uses a rotated token
-    // (achieved by calling /api/auth/refresh to consume the token before revoking it) and
-    // verifies the 422 domain error with code "RefreshToken.CannotRevokeRotatedToken".
+    // (achieved by calling /api/identity/auth/refresh to consume the token before revoking it) and
+    // verifies the 409 conflict with the code of RefreshTokenErrors.CannotRevokeRotatedToken.
     // See discrepancy report in the test file summary.
 
     [Fact]
-    public async Task PostRevoke_TokenAlreadyRotated_Returns422WithCannotRevokeRotatedTokenErrorCodeAndNoAuditRow()
+    public async Task PostRevoke_TokenAlreadyRotated_Returns409WithCannotRevokeRotatedTokenErrorCodeAndNoAuditRow()
     {
         var ct = TestContext.Current.CancellationToken;
 
@@ -365,17 +353,17 @@ public sealed class RevokeEndpointTests : IdentityIntegrationTestBase
         var accessToken      = loginBody.AccessToken;
         var originalRawToken = loginBody.RefreshToken;
 
-        // Rotate the original refresh token by calling /api/auth/refresh.
+        // Rotate the original refresh token by calling /api/identity/auth/refresh.
         // This makes the original token's IsRotated = true in the database.
         var refreshRequest = new RefreshRequest(originalRawToken);
-        var refreshResponse = await client.PostAsJsonAsync("/api/auth/refresh", refreshRequest, ct);
+        var refreshResponse = await client.PostAsJsonAsync("/api/identity/auth/refresh", refreshRequest, ct);
         refreshResponse.StatusCode.ShouldBe(HttpStatusCode.OK,
             "The refresh call must succeed to rotate the original token.");
 
         // Now attempt to revoke the *original* (now-rotated) token using the
         // access token obtained during login (still valid for 1 hour).
         var revokeRequest = new RevokeRequest(originalRawToken);
-        var httpRequest = new HttpRequestMessage(HttpMethod.Post, "/api/auth/revoke")
+        var httpRequest = new HttpRequestMessage(HttpMethod.Post, "/api/identity/auth/revoke")
         {
             Content = JsonContent.Create(revokeRequest),
         };
@@ -384,8 +372,8 @@ public sealed class RevokeEndpointTests : IdentityIntegrationTestBase
         // Act
         var response = await client.SendAsync(httpRequest, ct);
 
-        // Assert — HTTP status: Domain error → 422 Unprocessable Entity
-        response.StatusCode.ShouldBe(HttpStatusCode.UnprocessableEntity);
+        // Assert — HTTP status: state conflict → 409 Conflict
+        response.StatusCode.ShouldBe(HttpStatusCode.Conflict);
 
         var problemJson = await response.Content.ReadAsStringAsync(ct);
         using var doc = JsonDocument.Parse(problemJson);
@@ -429,7 +417,7 @@ public sealed class RevokeEndpointTests : IdentityIntegrationTestBase
 
         var revokeRequest = new RevokeRequest(rawToken);
         // No Authorization header — anonymous request.
-        var httpRequest = new HttpRequestMessage(HttpMethod.Post, "/api/auth/revoke")
+        var httpRequest = new HttpRequestMessage(HttpMethod.Post, "/api/identity/auth/revoke")
         {
             Content = JsonContent.Create(revokeRequest),
         };

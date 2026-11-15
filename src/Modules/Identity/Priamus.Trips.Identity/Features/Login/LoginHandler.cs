@@ -16,10 +16,10 @@ using Priamus.Trips.SharedKernel.Time;
 namespace Priamus.Trips.Identity.Features.Login;
 
 /// <summary>
-/// Handles <c>POST /api/auth/login</c>: validates credentials, issues an access JWT
+/// Handles <c>POST /api/identity/auth/login</c>: validates credentials, issues an access JWT
 /// and an opaque refresh token.
 /// </summary>
-public sealed class LoginHandler
+internal sealed class LoginHandler
 {
     private readonly IdentityDbContext _db;
     private readonly IPasswordHasher<User> _passwordHasher;

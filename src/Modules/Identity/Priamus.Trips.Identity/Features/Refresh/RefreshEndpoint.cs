@@ -1,12 +1,13 @@
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Routing;
 using Priamus.Trips.SharedKernel.Http;
 
 namespace Priamus.Trips.Identity.Features.Refresh;
 
 /// <summary>
-/// HTTP endpoint for <c>POST /api/auth/refresh</c>.
+/// HTTP endpoint for <c>POST /api/identity/auth/refresh</c>.
 /// </summary>
 public static class RefreshEndpoint
 {
@@ -15,10 +16,10 @@ public static class RefreshEndpoint
     /// </summary>
     public static IEndpointRouteBuilder MapRefresh(this IEndpointRouteBuilder app)
     {
-        app.MapPost("/api/auth/refresh", HandleAsync)
+        app.MapPost("/api/identity/auth/refresh", HandleAsync)
             .AllowAnonymous()
             .WithName("Refresh")
-            .WithTags("Auth")
+            .WithTags("Identity.Auth")
             .Produces<RefreshResponse>(StatusCodes.Status200OK)
             .ProducesProblem(StatusCodes.Status400BadRequest)
             .ProducesProblem(StatusCodes.Status401Unauthorized)
@@ -29,8 +30,8 @@ public static class RefreshEndpoint
     }
 
     private static async Task<IResult> HandleAsync(
-        RefreshRequest request,
-        RefreshHandler handler,
+        [FromBody] RefreshRequest request,
+        [FromServices] RefreshHandler handler,
         CancellationToken cancellationToken)
     {
         var result = await handler.HandleAsync(request, cancellationToken);

@@ -4,7 +4,7 @@ using Priamus.Trips.SharedKernel.Paging;
 namespace Priamus.Trips.Identity.Features.ListUsers;
 
 /// <summary>
-/// Query-string parameters for <c>GET /api/users</c>.
+/// Query-string parameters for <c>GET /api/identity/users</c>.
 /// </summary>
 /// <remarks>
 /// Mutable class (not record) required by ASP.NET Core query-string model binding.

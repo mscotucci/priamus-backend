@@ -8,9 +8,9 @@ using Priamus.Trips.SharedKernel.Results;
 namespace Priamus.Trips.Identity.Features.ListUsers;
 
 /// <summary>
-/// Handles <c>GET /api/users</c>: returns a paginated, optionally filtered list of users.
+/// Handles <c>GET /api/identity/users</c>: returns a paginated, optionally filtered list of users.
 /// </summary>
-public sealed class ListUsersHandler
+internal sealed class ListUsersHandler
 {
     private readonly IdentityDbContext _db;
     private readonly ILogger<ListUsersHandler> _logger;

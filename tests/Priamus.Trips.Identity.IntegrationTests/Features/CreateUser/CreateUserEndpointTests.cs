@@ -21,16 +21,13 @@ using Xunit;
 namespace Priamus.Trips.Identity.IntegrationTests.Features.CreateUser;
 
 /// <summary>
-/// Endpoint integration tests for <c>POST /api/users</c>.
+/// Endpoint integration tests for <c>POST /api/identity/users</c>.
 /// Uses <see cref="WebApplicationFactory{TEntryPoint}"/> wired to the per-test PostgreSQL
 /// database produced by <see cref="PostgresFixture"/> / <see cref="IdentityIntegrationTestBase"/>.
 /// </summary>
 public sealed class CreateUserEndpointTests : IdentityIntegrationTestBase
 {
     // JWT signing key that satisfies JwtOptions [MinLength(32)] validation.
-    private const string TestSigningKey = "test-signing-key-endpoint-32chars!!";
-    private const string TestIssuer    = "test-issuer";
-    private const string TestAudience  = "test-audience";
 
     public CreateUserEndpointTests(PostgresFixture fixture) : base(fixture) { }
 
@@ -47,21 +44,7 @@ public sealed class CreateUserEndpointTests : IdentityIntegrationTestBase
     private WebApplicationFactory<Program> CreateFactory(
         Action<IServiceCollection>? configureServices = null)
     {
-        return new WebApplicationFactory<Program>()
-            .WithWebHostBuilder(builder =>
-            {
-                builder.UseSetting("ConnectionStrings:Identity", ConnectionString);
-                builder.UseSetting("Jwt:Issuer",     TestIssuer);
-                builder.UseSetting("Jwt:Audience",   TestAudience);
-                builder.UseSetting("Jwt:SigningKey",  TestSigningKey);
-                builder.UseSetting("Jwt:AccessTokenLifetime",  "01:00:00");
-                builder.UseSetting("Jwt:RefreshTokenLifetime", "12:00:00");
-                
-                if (configureServices is not null)
-                {
-                    builder.ConfigureServices(configureServices);
-                }
-            });
+        return ApiFactory.Create(ConnectionString, configureServices);
     }
 
     /// <summary>
@@ -100,7 +83,7 @@ public sealed class CreateUserEndpointTests : IdentityIntegrationTestBase
     }
 
     /// <summary>
-    /// Calls <c>POST /api/auth/login</c> with the given credentials and returns the
+    /// Calls <c>POST /api/identity/auth/login</c> with the given credentials and returns the
     /// <see cref="LoginResponse"/>. Asserts that the response is 200 OK.
     /// </summary>
     private static async Task<LoginResponse> LoginAsync(
@@ -110,7 +93,7 @@ public sealed class CreateUserEndpointTests : IdentityIntegrationTestBase
         CancellationToken ct)
     {
         var loginRequest = new LoginRequest(username, password);
-        var loginResponse = await client.PostAsJsonAsync("/api/auth/login", loginRequest, ct);
+        var loginResponse = await client.PostAsJsonAsync("/api/identity/auth/login", loginRequest, ct);
         loginResponse.StatusCode.ShouldBe(HttpStatusCode.OK,
             $"Login must succeed for user '{username}' to obtain a JWT for the test.");
         var body = await loginResponse.Content.ReadFromJsonAsync<LoginResponse>(ct);
@@ -138,13 +121,13 @@ public sealed class CreateUserEndpointTests : IdentityIntegrationTestBase
         var request = new CreateUserRequest("brandnewuser", "Str0ng!Pass", UserRole.Driver);
 
         // Act
-        var response = await client.PostAsJsonAsync("/api/users", request, ct);
+        var response = await client.PostAsJsonAsync("/api/identity/users", request, TestJson.Options, ct);
 
         // Assert — HTTP status
         response.StatusCode.ShouldBe(HttpStatusCode.Created);
 
         // Assert — response body
-        var body = await response.Content.ReadFromJsonAsync<CreateUserResponse>(ct);
+        var body = await response.Content.ReadFromJsonAsync<CreateUserResponse>(TestJson.Options, ct);
         body.ShouldNotBeNull();
         body.Id.ShouldNotBe(Guid.Empty);
         body.Username.ShouldBe("brandnewuser");
@@ -153,7 +136,7 @@ public sealed class CreateUserEndpointTests : IdentityIntegrationTestBase
 
         // Assert — Location header
         response.Headers.Location.ShouldNotBeNull();
-        response.Headers.Location!.ToString().ShouldBe($"/api/users/{body.Id}");
+        response.Headers.Location!.ToString().ShouldBe($"/api/identity/users/{body.Id}");
 
         // Assert — persisted in DB
         await using (var scope = CreateAsyncScope())
@@ -189,10 +172,10 @@ public sealed class CreateUserEndpointTests : IdentityIntegrationTestBase
         var request = new CreateUserRequest("auditloguser", "Str0ng!Pass", UserRole.BackOffice);
 
         // Act
-        var response = await client.PostAsJsonAsync("/api/users", request, ct);
+        var response = await client.PostAsJsonAsync("/api/identity/users", request, TestJson.Options, ct);
         response.StatusCode.ShouldBe(HttpStatusCode.Created);
 
-        var body = await response.Content.ReadFromJsonAsync<CreateUserResponse>(ct);
+        var body = await response.Content.ReadFromJsonAsync<CreateUserResponse>(TestJson.Options, ct);
         body.ShouldNotBeNull();
         var newUserId = body.Id;
 
@@ -240,7 +223,7 @@ public sealed class CreateUserEndpointTests : IdentityIntegrationTestBase
         var request = new CreateUserRequest("someuser", "Str0ng!Pass", UserRole.Driver);
 
         // Act — no Authorization header set
-        var response = await client.PostAsJsonAsync("/api/users", request, ct);
+        var response = await client.PostAsJsonAsync("/api/identity/users", request, TestJson.Options, ct);
 
         // Assert
         response.StatusCode.ShouldBe(HttpStatusCode.Unauthorized);
@@ -253,7 +236,7 @@ public sealed class CreateUserEndpointTests : IdentityIntegrationTestBase
     {
         var ct = TestContext.Current.CancellationToken;
 
-        // Arrange: seed a Driver user; Driver role does not satisfy AdminOnly policy
+        // Arrange: seed a Driver user; Driver role does not satisfy Admin policy
         var (driverUser, driverPassword) = await SeedUserAsync(UserRole.Driver, "Driv3r!Pass", ct: ct);
 
         await using var factory = CreateFactory();
@@ -266,7 +249,7 @@ public sealed class CreateUserEndpointTests : IdentityIntegrationTestBase
         var request = new CreateUserRequest("newuser999", "Str0ng!Pass", UserRole.Driver);
 
         // Act
-        var response = await client.PostAsJsonAsync("/api/users", request, ct);
+        var response = await client.PostAsJsonAsync("/api/identity/users", request, TestJson.Options, ct);
 
         // Assert
         response.StatusCode.ShouldBe(HttpStatusCode.Forbidden);
@@ -279,7 +262,7 @@ public sealed class CreateUserEndpointTests : IdentityIntegrationTestBase
     {
         var ct = TestContext.Current.CancellationToken;
 
-        // Arrange: seed a BackOffice user; BackOffice role does not satisfy AdminOnly policy
+        // Arrange: seed a BackOffice user; BackOffice role does not satisfy Admin policy
         var (backOfficeUser, backOfficePassword) =
             await SeedUserAsync(UserRole.BackOffice, "B4ckOffice!Pass", ct: ct);
 
@@ -293,7 +276,7 @@ public sealed class CreateUserEndpointTests : IdentityIntegrationTestBase
         var request = new CreateUserRequest("newuser998", "Str0ng!Pass", UserRole.Driver);
 
         // Act
-        var response = await client.PostAsJsonAsync("/api/users", request, ct);
+        var response = await client.PostAsJsonAsync("/api/identity/users", request, TestJson.Options, ct);
 
         // Assert
         response.StatusCode.ShouldBe(HttpStatusCode.Forbidden);
@@ -322,7 +305,7 @@ public sealed class CreateUserEndpointTests : IdentityIntegrationTestBase
         var request = new CreateUserRequest(duplicateUsername, "Str0ng!Pass", UserRole.BackOffice);
 
         // Act
-        var response = await client.PostAsJsonAsync("/api/users", request, ct);
+        var response = await client.PostAsJsonAsync("/api/identity/users", request, TestJson.Options, ct);
 
         // Assert
         response.StatusCode.ShouldBe(HttpStatusCode.Conflict);
@@ -354,10 +337,11 @@ public sealed class CreateUserEndpointTests : IdentityIntegrationTestBase
         async Task<HttpResponseMessage> PostAsync()
         {
             // Each concurrent call creates a separate HttpRequestMessage to avoid shared-state issues.
-            var req = new HttpRequestMessage(HttpMethod.Post, "/api/users");
+            var req = new HttpRequestMessage(HttpMethod.Post, "/api/identity/users");
             req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", adminJwt);
             req.Content = JsonContent.Create(
-                new CreateUserRequest(racedUsername, "Str0ng!Pass", UserRole.Driver));
+                new CreateUserRequest(racedUsername, "Str0ng!Pass", UserRole.Driver),
+                options: TestJson.Options);
             return await client.SendAsync(req, ct);
         }
 
@@ -409,7 +393,7 @@ public sealed class CreateUserEndpointTests : IdentityIntegrationTestBase
         var request = new CreateUserRequest("validuser01", "Ab1!", UserRole.Driver);
 
         // Act
-        var response = await client.PostAsJsonAsync("/api/users", request, ct);
+        var response = await client.PostAsJsonAsync("/api/identity/users", request, TestJson.Options, ct);
 
         // Assert: [StrongPassword] via [ValidatableType] produces a 400 Bad Request
         // (Microsoft.Extensions.Validation source generator) or 422 if mapped differently.
@@ -442,7 +426,7 @@ public sealed class CreateUserEndpointTests : IdentityIntegrationTestBase
         var request = new CreateUserRequest("validuser02", tooLongPassword, UserRole.Driver);
 
         // Act
-        var response = await client.PostAsJsonAsync("/api/users", request, ct);
+        var response = await client.PostAsJsonAsync("/api/identity/users", request, TestJson.Options, ct);
 
         // Assert
         var statusCode = (int)response.StatusCode;
@@ -472,7 +456,7 @@ public sealed class CreateUserEndpointTests : IdentityIntegrationTestBase
         var request = new CreateUserRequest("validuser03", "12345678!", UserRole.Driver);
 
         // Act
-        var response = await client.PostAsJsonAsync("/api/users", request, ct);
+        var response = await client.PostAsJsonAsync("/api/identity/users", request, TestJson.Options, ct);
 
         // Assert
         var statusCode = (int)response.StatusCode;
@@ -502,7 +486,7 @@ public sealed class CreateUserEndpointTests : IdentityIntegrationTestBase
         var request = new CreateUserRequest("validuser04", "Abcdefg!", UserRole.Driver);
 
         // Act
-        var response = await client.PostAsJsonAsync("/api/users", request, ct);
+        var response = await client.PostAsJsonAsync("/api/identity/users", request, TestJson.Options, ct);
 
         // Assert
         var statusCode = (int)response.StatusCode;
@@ -532,7 +516,7 @@ public sealed class CreateUserEndpointTests : IdentityIntegrationTestBase
         var request = new CreateUserRequest("validuser05", "Abcde123", UserRole.Driver);
 
         // Act
-        var response = await client.PostAsJsonAsync("/api/users", request, ct);
+        var response = await client.PostAsJsonAsync("/api/identity/users", request, TestJson.Options, ct);
 
         // Assert
         var statusCode = (int)response.StatusCode;
@@ -562,7 +546,7 @@ public sealed class CreateUserEndpointTests : IdentityIntegrationTestBase
         var request = new CreateUserRequest(".invalidstart", "Str0ng!Pass", UserRole.Driver);
 
         // Act
-        var response = await client.PostAsJsonAsync("/api/users", request, ct);
+        var response = await client.PostAsJsonAsync("/api/identity/users", request, TestJson.Options, ct);
 
         // Assert
         response.StatusCode.ShouldBe(HttpStatusCode.UnprocessableEntity);
@@ -573,18 +557,18 @@ public sealed class CreateUserEndpointTests : IdentityIntegrationTestBase
            .ShouldBe(UserErrors.UsernameInvalid.Code);
     }
 
-    // ── Test 14: 400 — missing/null required field (Role) ─────────────────────
+    // ── Test 14: 400 — required field (Role) null, omitted, or sent as an integer ──
     //
-    // Sending the field as explicit "role":null triggers the System.Text.Json
-    // JsonException during parameter binding (null is not coercible to the
-    // non-nullable UserRole enum); ASP.NET Core's minimal-API binder maps that
-    // exception to 400. Omitting the property entirely is a different path
-    // (positional-record constructor with missing required member) that does
-    // NOT round-trip through the same handler and surfaces as 500 in
-    // Development environment — that gap is tracked separately.
+    // Role is declared nullable so that an omitted or null value binds to null and
+    // [Required] answers 400, instead of binding to the enum's zero value. Enums travel
+    // by name only: the host rejects an integer.
 
-    [Fact]
-    public async Task PostUsers_WithMissingRoleField_Returns400()
+    [Theory]
+    [InlineData("""{"username":"validuser06","password":"Str0ng!Pass","role":null}""")]
+    [InlineData("""{"username":"validuser06","password":"Str0ng!Pass"}""")]
+    [InlineData("""{"username":"validuser06","password":"Str0ng!Pass","role":0}""")]
+    [InlineData("""{"username":"validuser06","password":"Str0ng!Pass","role":"NotARole"}""")]
+    public async Task PostUsers_WithRoleNullOmittedIntegerOrUnknown_Returns400(string incompleteJson)
     {
         var ct = TestContext.Current.CancellationToken;
 
@@ -598,17 +582,15 @@ public sealed class CreateUserEndpointTests : IdentityIntegrationTestBase
         client.DefaultRequestHeaders.Authorization =
             new AuthenticationHeaderValue("Bearer", loginBody.AccessToken);
 
-        // Send a raw JSON object that omits the required "role" field
-        var incompleteJson = """{"username":"validuser06","password":"Str0ng!Pass","role":null}""";
         var content = new StringContent(
             incompleteJson,
             System.Text.Encoding.UTF8,
             "application/json");
 
         // Act
-        var response = await client.PostAsync("/api/users", content, ct);
+        var response = await client.PostAsync("/api/identity/users", content, ct);
 
-        // Assert: missing required field must produce a 400 Bad Request
+        // Assert
         response.StatusCode.ShouldBe(HttpStatusCode.BadRequest);
     }
 }

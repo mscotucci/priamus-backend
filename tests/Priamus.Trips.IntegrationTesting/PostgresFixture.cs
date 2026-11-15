@@ -4,7 +4,7 @@ using Priamus.Trips.Identity.Persistence;
 using Testcontainers.PostgreSql;
 using Xunit;
 
-namespace Priamus.Trips.Identity.IntegrationTests.Infrastructure;
+namespace Priamus.Trips.IntegrationTesting;
 
 /// <summary>
 /// Assembly-scoped fixture that owns a single PostgreSQL container for the full test run.

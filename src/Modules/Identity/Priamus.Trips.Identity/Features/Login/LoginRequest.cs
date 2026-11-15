@@ -1,12 +1,17 @@
 using System.ComponentModel.DataAnnotations;
 using Microsoft.Extensions.Validation;
+using Priamus.Trips.Identity.Resources;
 
 namespace Priamus.Trips.Identity.Features.Login;
 
 /// <summary>
-/// Request body for <c>POST /api/auth/login</c>.
+/// Request body for <c>POST /api/identity/auth/login</c>.
 /// </summary>
 [ValidatableType]
 public sealed record LoginRequest(
-    [Required, MaxLength(64)] string Username,
-    [Required, MaxLength(1024)] string Password);
+    [Required(ErrorMessageResourceType = typeof(IdentityMessages), ErrorMessageResourceName = nameof(IdentityMessages.Validation_Required))]
+    [MaxLength(64, ErrorMessageResourceType = typeof(IdentityMessages), ErrorMessageResourceName = nameof(IdentityMessages.Validation_MaxLength))]
+    string Username,
+    [Required(ErrorMessageResourceType = typeof(IdentityMessages), ErrorMessageResourceName = nameof(IdentityMessages.Validation_Required))]
+    [MaxLength(1024, ErrorMessageResourceType = typeof(IdentityMessages), ErrorMessageResourceName = nameof(IdentityMessages.Validation_MaxLength))]
+    string Password);

@@ -15,10 +15,10 @@ using Priamus.Trips.SharedKernel.Time;
 namespace Priamus.Trips.Identity.Features.Refresh;
 
 /// <summary>
-/// Handles <c>POST /api/auth/refresh</c>: validates the opaque refresh token,
+/// Handles <c>POST /api/identity/auth/refresh</c>: validates the opaque refresh token,
 /// rotates it, and issues a new access JWT + refresh token.
 /// </summary>
-public sealed class RefreshHandler
+internal sealed class RefreshHandler
 {
     private readonly IdentityDbContext _db;
     private readonly IRefreshTokenHasher _refreshTokenHasher;
@@ -135,7 +135,7 @@ public sealed class RefreshHandler
         }
         catch (DomainException ex)
         {
-            return Error.Domain(ex.ErrorCode, ex.Message);
+            return ex.Error;
         }
 
         _db.RefreshTokens.Add(newRefreshToken);

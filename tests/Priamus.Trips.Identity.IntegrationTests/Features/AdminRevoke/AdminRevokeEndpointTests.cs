@@ -23,16 +23,13 @@ using Xunit;
 namespace Priamus.Trips.Identity.IntegrationTests.Features.AdminRevoke;
 
 /// <summary>
-/// Endpoint integration tests for <c>POST /api/auth/admin/tokens/{tokenId:guid}/revoke</c>.
+/// Endpoint integration tests for <c>POST /api/identity/auth/admin/tokens/{tokenId:guid}/revoke</c>.
 /// Uses <see cref="WebApplicationFactory{TEntryPoint}"/> wired to the per-test PostgreSQL
 /// database produced by <see cref="PostgresFixture"/> / <see cref="IdentityIntegrationTestBase"/>.
 /// </summary>
 public sealed class AdminRevokeEndpointTests : IdentityIntegrationTestBase
 {
     // JWT signing key that satisfies JwtOptions [MinLength(32)] validation.
-    private const string TestSigningKey = "test-signing-key-endpoint-32chars!!";
-    private const string TestIssuer    = "test-issuer";
-    private const string TestAudience  = "test-audience";
 
     public AdminRevokeEndpointTests(PostgresFixture fixture) : base(fixture) { }
 
@@ -47,16 +44,7 @@ public sealed class AdminRevokeEndpointTests : IdentityIntegrationTestBase
     /// </summary>
     private WebApplicationFactory<Program> CreateFactory()
     {
-        return new WebApplicationFactory<Program>()
-            .WithWebHostBuilder(builder =>
-            {
-                builder.UseSetting("ConnectionStrings:Identity", ConnectionString);
-                builder.UseSetting("Jwt:Issuer",     TestIssuer);
-                builder.UseSetting("Jwt:Audience",   TestAudience);
-                builder.UseSetting("Jwt:SigningKey",  TestSigningKey);
-                builder.UseSetting("Jwt:AccessTokenLifetime",  "01:00:00");
-                builder.UseSetting("Jwt:RefreshTokenLifetime", "12:00:00");
-            });
+        return ApiFactory.Create(ConnectionString);
     }
 
     /// <summary>
@@ -92,7 +80,7 @@ public sealed class AdminRevokeEndpointTests : IdentityIntegrationTestBase
     }
 
     /// <summary>
-    /// Calls <c>POST /api/auth/login</c> with the given credentials and returns the
+    /// Calls <c>POST /api/identity/auth/login</c> with the given credentials and returns the
     /// <see cref="LoginResponse"/>. Asserts that the response is 200 OK.
     /// </summary>
     private static async Task<LoginResponse> LoginAsync(
@@ -102,7 +90,7 @@ public sealed class AdminRevokeEndpointTests : IdentityIntegrationTestBase
         CancellationToken ct)
     {
         var loginRequest = new LoginRequest(username, password);
-        var loginResponse = await client.PostAsJsonAsync("/api/auth/login", loginRequest, ct);
+        var loginResponse = await client.PostAsJsonAsync("/api/identity/auth/login", loginRequest, ct);
         loginResponse.StatusCode.ShouldBe(HttpStatusCode.OK);
         var body = await loginResponse.Content.ReadFromJsonAsync<LoginResponse>(ct);
         body.ShouldNotBeNull();
@@ -211,7 +199,7 @@ public sealed class AdminRevokeEndpointTests : IdentityIntegrationTestBase
 
         var httpRequest = new HttpRequestMessage(
             HttpMethod.Post,
-            $"/api/auth/admin/tokens/{tokenId.Value}/revoke");
+            $"/api/identity/auth/admin/tokens/{tokenId.Value}/revoke");
         httpRequest.Headers.Authorization = new AuthenticationHeaderValue("Bearer", adminAccessToken);
 
         // Act
@@ -281,7 +269,7 @@ public sealed class AdminRevokeEndpointTests : IdentityIntegrationTestBase
 
         var httpRequest = new HttpRequestMessage(
             HttpMethod.Post,
-            $"/api/auth/admin/tokens/{nonExistentTokenId}/revoke");
+            $"/api/identity/auth/admin/tokens/{nonExistentTokenId}/revoke");
         httpRequest.Headers.Authorization = new AuthenticationHeaderValue("Bearer", adminAccessToken);
 
         // Act
@@ -312,7 +300,7 @@ public sealed class AdminRevokeEndpointTests : IdentityIntegrationTestBase
     //             rotated tokens; no audit row written.
     
     [Fact]
-    public async Task PostAdminRevoke_AlreadyRotatedToken_Returns422WithCannotRevokeRotatedTokenErrorCodeAndNoAuditRow()
+    public async Task PostAdminRevoke_AlreadyRotatedToken_Returns409WithCannotRevokeRotatedTokenErrorCodeAndNoAuditRow()
     {
         var ct = TestContext.Current.CancellationToken;
 
@@ -331,7 +319,7 @@ public sealed class AdminRevokeEndpointTests : IdentityIntegrationTestBase
 
         var httpRequest = new HttpRequestMessage(
             HttpMethod.Post,
-            $"/api/auth/admin/tokens/{rotatedTokenId.Value}/revoke");
+            $"/api/identity/auth/admin/tokens/{rotatedTokenId.Value}/revoke");
         httpRequest.Headers.Authorization = new AuthenticationHeaderValue("Bearer", adminAccessToken);
 
         // Act
@@ -384,7 +372,7 @@ public sealed class AdminRevokeEndpointTests : IdentityIntegrationTestBase
 
         var httpRequest = new HttpRequestMessage(
             HttpMethod.Post,
-            $"/api/auth/admin/tokens/{anyTokenId}/revoke");
+            $"/api/identity/auth/admin/tokens/{anyTokenId}/revoke");
         httpRequest.Headers.Authorization = new AuthenticationHeaderValue("Bearer", driverAccessToken);
 
         // Act
@@ -427,7 +415,7 @@ public sealed class AdminRevokeEndpointTests : IdentityIntegrationTestBase
         // No Authorization header — anonymous request.
         var httpRequest = new HttpRequestMessage(
             HttpMethod.Post,
-            $"/api/auth/admin/tokens/{anyTokenId}/revoke");
+            $"/api/identity/auth/admin/tokens/{anyTokenId}/revoke");
 
         // Act
         var response = await client.SendAsync(httpRequest, ct);

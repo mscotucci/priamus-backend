@@ -1,0 +1,77 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Italian user-facing messages of the Identity module. Neutral culture on purpose: Italian is the only
+     language, so the file answers every request and needs no request-localization configuration.
+     Error entries are keyed by Error.Code; Validation.* entries are the messages of the request body.
+     Errors a user cannot cause (RefreshToken.HashInvalid, RefreshToken.LifetimeInvalid, User.PasswordHashInvalid)
+     have no entry and keep the English Error.Description. -->
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="Validation.Required" xml:space="preserve">
+    <value>Valore obbligatorio.</value>
+  </data>
+  <data name="Validation.MaxLength" xml:space="preserve">
+    <value>Massimo {1} caratteri.</value>
+  </data>
+  <data name="Validation.StrongPassword" xml:space="preserve">
+    <value>La password deve contenere tra 8 e 128 caratteri, almeno una lettera, un numero e un carattere speciale.</value>
+  </data>
+  <data name="Identity.User.UsernameInvalid" xml:space="preserve">
+    <value>Il nome utente deve avere da 3 a 64 caratteri, contenere solo lettere minuscole, cifre, punto, trattino e trattino basso, e iniziare con una lettera o una cifra.</value>
+  </data>
+  <data name="Identity.User.CannotChangePasswordOnDisabledUser" xml:space="preserve">
+    <value>Non è possibile cambiare la password di un utente disabilitato. Riattivare prima l'utente.</value>
+  </data>
+  <data name="Identity.User.NotFound" xml:space="preserve">
+    <value>Utente non trovato.</value>
+  </data>
+  <data name="Identity.User.UsernameAlreadyTaken" xml:space="preserve">
+    <value>Il nome utente è già in uso.</value>
+  </data>
+  <data name="Identity.User.CannotDisableSelf" xml:space="preserve">
+    <value>Non è possibile disabilitare il proprio account.</value>
+  </data>
+  <data name="Identity.User.InvalidCredentials" xml:space="preserve">
+    <value>Nome utente o password non validi.</value>
+  </data>
+  <data name="Identity.User.AccountDisabled" xml:space="preserve">
+    <value>L'account è disabilitato. Contattare un amministratore.</value>
+  </data>
+  <data name="Identity.RefreshToken.CannotRotateRevokedToken" xml:space="preserve">
+    <value>La sessione è stata chiusa. Effettuare di nuovo l'accesso.</value>
+  </data>
+  <data name="Identity.RefreshToken.CannotRotateExpiredToken" xml:space="preserve">
+    <value>La sessione è scaduta. Effettuare di nuovo l'accesso.</value>
+  </data>
+  <data name="Identity.RefreshToken.CannotRotateAlreadyRotatedToken" xml:space="preserve">
+    <value>La sessione non è più valida. Effettuare di nuovo l'accesso.</value>
+  </data>
+  <data name="Identity.RefreshToken.CannotRevokeRotatedToken" xml:space="preserve">
+    <value>La sessione è già stata rinnovata e non può essere chiusa.</value>
+  </data>
+  <data name="Identity.RefreshToken.NotFound" xml:space="preserve">
+    <value>Sessione non trovata.</value>
+  </data>
+  <data name="Identity.RefreshToken.Expired" xml:space="preserve">
+    <value>La sessione è scaduta. Effettuare di nuovo l'accesso.</value>
+  </data>
+  <data name="Identity.RefreshToken.NoLongerValid" xml:space="preserve">
+    <value>La sessione non è più valida. Effettuare di nuovo l'accesso.</value>
+  </data>
+  <data name="Identity.RefreshToken.ConcurrentRefresh" xml:space="preserve">
+    <value>La sessione è stata rinnovata da un'altra richiesta. Riprovare.</value>
+  </data>
+  <data name="Identity.RefreshToken.NotOwner" xml:space="preserve">
+    <value>È possibile chiudere solo le proprie sessioni.</value>
+  </data>
+</root>

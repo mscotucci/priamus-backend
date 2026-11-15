@@ -1,12 +1,14 @@
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Routing;
+using Priamus.Trips.Identity.Contracts;
 using Priamus.Trips.SharedKernel.Http;
 
 namespace Priamus.Trips.Identity.Features.DisableUser;
 
 /// <summary>
-/// HTTP endpoint for <c>POST /api/users/{id:guid}/disable</c>.
+/// HTTP endpoint for <c>POST /api/identity/users/{id:guid}/disable</c>.
 /// </summary>
 public static class DisableUserEndpoint
 {
@@ -15,10 +17,10 @@ public static class DisableUserEndpoint
     /// </summary>
     public static IEndpointRouteBuilder MapDisableUser(this IEndpointRouteBuilder app)
     {
-        app.MapPost("/api/users/{id:guid}/disable", HandleAsync)
-            .RequireAuthorization("AdminOnly")
+        app.MapPost("/api/identity/users/{id:guid}/disable", HandleAsync)
+            .RequireAuthorization(AuthorizationPolicies.Admin)
             .WithName("DisableUser")
-            .WithTags("Users")
+            .WithTags("Identity.Users")
             .Produces(StatusCodes.Status204NoContent)
             .ProducesProblem(StatusCodes.Status401Unauthorized)
             .ProducesProblem(StatusCodes.Status403Forbidden)
@@ -30,7 +32,7 @@ public static class DisableUserEndpoint
 
     private static async Task<IResult> HandleAsync(
         Guid id,
-        DisableUserHandler handler,
+        [FromServices] DisableUserHandler handler,
         CancellationToken cancellationToken)
     {
         var result = await handler.HandleAsync(id, cancellationToken);

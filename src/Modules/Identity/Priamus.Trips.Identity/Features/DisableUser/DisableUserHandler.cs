@@ -9,7 +9,7 @@ using Priamus.Trips.SharedKernel.Time;
 namespace Priamus.Trips.Identity.Features.DisableUser;
 
 /// <summary>
-/// Handles <c>POST /api/users/{id:guid}/disable</c>: disables a user account.
+/// Handles <c>POST /api/identity/users/{id:guid}/disable</c>: disables a user account.
 /// </summary>
 /// <remarks>
 /// <para>
@@ -22,7 +22,7 @@ namespace Priamus.Trips.Identity.Features.DisableUser;
 /// still persists (no-op <c>SaveChangesAsync</c>) and returns success (204).
 /// </para>
 /// </remarks>
-public sealed class DisableUserHandler
+internal sealed class DisableUserHandler
 {
     private readonly IdentityDbContext _db;
     private readonly ICurrentUser _currentUser;

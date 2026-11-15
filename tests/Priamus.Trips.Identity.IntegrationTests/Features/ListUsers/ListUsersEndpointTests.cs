@@ -18,7 +18,7 @@ using Xunit;
 namespace Priamus.Trips.Identity.IntegrationTests.Features.ListUsers;
 
 /// <summary>
-/// Integration tests for <c>GET /api/users</c>.
+/// Integration tests for <c>GET /api/identity/users</c>.
 ///
 /// Each test owns an isolated PostgreSQL database (cloned from the migrated template)
 /// via <see cref="IdentityIntegrationTestBase"/>. Seeds are inserted in a dedicated
@@ -26,9 +26,6 @@ namespace Priamus.Trips.Identity.IntegrationTests.Features.ListUsers;
 /// </summary>
 public sealed class ListUsersEndpointTests : IdentityIntegrationTestBase
 {
-    private const string TestSigningKey = "test-signing-key-endpoint-32chars!!";
-    private const string TestIssuer    = "test-issuer";
-    private const string TestAudience  = "test-audience";
 
     public ListUsersEndpointTests(PostgresFixture fixture) : base(fixture) { }
 
@@ -37,21 +34,7 @@ public sealed class ListUsersEndpointTests : IdentityIntegrationTestBase
     private WebApplicationFactory<Program> CreateFactory(
         Action<IServiceCollection>? configureServices = null)
     {
-        return new WebApplicationFactory<Program>()
-            .WithWebHostBuilder(builder =>
-            {
-                builder.UseSetting("ConnectionStrings:Identity", ConnectionString);
-                builder.UseSetting("Jwt:Issuer",     TestIssuer);
-                builder.UseSetting("Jwt:Audience",   TestAudience);
-                builder.UseSetting("Jwt:SigningKey",  TestSigningKey);
-                builder.UseSetting("Jwt:AccessTokenLifetime",  "01:00:00");
-                builder.UseSetting("Jwt:RefreshTokenLifetime", "12:00:00");
-
-                if (configureServices is not null)
-                {
-                    builder.ConfigureServices(configureServices);
-                }
-            });
+        return ApiFactory.Create(ConnectionString, configureServices);
     }
 
     /// <summary>
@@ -113,7 +96,7 @@ public sealed class ListUsersEndpointTests : IdentityIntegrationTestBase
         string password,
         CancellationToken ct)
     {
-        var resp = await client.PostAsJsonAsync("/api/auth/login", new LoginRequest(username, password), ct);
+        var resp = await client.PostAsJsonAsync("/api/identity/auth/login", new LoginRequest(username, password), ct);
         resp.StatusCode.ShouldBe(HttpStatusCode.OK,
             $"Login must succeed for user '{username}' to obtain a JWT for this test.");
         var body = await resp.Content.ReadFromJsonAsync<LoginResponse>(ct);
@@ -155,12 +138,12 @@ public sealed class ListUsersEndpointTests : IdentityIntegrationTestBase
         var client = await CreateAuthenticatedAdminClientAsync(factory, adminUser, "Adm1n!P1", ct);
 
         // Act
-        var response = await client.GetAsync("/api/users", ct);
+        var response = await client.GetAsync("/api/identity/users", ct);
 
         // Assert
         response.StatusCode.ShouldBe(HttpStatusCode.OK);
 
-        var body = await response.Content.ReadFromJsonAsync<PagedResponse<UserListItemDto>>(ct);
+        var body = await response.Content.ReadFromJsonAsync<PagedResponse<UserListItemDto>>(TestJson.Options, ct);
         body.ShouldNotBeNull();
         body.Data.Count.ShouldBe(5, "All 5 seeded users must be returned when no filters are applied.");
         body.TotalCount.ShouldBe(5, "TotalCount must equal the full unfiltered set.");
@@ -194,12 +177,12 @@ public sealed class ListUsersEndpointTests : IdentityIntegrationTestBase
         var client = await CreateAuthenticatedAdminClientAsync(factory, adminUser, "Adm1n!P2", ct);
 
         // Act
-        var response = await client.GetAsync("/api/users?role=Driver", ct);
+        var response = await client.GetAsync("/api/identity/users?role=Driver", ct);
 
         // Assert
         response.StatusCode.ShouldBe(HttpStatusCode.OK);
 
-        var body = await response.Content.ReadFromJsonAsync<PagedResponse<UserListItemDto>>(ct);
+        var body = await response.Content.ReadFromJsonAsync<PagedResponse<UserListItemDto>>(TestJson.Options, ct);
         body.ShouldNotBeNull();
         body.Data.Count.ShouldBe(3, "Exactly 3 Driver users must be returned.");
         body.TotalCount.ShouldBe(3);
@@ -226,13 +209,13 @@ public sealed class ListUsersEndpointTests : IdentityIntegrationTestBase
         var client = await CreateAuthenticatedAdminClientAsync(factory, adminUser, "Adm1n!P3", ct);
 
         // Act
-        var response = await client.GetAsync("/api/users?status=Disabled", ct);
+        var response = await client.GetAsync("/api/identity/users?status=Disabled", ct);
 
         // Assert
         var statusResponseBody = await response.Content.ReadAsStringAsync(ct);
         response.StatusCode.ShouldBe(HttpStatusCode.OK, $"Status filter test body: {statusResponseBody}");
 
-        var body = await response.Content.ReadFromJsonAsync<PagedResponse<UserListItemDto>>(ct);
+        var body = await response.Content.ReadFromJsonAsync<PagedResponse<UserListItemDto>>(TestJson.Options, ct);
         body.ShouldNotBeNull();
         body.Data.Count.ShouldBe(2, "Exactly 2 Disabled users must be returned.");
         body.TotalCount.ShouldBe(2);
@@ -261,12 +244,12 @@ public sealed class ListUsersEndpointTests : IdentityIntegrationTestBase
         var client = await CreateAuthenticatedAdminClientAsync(factory, adminUser, "Adm1n!P4", ct);
 
         // Act: uppercase needle "ALICE" must match "aliceadmin" stored in lowercase
-        var response = await client.GetAsync("/api/users?usernameContains=ALICE", ct);
+        var response = await client.GetAsync("/api/identity/users?usernameContains=ALICE", ct);
 
         // Assert
         response.StatusCode.ShouldBe(HttpStatusCode.OK);
 
-        var body = await response.Content.ReadFromJsonAsync<PagedResponse<UserListItemDto>>(ct);
+        var body = await response.Content.ReadFromJsonAsync<PagedResponse<UserListItemDto>>(TestJson.Options, ct);
         body.ShouldNotBeNull();
         body.Data.Count.ShouldBe(1, "Exactly 1 user must match the case-insensitive filter 'ALICE'.");
         body.Data[0].Username.ShouldBe("aliceadmin",
@@ -303,12 +286,12 @@ public sealed class ListUsersEndpointTests : IdentityIntegrationTestBase
 
         // Act
         var response = await client.GetAsync(
-            "/api/users?role=Driver&status=Active&usernameContains=jo", ct);
+            "/api/identity/users?role=Driver&status=Active&usernameContains=jo", ct);
 
         // Assert
         response.StatusCode.ShouldBe(HttpStatusCode.OK);
 
-        var body = await response.Content.ReadFromJsonAsync<PagedResponse<UserListItemDto>>(ct);
+        var body = await response.Content.ReadFromJsonAsync<PagedResponse<UserListItemDto>>(TestJson.Options, ct);
         body.ShouldNotBeNull();
         body.Data.Count.ShouldBe(1, "Only one user satisfies all three filters simultaneously.");
         body.Data[0].Id.ShouldBe(matchUser.Id.Value);
@@ -375,7 +358,7 @@ public sealed class ListUsersEndpointTests : IdentityIntegrationTestBase
         // Act: include page=1&pageSize=20 explicitly because ASP.NET Core's [AsParameters]
         // binder requires non-nullable int parameters (Page, PageSize) to be present in
         // the query string when other non-nullable parameters (sortDirection) are also provided.
-        var url = $"/api/users?sortColumn={sortColumn}&sortDirection={sortDirectionValue}&page=1&pageSize=20";
+        var url = $"/api/identity/users?sortColumn={sortColumn}&sortDirection={sortDirectionValue}&page=1&pageSize=20";
         var response = await client.GetAsync(url, ct);
 
         // Assert — HTTP status (read body for diagnostic output on failure)
@@ -383,7 +366,7 @@ public sealed class ListUsersEndpointTests : IdentityIntegrationTestBase
         response.StatusCode.ShouldBe(HttpStatusCode.OK,
             $"GET {url} must return 200 OK. Body: {responseBody}");
 
-        var body = await response.Content.ReadFromJsonAsync<PagedResponse<UserListItemDto>>(ct);
+        var body = await response.Content.ReadFromJsonAsync<PagedResponse<UserListItemDto>>(TestJson.Options, ct);
         body.ShouldNotBeNull();
         body.Data.Count.ShouldBe(3, "All 3 seeded users must be returned.");
 
@@ -490,12 +473,12 @@ public sealed class ListUsersEndpointTests : IdentityIntegrationTestBase
         // Also supply page=1&pageSize=20 because ASP.NET Core [AsParameters] requires
         // non-nullable int params when other non-nullable params are present.
         var response = await client.GetAsync(
-            "/api/users?sortColumn=passwordHash&sortDirection=0&page=1&pageSize=20", ct);
+            "/api/identity/users?sortColumn=passwordHash&sortDirection=0&page=1&pageSize=20", ct);
 
         // Assert
         response.StatusCode.ShouldBe(HttpStatusCode.OK);
 
-        var body = await response.Content.ReadFromJsonAsync<PagedResponse<UserListItemDto>>(ct);
+        var body = await response.Content.ReadFromJsonAsync<PagedResponse<UserListItemDto>>(TestJson.Options, ct);
         body.ShouldNotBeNull();
         body.Data.Count.ShouldBe(3);
 
@@ -540,12 +523,12 @@ public sealed class ListUsersEndpointTests : IdentityIntegrationTestBase
         // Filtered set = 12 Driver users whose username contains "pagingdriver".
         // Default sort is createdAt DESC, so page 1 = users 12..8, page 2 = users 7..3.
         var response = await client.GetAsync(
-            "/api/users?role=Driver&usernameContains=pagingdriver&page=2&pageSize=5", ct);
+            "/api/identity/users?role=Driver&usernameContains=pagingdriver&page=2&pageSize=5", ct);
 
         // Assert
         response.StatusCode.ShouldBe(HttpStatusCode.OK);
 
-        var body = await response.Content.ReadFromJsonAsync<PagedResponse<UserListItemDto>>(ct);
+        var body = await response.Content.ReadFromJsonAsync<PagedResponse<UserListItemDto>>(TestJson.Options, ct);
         body.ShouldNotBeNull();
 
         body.TotalCount.ShouldBe(12,
@@ -589,7 +572,7 @@ public sealed class ListUsersEndpointTests : IdentityIntegrationTestBase
 
         // Act: read the response body as a raw string to catch serialization drift
         // that would not be visible through a typed DTO deserialization.
-        var response = await client.GetAsync("/api/users", ct);
+        var response = await client.GetAsync("/api/identity/users", ct);
         response.StatusCode.ShouldBe(HttpStatusCode.OK);
 
         var rawBody = await response.Content.ReadAsStringAsync(ct);
@@ -622,7 +605,7 @@ public sealed class ListUsersEndpointTests : IdentityIntegrationTestBase
         var client = factory.CreateClient();
 
         // Act — no Authorization header
-        var response = await client.GetAsync("/api/users", ct);
+        var response = await client.GetAsync("/api/identity/users", ct);
 
         // Assert
         response.StatusCode.ShouldBe(HttpStatusCode.Unauthorized,
@@ -638,7 +621,7 @@ public sealed class ListUsersEndpointTests : IdentityIntegrationTestBase
     {
         var ct = TestContext.Current.CancellationToken;
 
-        // Arrange: Driver role does not satisfy the AdminOnly policy.
+        // Arrange: Driver role does not satisfy the Admin policy.
         var driverUser = await SeedUserAsync(UserRole.Driver, "Driv3r!PF", ct: ct);
 
         await using var factory = CreateFactory();
@@ -649,11 +632,11 @@ public sealed class ListUsersEndpointTests : IdentityIntegrationTestBase
             new AuthenticationHeaderValue("Bearer", loginBody.AccessToken);
 
         // Act
-        var response = await client.GetAsync("/api/users", ct);
+        var response = await client.GetAsync("/api/identity/users", ct);
 
         // Assert
         response.StatusCode.ShouldBe(HttpStatusCode.Forbidden,
-            "A Driver JWT must not satisfy the AdminOnly policy.");
+            "A Driver JWT must not satisfy the Admin policy.");
     }
 
     // ══════════════════════════════════════════════════════════════════════════
@@ -665,7 +648,7 @@ public sealed class ListUsersEndpointTests : IdentityIntegrationTestBase
     {
         var ct = TestContext.Current.CancellationToken;
 
-        // Arrange: BackOffice role does not satisfy the AdminOnly policy.
+        // Arrange: BackOffice role does not satisfy the Admin policy.
         var backOfficeUser = await SeedUserAsync(UserRole.BackOffice, "B4ck!PA", ct: ct);
 
         await using var factory = CreateFactory();
@@ -676,11 +659,11 @@ public sealed class ListUsersEndpointTests : IdentityIntegrationTestBase
             new AuthenticationHeaderValue("Bearer", loginBody.AccessToken);
 
         // Act
-        var response = await client.GetAsync("/api/users", ct);
+        var response = await client.GetAsync("/api/identity/users", ct);
 
         // Assert
         response.StatusCode.ShouldBe(HttpStatusCode.Forbidden,
-            "A BackOffice JWT must not satisfy the AdminOnly policy.");
+            "A BackOffice JWT must not satisfy the Admin policy.");
     }
 
     // ══════════════════════════════════════════════════════════════════════════
@@ -699,7 +682,7 @@ public sealed class ListUsersEndpointTests : IdentityIntegrationTestBase
         var client = await CreateAuthenticatedAdminClientAsync(factory, adminUser, "Adm1n!PB", ct);
 
         // Act: "NotARealRole" is not a valid UserRole enum value, so model binding fails.
-        var response = await client.GetAsync("/api/users?role=NotARealRole", ct);
+        var response = await client.GetAsync("/api/identity/users?role=NotARealRole", ct);
 
         // Assert
         response.StatusCode.ShouldBe(HttpStatusCode.BadRequest,

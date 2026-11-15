@@ -1,14 +1,18 @@
 using System.Text;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Localization;
 using Microsoft.Extensions.Validation;
 using Microsoft.IdentityModel.Tokens;
 using Priamus.Trips.Identity.Application.Abstractions;
+using Priamus.Trips.Identity.Contracts;
 using Priamus.Trips.Identity.Domain.Users;
 using Priamus.Trips.Identity.Infrastructure;
 using Priamus.Trips.Identity.Persistence.DependencyInjection;
+using Priamus.Trips.Identity.Resources;
 using Priamus.Trips.SharedKernel.Security;
 using Priamus.Trips.SharedKernel.Time;
 
@@ -34,6 +38,11 @@ public static class IdentityModuleExtensions
         // resolver scoped to the assembly that hosts the AddValidation() call site,
         // so a single host-level invocation would only see types in the Host project.
         services.AddValidation();
+
+        // Italian messages: the localizer reads Resources/IdentityMessages.resx, keyed by Error.Code.
+        services.AddLocalization();
+        services.Configure<ProblemDetailsOptions>(options =>
+            options.CustomizeProblemDetails += LocalizeProblemDetail);
 
         // ── Persistence ──────────────────────────────────────────────────────────
         var connectionString = configuration.GetConnectionString("Identity")
@@ -101,24 +110,48 @@ public static class IdentityModuleExtensions
         services.AddAuthorization(options =>
         {
             options.AddPolicy(
-                "BackOfficeOrAdmin",
+                AuthorizationPolicies.Authenticated,
+                policy => policy.RequireAuthenticatedUser());
+
+            options.AddPolicy(
+                AuthorizationPolicies.Admin,
+                policy => policy.RequireRole(UserRole.Admin.ToString()));
+
+            options.AddPolicy(
+                AuthorizationPolicies.BackOfficeOrAdmin,
                 policy => policy.RequireRole(
                     UserRole.BackOffice.ToString(),
                     UserRole.Admin.ToString()));
-
-            options.AddPolicy(
-                "AdminOnly",
-                policy => policy.RequireRole(UserRole.Admin.ToString()));
         });
 
         // ── Handlers (Scrutor scan) ──────────────────────────────────────────────
         services.Scan(scan => scan
             .FromAssemblyOf<IdentityModuleMarker>()
-            .AddClasses(c => c.Where(t => t.Name.EndsWith("Handler")))
+            .AddClasses(c => c.Where(t => t.Name.EndsWith("Handler")), publicOnly: false)
             .AsSelf()
             .WithScopedLifetime());
 
         return services;
+    }
+
+    /// <summary>
+    /// Replaces the English <c>detail</c> of a problem with the Italian text keyed by its
+    /// <c>errorCode</c>. A code with no entry keeps the error description, so errors of other
+    /// modules answer unchanged.
+    /// </summary>
+    private static void LocalizeProblemDetail(ProblemDetailsContext context)
+    {
+        if (!context.ProblemDetails.Extensions.TryGetValue("errorCode", out var code) || code is not string errorCode)
+        {
+            return;
+        }
+
+        var localizer = context.HttpContext.RequestServices.GetRequiredService<IStringLocalizer<IdentityMessages>>();
+        var message = localizer[errorCode];
+        if (!message.ResourceNotFound)
+        {
+            context.ProblemDetails.Detail = message.Value;
+        }
     }
 }
 

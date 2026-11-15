@@ -13,7 +13,7 @@ using Priamus.Trips.SharedKernel.Time;
 namespace Priamus.Trips.Identity.Features.CreateUser;
 
 /// <summary>
-/// Handles <c>POST /api/users</c>: creates a new user account.
+/// Handles <c>POST /api/identity/users</c>: creates a new user account.
 /// </summary>
 /// <remarks>
 /// Race-condition safety net: a uniqueness check is performed upfront, but if two
@@ -21,7 +21,7 @@ namespace Priamus.Trips.Identity.Features.CreateUser;
 /// is caught on <see cref="DbUpdateException"/> and translated to
 /// <see cref="UserErrors.UsernameAlreadyTaken"/>.
 /// </remarks>
-public sealed class CreateUserHandler
+internal sealed class CreateUserHandler
 {
     private readonly IdentityDbContext _db;
     private readonly IPasswordHasher<User> _passwordHasher;
@@ -58,7 +58,7 @@ public sealed class CreateUserHandler
         }
         catch (DomainException ex)
         {
-            return Error.Domain(ex.ErrorCode, ex.Message);
+            return ex.Error;
         }
 
         // ── 2. Upfront uniqueness check ───────────────────────────────────────
@@ -83,7 +83,7 @@ public sealed class CreateUserHandler
         }
         catch (DomainException ex)
         {
-            return Error.Domain(ex.ErrorCode, ex.Message);
+            return ex.Error;
         }
 
         // ── 4. Create the aggregate ───────────────────────────────────────────
@@ -93,11 +93,11 @@ public sealed class CreateUserHandler
         User user;
         try
         {
-            user = User.Create(userId, username, passwordHash, request.Role, _clock, actorId);
+            user = User.Create(userId, username, passwordHash, request.Role!.Value, _clock, actorId);
         }
         catch (DomainException ex)
         {
-            return Error.Domain(ex.ErrorCode, ex.Message);
+            return ex.Error;
         }
 
         _db.Users.Add(user);

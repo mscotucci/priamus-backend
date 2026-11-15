@@ -17,7 +17,7 @@ public static class RefreshTokenErrors
     /// The supplied hash string is empty or not exactly the SHA-256 hex length.
     /// </summary>
     public static readonly Error HashInvalid = Error.Domain(
-        "RefreshToken.HashInvalid",
+        "Identity.RefreshToken.HashInvalid",
         "Refresh-token hash must be a non-empty SHA-256 hex string of exactly 64 characters.");
 
     /// <summary>
@@ -25,7 +25,7 @@ public static class RefreshTokenErrors
     /// (ADR 0005) but must always be strictly positive.
     /// </summary>
     public static readonly Error LifetimeInvalid = Error.Domain(
-        "RefreshToken.LifetimeInvalid",
+        "Identity.RefreshToken.LifetimeInvalid",
         "Refresh-token lifetime must be a strictly positive TimeSpan.");
 
     // ─── Rotation invariants (ADR 0005) ───────────────────────────────────
@@ -36,14 +36,14 @@ public static class RefreshTokenErrors
     /// <see cref="CannotRotateAlreadyRotatedToken"/>).
     /// </summary>
     public static readonly Error CannotRotateRevokedToken = Error.Conflict(
-        "RefreshToken.CannotRotateRevokedToken",
+        "Identity.RefreshToken.CannotRotateRevokedToken",
         "Cannot rotate a refresh token that has already been revoked.");
 
     /// <summary>
     /// Rotation was attempted on a token whose <c>ExpiresAt</c> is in the past.
     /// </summary>
     public static readonly Error CannotRotateExpiredToken = Error.Conflict(
-        "RefreshToken.CannotRotateExpiredToken",
+        "Identity.RefreshToken.CannotRotateExpiredToken",
         "Cannot rotate a refresh token that has expired.");
 
     /// <summary>
@@ -53,7 +53,7 @@ public static class RefreshTokenErrors
     /// token is highly suspicious.
     /// </summary>
     public static readonly Error CannotRotateAlreadyRotatedToken = Error.Conflict(
-        "RefreshToken.CannotRotateAlreadyRotatedToken",
+        "Identity.RefreshToken.CannotRotateAlreadyRotatedToken",
         "Cannot rotate a refresh token that has already been rotated. The legitimate client should be using the replacement token.");
 
     // ─── Revocation invariants ────────────────────────────────────────────
@@ -65,7 +65,7 @@ public static class RefreshTokenErrors
     /// domain brief.
     /// </summary>
     public static readonly Error CannotRevokeRotatedToken = Error.Conflict(
-        "RefreshToken.CannotRevokeRotatedToken",
+        "Identity.RefreshToken.CannotRevokeRotatedToken",
         "Cannot explicitly revoke a refresh token that has been rotated; rotation already implies revocation.");
 
     // ─── Application-layer lookups ────────────────────────────────────────
@@ -74,7 +74,7 @@ public static class RefreshTokenErrors
     /// The requested refresh token could not be found (e.g. on refresh or admin revoke).
     /// </summary>
     public static readonly Error NotFound = Error.NotFound(
-        "RefreshToken.NotFound",
+        "Identity.RefreshToken.NotFound",
         "The requested refresh token was not found.");
 
     // ─── Application-layer authentication errors ──────────────────────────
@@ -82,10 +82,10 @@ public static class RefreshTokenErrors
     /// <summary>
     /// The refresh token has expired. Application-layer counterpart to the aggregate's
     /// <see cref="CannotRotateExpiredToken"/> domain error — used before calling <c>Rotate</c>
-    /// when the handler detects expiry from the <see cref="RefreshToken.IsActive"/> check.
+    /// when the handler detects expiry from the <see cref="Identity.RefreshToken.IsActive"/> check.
     /// </summary>
     public static readonly Error Expired = Error.Unauthorized(
-        "RefreshToken.Expired",
+        "Identity.RefreshToken.Expired",
         "The refresh token has expired. Please log in again.");
 
     /// <summary>
@@ -94,7 +94,7 @@ public static class RefreshTokenErrors
     /// but is unusable. HTTP mapping is 401 (same as <see cref="Expired"/>).
     /// </summary>
     public static readonly Error NoLongerValid = Error.Unauthorized(
-        "RefreshToken.NoLongerValid",
+        "Identity.RefreshToken.NoLongerValid",
         "The refresh token is no longer valid. Please log in again.");
 
     /// <summary>
@@ -102,6 +102,13 @@ public static class RefreshTokenErrors
     /// The client should retry the refresh operation.
     /// </summary>
     public static readonly Error ConcurrentRefresh = Error.Conflict(
-        "RefreshToken.ConcurrentRefresh",
+        "Identity.RefreshToken.ConcurrentRefresh",
         "The refresh token was rotated by a concurrent request. Please retry.");
+
+    // ─── Ownership ─────────────────────────────────────────────────────────
+
+    /// <summary>The caller tried to revoke a refresh token that belongs to another user.</summary>
+    public static readonly Error NotOwner = Error.Forbidden(
+        "Identity.RefreshToken.NotOwner",
+        "You can only revoke your own refresh tokens.");
 }

@@ -9,7 +9,7 @@ using Priamus.Trips.SharedKernel.Time;
 namespace Priamus.Trips.Identity.Features.EnableUser;
 
 /// <summary>
-/// Handles <c>POST /api/users/{id:guid}/enable</c>: re-enables a disabled user account.
+/// Handles <c>POST /api/identity/users/{id:guid}/enable</c>: re-enables a disabled user account.
 /// </summary>
 /// <remarks>
 /// <para>
@@ -24,7 +24,7 @@ namespace Priamus.Trips.Identity.Features.EnableUser;
 /// enforced upstream by design.
 /// </para>
 /// </remarks>
-public sealed class EnableUserHandler
+internal sealed class EnableUserHandler
 {
     private readonly IdentityDbContext _db;
     private readonly ICurrentUser _currentUser;

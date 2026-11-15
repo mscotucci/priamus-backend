@@ -20,6 +20,11 @@
   <ItemGroup>
     <ProjectReference Include="..\..\src\Modules\Identity\Priamus.Trips.Identity\Priamus.Trips.Identity.csproj" />
     <ProjectReference Include="..\..\src\Priamus.Trips.Host\Priamus.Trips.Host.csproj" />
+    <ProjectReference Include="..\Priamus.Trips.IntegrationTesting\Priamus.Trips.IntegrationTesting.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Using Include="Priamus.Trips.IntegrationTesting" />
   </ItemGroup>
 
 </Project>

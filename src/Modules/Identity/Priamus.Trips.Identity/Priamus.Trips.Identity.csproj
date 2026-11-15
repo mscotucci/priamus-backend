@@ -25,6 +25,19 @@
   </ItemGroup>
 
   <ItemGroup>
+    <!-- Italian messages, keyed by Error.Code. MSBuild generates the strongly-typed accessor class (public,
+         because ErrorMessageResourceType on a validation attribute requires a visible type). -->
+    <EmbeddedResource Update="Resources\IdentityMessages.resx">
+      <Generator>MSBuild:Compile</Generator>
+      <StronglyTypedFileName>$(IntermediateOutputPath)IdentityMessages.Designer.cs</StronglyTypedFileName>
+      <StronglyTypedLanguage>CSharp</StronglyTypedLanguage>
+      <StronglyTypedNamespace>Priamus.Trips.Identity.Resources</StronglyTypedNamespace>
+      <StronglyTypedClassName>IdentityMessages</StronglyTypedClassName>
+      <PublicClass>true</PublicClass>
+    </EmbeddedResource>
+  </ItemGroup>
+
+  <ItemGroup>
     <InternalsVisibleTo Include="Priamus.Trips.Identity.IntegrationTests" />
     <InternalsVisibleTo Include="Priamus.Trips.Identity.UnitTests" />
   </ItemGroup>

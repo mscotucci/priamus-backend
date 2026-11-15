@@ -10,10 +10,10 @@ using Priamus.Trips.SharedKernel.Time;
 namespace Priamus.Trips.Identity.Features.AdminRevoke;
 
 /// <summary>
-/// Handles <c>POST /api/auth/admin/tokens/{tokenId}/revoke</c>: a back-office or admin
+/// Handles <c>POST /api/identity/auth/admin/tokens/{tokenId}/revoke</c>: a back-office or admin
 /// user revokes any refresh token by its identifier.
 /// </summary>
-public sealed class AdminRevokeHandler
+internal sealed class AdminRevokeHandler
 {
     private readonly IdentityDbContext _db;
     private readonly ICurrentUser _currentUser;
@@ -59,12 +59,7 @@ public sealed class AdminRevokeHandler
         }
         catch (DomainException ex)
         {
-            // Look up the canonical Error definition instead of always wrapping as Domain
-            return ex.ErrorCode switch
-            {
-                "RefreshToken.CannotRevokeRotatedToken" => RefreshTokenErrors.CannotRevokeRotatedToken,
-                _ => Error.Domain(ex.ErrorCode, ex.Message)
-            };
+            return ex.Error;
         }
 
         // ── 3. Write intent audit row ─────────────────────────────────────────

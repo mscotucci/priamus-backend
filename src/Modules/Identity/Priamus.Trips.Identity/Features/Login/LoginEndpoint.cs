@@ -1,12 +1,13 @@
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Routing;
 using Priamus.Trips.SharedKernel.Http;
 
 namespace Priamus.Trips.Identity.Features.Login;
 
 /// <summary>
-/// HTTP endpoint for <c>POST /api/auth/login</c>.
+/// HTTP endpoint for <c>POST /api/identity/auth/login</c>.
 /// </summary>
 public static class LoginEndpoint
 {
@@ -15,10 +16,10 @@ public static class LoginEndpoint
     /// </summary>
     public static IEndpointRouteBuilder MapLogin(this IEndpointRouteBuilder app)
     {
-        app.MapPost("/api/auth/login", HandleAsync)
+        app.MapPost("/api/identity/auth/login", HandleAsync)
             .AllowAnonymous()
             .WithName("Login")
-            .WithTags("Auth")
+            .WithTags("Identity.Auth")
             .Produces<LoginResponse>(StatusCodes.Status200OK)
             .ProducesProblem(StatusCodes.Status400BadRequest)
             .ProducesProblem(StatusCodes.Status401Unauthorized);
@@ -27,8 +28,8 @@ public static class LoginEndpoint
     }
 
     private static async Task<IResult> HandleAsync(
-        LoginRequest request,
-        LoginHandler handler,
+        [FromBody] LoginRequest request,
+        [FromServices] LoginHandler handler,
         CancellationToken cancellationToken)
     {
         var result = await handler.HandleAsync(request, cancellationToken);
