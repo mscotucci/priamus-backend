@@ -13,8 +13,7 @@ namespace Priamus.Trips.Identity.IntegrationTests.Infrastructure;
 /// </summary>
 public sealed class PostgresFixture : IAsyncLifetime
 {
-    private readonly PostgreSqlContainer _container = new PostgreSqlBuilder()
-        .WithImage("postgres:16-alpine")
+    private readonly PostgreSqlContainer _container = new PostgreSqlBuilder("postgres:16-alpine")
         .Build();
 
     /// <summary>Connection string to the admin database (postgres default db).</summary>

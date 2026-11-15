@@ -52,9 +52,9 @@ Offline mode, push notifications, GPS tracking, OCR of documents, billing system
 | ----------------------------------------------- | ------- | ------------------- |
 | `Npgsql.EntityFrameworkCore.PostgreSQL`         | 10.x    | DB provider         |
 | `Microsoft.Extensions.Validation`               | 10.x    | DTO validation      |
-| `Scrutor`                                       | 6.x     | Handler discovery   |
+| `Scrutor`                                       | 7.x     | Handler discovery   |
 | `Microsoft.AspNetCore.Authentication.JwtBearer` | 10.x    | Auth                |
-| `Serilog.AspNetCore`                            | 9.x+    | Structured logging  |
+| `Serilog.AspNetCore`                            | 10.x    | Structured logging  |
 | `xUnit`, `Shouldly`, `NSubstitute`              | latest  | Test stack          |
 | `Testcontainers.PostgreSql`                     | 4.x+    | Integration test DB |
 
