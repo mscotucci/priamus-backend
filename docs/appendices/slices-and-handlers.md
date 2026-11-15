@@ -1,10 +1,8 @@
 # Appendix: Slices and Handlers (Vertical Slice Architecture)
 
-Rules for implementing vertical slices (use cases) in the Priamus Trips project.
+Rules for implementing vertical slices (use cases) in the Priamus Trips backend.
 
 ## Anatomy
-
-Every slice lives under `Features/{UseCase}/` and consists of:
 
 ```
 Features/{UseCase}/
@@ -14,7 +12,7 @@ Features/{UseCase}/
 └── {UseCase}Endpoint.cs      # HTTP mapping
 ```
 
-Naming: verb + noun in English. `RegisterTrip`, `UploadAttachment`, `ListDriverTrips`.
+Naming: verb + noun in English, taken from the PRD use case (`RegisterTrip`, `UploadAttachment`, `ListDriverTrips`). The XML doc of the handler cites the PRD sections and requirements it implements (`PRD §5.2`, `RF-08quater`).
 
 ## Request DTO (command)
 
@@ -24,54 +22,40 @@ public sealed record RegisterTripRequest(
     [Required] Guid CustomerId,
     [Required] Guid PrimaryVehicleId,
     Guid? TrailerId,
-    Guid? PickupLocationId,
-    Guid? DeliveryLocationId,
     DateOnly ExecutionDate,
     DateTime StartTime,
     DateTime? EndTime,
     [Range(0.001, 10000)] decimal? Tons,
-    [Range(0.1, 10000)] decimal? Kilometers,
-    [MaxLength(10)] IReadOnlyList<AttachmentUploadDto> Attachments
+    [Range(0.1, 10000)] decimal? Kilometers
 ) : IValidatableObject
 {
     public IEnumerable<ValidationResult> Validate(ValidationContext context)
     {
         if (EndTime.HasValue && EndTime <= StartTime)
-            yield return new ValidationResult(
-                "End time must be after start time.",
-                new[] { nameof(EndTime) });
-
-        if (Tons.HasValue && Kilometers.HasValue)
-            yield return new ValidationResult(
-                "Cannot specify both tons and kilometers.",
-                new[] { nameof(Tons), nameof(Kilometers) });
+        {
+            yield return new ValidationResult("End time must be after start time.", [nameof(EndTime)]);
+        }
     }
 }
 ```
 
 Rules:
-
-- `sealed record` always.
-- `[ValidatableType]` for validation discovery.
-- DataAnnotations for structural validation.
-- `IValidatableObject` for cross-field rules.
-- No domain validation here. Domain enforces its own invariants.
-- Bare `Guid` at the HTTP boundary. Strongly-typed IDs only after entering domain.
+- `sealed record`, `[ValidatableType]`, DataAnnotations for structure, `IValidatableObject` for cross-field rules.
+- No domain validation here; the domain enforces its own invariants.
+- A required field of a value type (enum, `decimal`) is declared nullable (`T?`) so an omitted field binds to `null` instead of the type's zero value, and `Validate()` rejects `null` (`"X is required."`, member `X`). Every write endpoint carrying such a field has an exact-400 test for the omitted field.
+- Enums travel by name only, on requests, responses and in OpenAPI; an integer is rejected. One convention for every module, set in the host (`Program.cs`, `JsonStringEnumConverter` with `allowIntegerValues: false`).
+- A rule several requests restate (a validity pair, a date window) is a pure function in the domain that their `Validate()` calls (ADR 0012).
+- Bare `Guid` ids and `DateOnly` at the HTTP boundary; strongly-typed ids only inside the domain.
+- A driver-facing request or response never carries pricing, rates or totals.
 
 ## Response DTO
 
-```csharp
-public sealed record RegisterTripResponse(
-    Guid TripId,
-    string ReferenceNumber);
-```
-
-Plain `sealed record`, no behavior. Use bare `Guid` at HTTP boundary.
+Plain `sealed record`, no behaviour, bare `Guid` ids.
 
 ## Handler
 
 ```csharp
-public sealed class RegisterTripHandler
+internal sealed class RegisterTripHandler
 {
     private readonly OperationsDbContext _db;
     private readonly ITripRegistrationContextFactory _contextFactory;
@@ -82,66 +66,40 @@ public sealed class RegisterTripHandler
 
     public RegisterTripHandler(/* DI */) { /* ... */ }
 
+    /// <summary>PRD §5.2, §5.4, RF-08quater.</summary>
     public async Task<Result<RegisterTripResponse>> HandleAsync(
-        RegisterTripRequest request,
-        CancellationToken cancellationToken)
+        RegisterTripRequest request, CancellationToken ct)
     {
-        if (_currentUser.DriverId is not DriverId currentDriver)
-            return AuthErrors.NotADriver;  // implicit Error -> Result<T>
-
-        var contextResult = await _contextFactory.BuildAsync(
-            new CustomerId(request.CustomerId),
-            new VehicleId(request.PrimaryVehicleId),
-            request.TrailerId.HasValue ? new VehicleId(request.TrailerId.Value) : null,
-            request.ExecutionDate,
-            cancellationToken);
-
-        if (contextResult.IsFailure)
-            return contextResult.Error;
+        var context = await _contextFactory.BuildAsync(/* ids from the request */, ct);
+        if (context.IsFailure)
+        {
+            return context.Error;
+        }
 
         try
         {
-            var trip = Trip.Register(
-                contextResult.Value,
-                MapToInput(request),
-                _pricingEngine,
-                _clock,
-                currentDriver);
-
+            var trip = Trip.Register(context.Value, MapToInput(request), _pricingEngine, _clock, _currentUser.UserId);
             _db.Trips.Add(trip);
-            await _db.SaveChangesAsync(cancellationToken);
-
-            _logger.LogInformation(
-                "Trip {TripId} registered for driver {DriverId}",
-                trip.Id.Value, currentDriver.Value);
-
+            await _db.SaveChangesAsync(ct);
             return new RegisterTripResponse(trip.Id.Value, trip.ReferenceNumber);
         }
         catch (DomainException ex)
         {
-            return Error.Domain(ex.ErrorCode, ex.Message);
+            return ex.Error;
         }
     }
-
-    private static TripRegistrationInput MapToInput(RegisterTripRequest request) => new(
-        ExecutionDate: request.ExecutionDate,
-        // ... explicit field-by-field mapping, no AutoMapper ...
-    );
 }
 ```
 
 Rules:
-
-- `sealed class`. Constructor injection.
-- One public method `HandleAsync(request, ct)` returning `Result<TResponse>` or `Result`.
-- Inject the module's `DbContext` directly (per [ADR 0009](../decisions/0009-no-repository-pattern.md)). No repository abstractions.
-- Use implicit conversions: `return SomeErrors.NotFound;` for failures, `return new MyResponse(...);` for success.
-- Map DTO → domain input via private static methods.
-- Wrap calls to aggregate factories in `try/catch (DomainException ex)` and convert to `Error.Domain(ex.ErrorCode, ex.Message)`.
-- Do NOT catch other exceptions. They propagate to global middleware.
-- Use structured logging with placeholders.
-- `IClock` for time. `CancellationToken` propagated to every await.
-- Call `SaveChangesAsync` explicitly at the persistence point of the handler. See [Unit of work: the handler is the commit point](#unit-of-work-the-handler-is-the-commit-point) below for the conventions on success path, failure path, deliberate side effects, and exception-to-error mapping.
+- `internal sealed class` (nothing outside the module resolves a handler, and its constructor takes internal ports), constructor injection, one public `HandleAsync(request, ct)` returning `Result<T>` or `Result`.
+- Inject the module `DbContext` directly (ADR 0009). No repositories.
+- Implicit conversions: `return SomeErrors.NotFound;`, `return new Response(...);`.
+- Wrap aggregate calls in `try/catch (DomainException)` and return `ex.Error`; do not catch anything else.
+- Map DTO → domain input in private static methods, field by field.
+- `IClock` for time, `CancellationToken` on every await, structured logging.
+- The handler calls `SaveChangesAsync` explicitly; see "Unit of work" below.
+- Handlers over ~80 lines or with business logic inside: move the logic to the domain or an application service.
 
 ## Endpoint
 
@@ -150,210 +108,70 @@ public static class RegisterTripEndpoint
 {
     public static IEndpointRouteBuilder MapRegisterTrip(this IEndpointRouteBuilder app)
     {
-        app.MapPost("/api/trips", HandleAsync)
+        app.MapPost("/api/operations/trips", HandleAsync)
             .RequireAuthorization(AuthorizationPolicies.Driver)
             .WithName("RegisterTrip")
-            .WithTags("Trips")
+            .WithTags("Operations.Trips")
             .Produces<RegisterTripResponse>(StatusCodes.Status201Created)
             .ProducesProblem(StatusCodes.Status400BadRequest)
-            .ProducesProblem(StatusCodes.Status409Conflict)
+            .ProducesProblem(StatusCodes.Status404NotFound)
             .ProducesProblem(StatusCodes.Status422UnprocessableEntity);
-
         return app;
     }
 
     private static async Task<IResult> HandleAsync(
-        RegisterTripRequest request,
-        RegisterTripHandler handler,
-        CancellationToken cancellationToken)
+        [FromBody] RegisterTripRequest request,
+        [FromServices] RegisterTripHandler handler,
+        CancellationToken ct)
     {
-        var result = await handler.HandleAsync(request, cancellationToken);
-
+        var result = await handler.HandleAsync(request, ct);
         return result.Match(
-            onSuccess: response => Results.Created($"/api/trips/{response.TripId}", response),
-            onFailure: error => error.ToProblemDetails());
+            onSuccess: r => Results.Created($"/api/operations/trips/{r.TripId}", r),
+            onFailure: e => e.ToProblemDetails());
     }
 }
 ```
 
 Rules:
+- `public static class`, one `Map{UseCase}` extension, private static `HandleAsync`.
+- Always `.RequireAuthorization(AuthorizationPolicies.X)` with a nominal policy from `Priamus.Trips.Identity.Contracts`: one constant per policy (`Driver`, `BackOffice`, `Admin`, and the combined ones such as `BackOfficeOrAdmin`), never a string literal and never the parameterless overload. `.AllowAnonymous()` never, except login and refresh in Identity, explicitly.
+- `.WithName`, `.WithTags`, `.Produces<>`, `.ProducesProblem` for every `ErrorType` the handler can return, and no other. `ProducesProblem(422)` only on an endpoint whose handler can return an `ErrorType.Domain` error; a searchable list declares `ProducesProblem(400)` for the search cap. A sweep in `CrossSlice/` asserts both against `/openapi/v1.json`.
+- Handler and body parameters are annotated: `[FromServices]` on the handler, `[FromBody]` on the request.
+- Public request/response types of different slices never share a simple name (OpenAPI keys schemas by simple name); a `CrossSlice/` test enforces it.
+- Route prefix `/api/{module}/...`, kebab-case, plural resources.
 
-- `public static class`, single mapping method `Map{UseCase}` as extension on `IEndpointRouteBuilder`.
-- Returns `IEndpointRouteBuilder` for chaining.
-- Private static `HandleAsync` for the delegate.
-- Handler injected as parameter; ASP.NET Core DI resolves it.
-- Always declare:
-    - `.RequireAuthorization(...)` with a specific policy (or `.AllowAnonymous()` explicitly when intended)
-    - `.WithName(...)`, `.WithTags(...)` for OpenAPI
-    - `.Produces<>` and `.ProducesProblem(...)` for documented status codes
-- Use `error.ToProblemDetails()`. Mapping is automatic via `ErrorType`.
-- HTTP status codes match the `ErrorType` mapping:
+| `ErrorType` | HTTP |
+|---|---|
+| Validation | 400 |
+| Unauthorized | 401 |
+| Forbidden | 403 |
+| NotFound | 404 |
+| Conflict | 409 |
+| Domain | 422 |
+| Unexpected | 500 |
 
-| `ErrorType`    | HTTP | Title                 |
-| -------------- | ---- | --------------------- |
-| `Validation`   | 400  | Bad Request           |
-| `Unauthorized` | 401  | Unauthorized          |
-| `Forbidden`    | 403  | Forbidden             |
-| `NotFound`     | 404  | Not Found             |
-| `Conflict`     | 409  | Conflict              |
-| `Domain`       | 422  | Unprocessable Entity  |
-| `Unexpected`   | 500  | Internal Server Error |
+## List endpoints
 
-## Authorization policies
+- **Response shape**: an unpaged list answers a bare JSON array (`IReadOnlyList<TItem>`, no wrapper record); a paged list answers `PagedResponse<T>`. Tests assert the shape on the raw JSON (`JsonElement.ValueKind == Array`), never through a DTO that would hide it.
+- **Search is capped**: `[MaxLength(...)]` on the search field, sized to the column it searches, so a longer text, which can never match, answers 400 instead of reaching the query as an unbounded `LIKE` parameter.
+- **Case-insensitivity is explicit**: PostgreSQL compares text case-sensitively, so a case-insensitive uniqueness check or search rests on a normalised value (as `Username`, always stored lowercase), never on the collation. For partial matches inside a value object see `persistence.md`, "Querying inside a value object".
+- **Query parameter names are camelCase** on the wire and in OpenAPI (`page`, `pageSize`, `sortColumn`, `sortDirection`, `search`), like JSON bodies. Declare them as `[AsParameters]` types with PascalCase properties (`PagedRequest` lives in SharedKernel, which has no ASP.NET reference); the host's OpenAPI operation transformer camel-cases the `in: query` names in the document. Binding is case-insensitive, so nothing else is needed.
 
-Defined in Host:
+## Registration
 
-```csharp
-public static class AuthorizationPolicies
-{
-    public const string Driver = "driver";
-    public const string BackOffice = "backoffice";
-    public const string Admin = "admin";
-}
-```
-
-Every endpoint declares exactly one policy. Multi-role access via combined policy.
-
-## Handler registration via Scrutor
-
-In `{Module}ModuleExtensions.cs`:
-
-```csharp
-public static IServiceCollection AddOperationsModule(
-    this IServiceCollection services,
-    IConfiguration configuration)
-{
-    // DbContext, options, etc.
-
-    services.Scan(scan => scan
-        .FromAssemblyOf<OperationsModuleMarker>()
-        .AddClasses(c => c.Where(t => t.Name.EndsWith("Handler")))
-        .AsSelf()
-        .WithScopedLifetime());
-
-    return services;
-}
-```
-
-`OperationsModuleMarker` is an empty marker class for assembly identification.
-
-## Endpoint registration
-
-In `{Module}ModuleEndpoints.cs`, enumerate slices explicitly:
-
-```csharp
-public static IEndpointRouteBuilder MapOperationsEndpoints(this IEndpointRouteBuilder app)
-{
-    app.MapRegisterTrip();
-    app.MapModifyTrip();
-    app.MapUploadAttachment();
-    app.MapAcceptIssue();
-    app.MapCompileDailySummary();
-    app.MapListDriverTrips();
-    return app;
-}
-```
-
-Explicit enumeration makes the public surface of the module visible at a glance.
+Handlers: Scrutor scan in `{Module}ModuleExtensions` (classes ending in `Handler`, scoped) with `publicOnly: false`: handlers are internal, and Scrutor's default skips non-public types silently, so every request would fail at runtime with "No service for type ...Handler". Endpoints: explicit enumeration in `{Module}ModuleEndpoints.Map{Module}Endpoints`.
 
 ## Cross-module communication
 
-When module A needs data from module B:
+Module B exposes an interface in `Priamus.Trips.{B}.Contracts` and implements it in its main project; module A injects it and references only the Contracts project. Calls that can fail return `Result<T>`; B's errors flow to A through the result.
 
-1. Module B exposes an interface in `Priamus.Trips.{B}.Contracts`.
-2. Module B implements it in its main project.
-3. Module A injects the interface via DI.
-4. Module A's `.csproj` references `Priamus.Trips.{B}.Contracts` only.
+## Application services
 
-When the call can fail, the interface returns `Result<T>`:
+Code shared between slices of the same module (context factories such as the trip registration context, policies such as "can the driver still edit this trip") lives in `Application/Services/`: stateless, injected into handlers, not slices. It is extracted from working slices, never written ahead of them (ADR 0012).
 
-```csharp
-// In Registry.Contracts
-public interface ITripRegistrationContextFactory
-{
-    Task<Result<TripRegistrationContext>> BuildAsync(
-        CustomerId customerId,
-        VehicleId primaryVehicleId,
-        VehicleId? trailerId,
-        DateOnly executionDate,
-        CancellationToken cancellationToken);
-}
-```
+## Unit of work: the handler is the commit point (ADR 0011)
 
-Errors from module B live in B's `*Errors` classes and flow to module A via Result.
-
-## Application services (factories, policies)
-
-Code shared between slices in the same module lives in `Application/Services/`:
-
-- `ContextFactories` (build `TripRegistrationContext` etc. by querying other modules)
-- `Policies` (e.g. `EditWindowPolicy.CanDriverStillEdit(trip, clock)`)
-
-These are not slices. They are stateless services injected into handlers.
-
-## Slice file boundary
-
-A slice contains thin orchestration. If a handler exceeds ~80 lines or contains complex business logic, that logic belongs in the domain or in an application service.
-
-The handler's job: validate context, call the aggregate, persist, return result. Nothing more.
-
-## Unit of work: the handler is the commit point
-
-Per [ADR 0011](../decisions/0011-handler-is-commit-point.md), the handler is the single commit point for the operation it executes. There is no transactional middleware, no Unit-of-Work abstraction, no filter that calls `SaveChangesAsync` on the handler's behalf.
-
-### The default case: single `SaveChangesAsync`
-
-The typical handler mutates the change tracker (adds entities, invokes aggregate methods) and persists once before returning:
-
-```csharp
-public async Task<Result<MyResponse>> HandleAsync(MyRequest request, CancellationToken ct)
-{
-    // ... load, validate, mutate aggregates ...
-
-    _db.MyAggregates.Add(newAggregate);
-    await _db.SaveChangesAsync(ct);
-
-    return new MyResponse(...);
-}
-```
-
-EF Core's implicit transaction around the single `SaveChangesAsync` call provides atomicity. No explicit `BeginTransactionAsync` is needed.
-
-### Multi-step atomicity: explicit transaction local to the handler
-
-When the handler genuinely requires atomicity across multiple `SaveChangesAsync` calls, or atomicity between EF operations and raw SQL, it opens a transaction locally:
-
-```csharp
-await using var tx = await _db.Database.BeginTransactionAsync(ct);
-// ... multiple operations, each with its own SaveChangesAsync if needed ...
-await tx.CommitAsync(ct);
-```
-
-This pattern stays local to the handler that needs it. It is never centralized in a filter or middleware.
-
-### Conventions for the `Result.Failure` path
-
-- A handler returning `Result.Failure` with no intent to persist anything **does not call** `SaveChangesAsync`. The change tracker's pending changes are discarded when the request scope ends.
-- A handler returning `Result.Failure` with a deliberate side effect (typically an audit row, e.g. recording `LoginFailed` before returning `User.InvalidCredentials`) **calls** `SaveChangesAsync` explicitly before the `Failure` return. The side effect persists.
-- A handler returning `Result.Success` **calls** `SaveChangesAsync` as the final persistence action before constructing the response.
-
-### Exception-to-error mapping
-
-Translating a specific infrastructure exception into a domain `Result.Failure` is the handler's responsibility. The handler scopes the try/catch narrowly — only around the persistence call that can raise the exception — and returns `Result.Failure(...)` from the catch block.
-
-Canonical example: a refresh handler that catches `DbUpdateConcurrencyException` around its `SaveChangesAsync` call and returns a module-specific concurrency error.
-
-```csharp
-try
-{
-    await _db.SaveChangesAsync(ct);
-}
-catch (DbUpdateConcurrencyException)
-{
-    return RefreshTokenErrors.ConcurrentRefresh;
-}
-
-return new RefreshResponse(...);
-```
-
-The handler does not throw; it returns. Other exceptions propagate to global middleware.
+- Default: one `SaveChangesAsync` at the persistence point; EF Core's implicit transaction gives atomicity.
+- Multi-step atomicity: `await using var tx = await _db.Database.BeginTransactionAsync(ct); ... await tx.CommitAsync(ct);` local to the handler.
+- `Result.Failure` with nothing to persist: do not call `SaveChangesAsync`. `Result.Failure` with a deliberate side effect (audit row, e.g. `LoginFailed`): call it before returning.
+- Infrastructure exceptions are mapped to domain errors by the handler, with a try/catch scoped to the `SaveChangesAsync` that can raise them (`DbUpdateConcurrencyException` → the aggregate's concurrency error; a unique violation → the aggregate's "already taken" error).

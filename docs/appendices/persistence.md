@@ -238,7 +238,7 @@ builder.ToTable("trips", "operations", t =>
 
 ## Data access (no repositories)
 
-Per [ADR 0009](../decisions/0009-no-repository-pattern.md), the project does **not** use the classic Repository pattern. Handlers depend on the module's `DbContext` directly, both for write operations and for hydrating aggregates needed by a command.
+Per [ADR 0009](../adr/0009-no-repository-pattern.md), the project does **not** use the classic Repository pattern. Handlers depend on the module's `DbContext` directly, both for write operations and for hydrating aggregates needed by a command.
 
 ### What this means in practice
 
@@ -272,7 +272,7 @@ internal sealed class ChangePasswordHandler(
 
 ### Reusable queries
 
-When the same filter or projection is used across two or more slices, factor it out — but **not** into a repository. Options, in order of preference:
+When the same filter or projection is used across two or more slices, factor it out — but **not** into a repository, and only once the second slice exists: shared persistence is extracted from working slices, never written ahead of them ([ADR 0012](../adr/0012-slices-before-shared-persistence.md)). Options, in order of preference:
 
 1. **Extension method on `IQueryable<T>`**. Best for read filters that compose:
 
@@ -456,6 +456,7 @@ Connection string is dummy; only used to scaffold migrations.
 ## Query performance
 
 - `.AsNoTracking()` on every read-only query. With direct `DbContext` access, this is now the responsibility of each handler — there is no central layer that applies it automatically.
+- Let the database aggregate: `CountAsync`/`AnyAsync`/`MinAsync`/`MaxAsync`/`SumAsync`, never `ToListAsync()` followed by `.Count`/`.Any()` on the client, and never rows materialised to compute a number nobody reads. When a domain type's only factory leaves no way to obey this, that is a modelling problem (see the value-object rule in `domain-modeling.md`): say so rather than load silently. Aggregates over a converted column can degrade to client evaluation or fail at runtime, so assert the emitted SQL in a test instead of assuming the translation.
 - `.AsSplitQuery()` when multiple Include cause cartesian explosion warning.
 - Indexes declared explicitly via `.HasIndex(...)`. Never rely on EF defaults.
 - Partial indexes for soft-deleted filters: `.HasFilter("soft_deleted_at IS NULL")`.

@@ -1,6 +1,6 @@
 # Appendix: Architecture Audit Rules
 
-Detection rules for the `architecture-guardian` agent. Each rule has a severity (BLOCKER / MAJOR / MINOR), a detection method (typically a grep pattern), and an escalation target.
+Detection rules for architecture conformity reviews. Each rule has a severity (BLOCKER / MAJOR / MINOR) and a detection method (typically a grep pattern).
 
 ## BLOCKER rules
 
@@ -8,13 +8,12 @@ Detection rules for the `architecture-guardian` agent. Each rule has a severity 
 ```bash
 grep -rE "using (MediatR|FluentValidation|AutoMapper|MassTransit)" src/
 ```
-Escalate to: `feature-implementer`
 
 ### B2 — Italian in production code
 ```bash
 grep -rnE "\b(Viaggio|Autista|Cliente|Contratto|Tariffa|Mezzo|Motrice|Rimorchio|Anagrafica|Anomalia|Riepilogo|Allegato|Fattura|Segreteria)\b" src/ --include="*.cs"
 ```
-Allowed exceptions: files under `Resources/it-IT.resx`. Escalate to: `domain-modeler` or `feature-implementer`.
+Allowed exceptions: files under `Resources/it-IT.resx`.
 
 ### B3 — `DateTime.UtcNow` outside SystemClock
 ```bash
@@ -62,7 +61,6 @@ done
 
 **Suggested fix**: add `.RequireAuthorization("PolicyName")` to the Map call. If anonymous access is truly intended, add `.AllowAnonymous()` together with a comment explaining why (e.g., `// health probe — must be reachable without auth`).
 
-Escalate to: `feature-implementer`.
 
 ### B7 — Handler throws for business errors
 In `*Handler.cs` files, find `throw new` of types other than:

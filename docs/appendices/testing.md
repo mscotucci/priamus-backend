@@ -1,18 +1,15 @@
 # Appendix: Testing
 
-Conventions for unit and integration tests in the Priamus Trips project.
+Conventions for unit and integration tests in the Priamus Trips backend.
 
 ## Stack
 
-- **xUnit 2.x** — test framework
-- **Shouldly 4.x+** — fluent assertions
-- **NSubstitute 5.x+** — mock application dependencies
-- **Testcontainers.PostgreSql 4.x+** — real DB for integration tests
-- **Microsoft.AspNetCore.Mvc.Testing** — end-to-end HTTP tests
+- **xUnit v3** on **Microsoft.Testing.Platform** (opt-in in `global.json`; run with `dotnet test --project <csproj>`)
+- **Shouldly** assertions, **NSubstitute** for application dependencies only
+- **Testcontainers.PostgreSql** for integration tests (Docker required)
+- **Microsoft.AspNetCore.Mvc.Testing** for end-to-end HTTP tests
 
-## Project layout
-
-Two test projects per module:
+## Layout
 
 ```
 tests/
@@ -20,331 +17,83 @@ tests/
 │   ├── Domain/{Aggregate}/
 │   ├── Features/
 │   └── TestData/TestDataBuilders.cs
+├── Priamus.Trips.IntegrationTesting/   # shared rig (class library, not a test project)
+│   └── {PostgresFixture, ApiFactory, ProblemDetailsAssertions, FixedClockStub, FakeCurrentUser}.cs
 └── Priamus.Trips.{Module}.IntegrationTests/
-    ├── Fixtures/{Module}DatabaseFixture.cs
+    ├── Infrastructure/{Module}IntegrationTestBase.cs
     ├── Persistence/
-    └── Features/
+    ├── Features/{UseCase}/        # handler tests and endpoint tests of the slice
+    └── CrossSlice/                # sweeps over every endpoint or public type
 ```
 
-## Naming convention
+## Naming and structure
 
-Test method: `Method_Scenario_ExpectedResult`. Test class: `{TypeUnderTest}Tests`.
+- Test class `{TypeUnderTest}Tests`; method `Method_Scenario_ExpectedResult`.
+- `// Arrange`, `// Act`, `// Assert` comments mandatory, blank lines between blocks.
+- Test data through builders in `TestData/`; defaults implicit, non-defaults visible in the test.
+- Time through `FixedClockStub`; never `DateTime.Now`.
 
-Examples:
-- `Register_WithTractorRequiringTrailerButNoTrailerProvided_ThrowsDomainException`
-- `Calculate_ByHourWithNighttimeStart_AppliesNightRateAndCallFee`
-- `LoadAsync_WhenTripExistsWithAttachments_ReturnsFullAggregate`
-- `HandleAsync_WhenCustomerNotFound_ReturnsCustomerNotFoundError`
+## Traceability to the spec
 
-## AAA pattern with explicit markers
-
-```csharp
-[Fact]
-public void Register_WithTractorRequiringTrailerButNoTrailerProvided_ThrowsDomainException()
-{
-    // Arrange
-    var tractor = TestData.Tractor.RequiringTrailer();
-    var context = TestData.TripRegistrationContext.With(primaryVehicle: tractor, trailer: null);
-    var input = TestData.TripRegistrationInput.Default();
-    var pricingEngine = Substitute.For<IPricingEngine>();
-    var clock = new FakeClock(DateTime.Parse("2026-05-11T10:00:00Z"));
-
-    // Act
-    var act = () => Trip.Register(context, input, pricingEngine, clock, TestData.DriverIds.Alice);
-
-    // Assert
-    var ex = act.ShouldThrow<DomainException>();
-    ex.ErrorCode.ShouldBe(TripErrors.TrailerRequired.Code);
-}
-```
-
-Comments `// Arrange`, `// Act`, `// Assert` are mandatory. Blank lines separate the three blocks.
-
-## Test data builders
-
-Centralize fixture construction in `TestData/TestDataBuilders.cs`:
-
-```csharp
-public static class TestData
-{
-    public static class DriverIds
-    {
-        public static readonly DriverId Alice = new(Guid.Parse("11111111-..."));
-        public static readonly DriverId Bob = new(Guid.Parse("22222222-..."));
-    }
-
-    public static class Tractor
-    {
-        public static TractorReference RequiringTrailer() => new(
-            Id: new VehicleId(Guid.NewGuid()),
-            RequiresTrailer: true,
-            IsActive: true);
-
-        public static TractorReference Standalone() => /* ... */;
-    }
-
-    public static class TripRegistrationContext
-    {
-        public static Domain.Trips.TripRegistrationContext With(/* ... */) { /* ... */ }
-    }
-}
-```
-
-Goals: tests stay focused on the scenario; default values implicit; non-default visible in the test.
+Every acceptance criterion of the slice's `SPEC.md` (`AC-n`) has at least one test that names it. Put the id in the test name suffix or in a `[Trait("AC", "AC-3")]`; `strip-plan-refs` removes the scaffolding once the spec is graduated. Tests of the pricing engine cite the PRD (`PRD §12`) and use its numeric examples: every example of PRD §12 has a test with the same numbers.
 
 ## Unit tests — domain
 
-Coverage target: ≥ 90% line coverage on Domain layer (`AggregateRoot`, value objects, sealed types, domain services).
-
-What to test:
-- Every public factory: valid construction + each invariant violation.
-- Every domain operation (state-changing method).
-- Pattern matching exhaustiveness on sealed types.
-- Value object edge cases (boundaries, equality, immutability).
-
-Example structure for a sealed type:
-
-```csharp
-public class VehicleCompositionTests
-{
-    [Fact]
-    public void Create_WithTractorRequiringTrailerAndTrailerProvided_ReturnsTractorWithTrailer()
-    {
-        // Arrange
-        var tractor = TestData.Tractor.RequiringTrailer();
-        var trailer = TestData.Trailer.Active();
-
-        // Act
-        var result = VehicleComposition.Create(tractor, trailer);
-
-        // Assert
-        result.ShouldBeOfType<VehicleComposition.TractorWithTrailer>();
-    }
-
-    [Fact]
-    public void Create_WithTractorRequiringTrailerAndNoTrailer_ThrowsTrailerRequired()
-    {
-        // Arrange
-        var tractor = TestData.Tractor.RequiringTrailer();
-
-        // Act
-        var act = () => VehicleComposition.Create(tractor, trailer: null);
-
-        // Assert
-        var ex = act.ShouldThrow<DomainException>();
-        ex.ErrorCode.ShouldBe(TripErrors.TrailerRequired.Code);
-    }
-}
-```
+Coverage target ≥ 90% on the domain layer (100% on pricing types): every factory (valid construction + every invariant), every state-changing method, exhaustiveness of sealed types, value-object boundaries. Assert on the `DomainException` error against the `*Errors` field, never a string literal.
 
 ## Unit tests — handlers
 
-Handler dependencies are mocked via NSubstitute. Domain types are NOT mocked — they are real instances built from `TestData`.
+Only for handlers whose behaviour does not depend on persistence (rare under ADR 0009). Mock application dependencies (`IClock`, `ICurrentUser`, contracts of other modules), never domain types and never `DbContext`.
+
+## Integration tests — persistence and handlers
+
+Real PostgreSQL. `PostgresFixture` starts one container, applies the migrations once to a template database, and `{Module}IntegrationTestBase` gives every test its own database cloned from the template, with a DI container that registers the module persistence as in production. Handler tests exercise the full path including `SaveChangesAsync` and assert on the persisted state with a fresh scope.
 
 ```csharp
-[Fact]
-public async Task HandleAsync_WhenContextFactoryFails_ReturnsTheError()
+public sealed class DisableUserHandlerTests : IdentityIntegrationTestBase
 {
-    // Arrange
-    var repository = Substitute.For<ITripRepository>();
-    var contextFactory = Substitute.For<ITripRegistrationContextFactory>();
-    var pricingEngine = Substitute.For<IPricingEngine>();
-    var currentUser = new FakeCurrentUser(driverId: TestData.DriverIds.Alice);
-    var clock = new FakeClock(DateTime.Parse("2026-05-11T10:00:00Z"));
-    var logger = NullLogger<RegisterTripHandler>.Instance;
-
-    var expectedError = CustomerErrors.NotFound;
-    contextFactory
-        .BuildAsync(Arg.Any<CustomerId>(), Arg.Any<VehicleId>(), Arg.Any<VehicleId?>(),
-                    Arg.Any<DateOnly>(), Arg.Any<CancellationToken>())
-        .Returns(Result<TripRegistrationContext>.Failure(expectedError));
-
-    var handler = new RegisterTripHandler(repository, contextFactory, pricingEngine,
-                                          currentUser, clock, logger);
-    var request = TestData.RegisterTripRequest.Default();
-
-    // Act
-    var result = await handler.HandleAsync(request, CancellationToken.None);
-
-    // Assert
-    result.IsFailure.ShouldBeTrue();
-    result.Error.ShouldBe(expectedError);
-    await repository.DidNotReceive().AddAsync(Arg.Any<Trip>(), Arg.Any<CancellationToken>());
-}
-```
-
-What NOT to test:
-- Aggregate's internal logic (covered by domain tests)
-- Repository persistence (covered by integration tests)
-- HTTP behavior (covered by end-to-end tests)
-
-## Asserting on Result and Error
-
-Reference the `*Errors` class, never hardcode the code string:
-
-```csharp
-// CORRECT
-result.Error.ShouldBe(TripErrors.TrailerRequired);
-
-// WRONG
-result.Error.Code.ShouldBe("Trip.TrailerRequired");
-```
-
-Optional helpers in `TestUtilities/ResultAssertions.cs`:
-
-```csharp
-public static class ResultAssertions
-{
-    public static void ShouldBeSuccessful<T>(this Result<T> result, T expectedValue) { /* ... */ }
-    public static void ShouldBeFailure<T>(this Result<T> result, Error expectedError) { /* ... */ }
-}
-
-// Usage
-result.ShouldBeFailure(TripErrors.TrailerRequired);
-```
-
-## Integration tests — repositories
-
-Real PostgreSQL via Testcontainers. Migrations applied. Roundtrip behavior verified.
-
-```csharp
-public sealed class OperationsDatabaseFixture : IAsyncLifetime
-{
-    private readonly PostgreSqlContainer _container = new PostgreSqlBuilder()
-        .WithImage("postgres:16-alpine")
-        .WithDatabase("priamus_trips_test")
-        .WithUsername("test")
-        .WithPassword("test")
-        .Build();
-
-    public string ConnectionString => _container.GetConnectionString();
-
-    public async Task InitializeAsync()
-    {
-        await _container.StartAsync();
-
-        await using var db = CreateContext();
-        await db.Database.MigrateAsync();
-    }
-
-    public async Task DisposeAsync() => await _container.DisposeAsync();
-
-    public OperationsDbContext CreateContext()
-    {
-        var options = new DbContextOptionsBuilder<OperationsDbContext>()
-            .UseNpgsql(ConnectionString, npgsql =>
-                npgsql.MigrationsHistoryTable("__ef_migrations_history", "operations"))
-            .Options;
-        return new OperationsDbContext(options);
-    }
-}
-
-[CollectionDefinition("OperationsDatabase")]
-public class OperationsDatabaseCollection : ICollectionFixture<OperationsDatabaseFixture> { }
-```
-
-Test class:
-
-```csharp
-[Collection("OperationsDatabase")]
-public class TripRepositoryTests
-{
-    private readonly OperationsDatabaseFixture _fixture;
-
-    public TripRepositoryTests(OperationsDatabaseFixture fixture)
-    {
-        _fixture = fixture;
-    }
+    public DisableUserHandlerTests(PostgresFixture fixture) : base(fixture) { }
 
     [Fact]
-    public async Task LoadAsync_WithExistingTripAndAttachments_LoadsFullAggregate()
+    public async Task HandleAsync_WhenTargetIsTheCaller_ReturnsCannotDisableSelf()
     {
         // Arrange
-        var trip = TestData.Trip.WithAttachments(count: 2);
-
-        await using (var arrangeContext = _fixture.CreateContext())
-        {
-            await arrangeContext.Trips.AddAsync(trip);
-            await arrangeContext.SaveChangesAsync();
-        }
+        await using var arrange = CreateAsyncScope();
+        // seed the user ...
 
         // Act
-        await using var actContext = _fixture.CreateContext();
-        var repository = new TripRepository(actContext);
-        var loaded = await repository.LoadAsync(trip.Id, CancellationToken.None);
+        await using var act = CreateAsyncScope();
+        var handler = act.ServiceProvider.GetRequiredService<DisableUserHandler>();
+        var result = await handler.HandleAsync(userId, TestContext.Current.CancellationToken);
 
         // Assert
-        loaded.ShouldNotBeNull();
-        loaded.Attachments.Count.ShouldBe(2);
+        result.Error.ShouldBe(UserErrors.CannotDisableSelf);
     }
 }
 ```
 
-Cleanup: transaction rollback per test (fastest); `Respawn` for table truncate; fresh container per class (slowest, last resort).
+N+1 and cartesian explosion: the test setup escalates `RelationalEventId.MultipleCollectionIncludeWarning` to an error; fix with `.AsSplitQuery()`. Where a query must aggregate in the database, assert the emitted SQL instead of assuming the translation.
 
-## Integration tests — end-to-end slices
+## End-to-end tests
 
-`WebApplicationFactory<Program>` with overridden DB.
+`ApiFactory` builds `WebApplicationFactory<Program>` with the connection string overridden to the test database and deterministic JWT settings. One host serves a whole test class, because building the host dominates the cost of an HTTP test; each test still gets its own database. A test that needs a differently configured host (a fixed clock, a stubbed lookup) passes its overrides to `ApiFactory.Create`.
 
-```csharp
-[Collection("OperationsDatabase")]
-public class RegisterTripEndToEndTests : IClassFixture<HostFixture>
-{
-    [Fact]
-    public async Task PostTrips_WithValidPayload_Returns201AndPersistsTrip()
-    {
-        // Arrange
-        var client = _host.CreateAuthenticatedClient(
-            role: "driver", driverId: TestData.DriverIds.Alice.Value);
-        var request = new RegisterTripRequest(/* ... */);
+Identity tests authenticate with the real flow (`POST /api/identity/auth/login`), because the token is what they test. Tests of the other modules authenticate through a test scheme that issues the claims of a caller, without seeding a user and logging in (`docs/backlog.md`).
 
-        // Act
-        var response = await client.PostAsJsonAsync("/api/trips", request);
+One happy path and one authorization failure per endpoint at minimum. Problem responses are asserted with `ShouldBeProblemAsync(status, {Aggregate}Errors.X)`. Driver-facing endpoints have a test asserting on the raw JSON that no pricing field is present.
 
-        // Assert
-        response.StatusCode.ShouldBe(HttpStatusCode.Created);
+## Cross-slice sweeps
 
-        var body = await response.Content.ReadFromJsonAsync<RegisterTripResponse>();
-        body.ShouldNotBeNull();
-        body.TripId.ShouldNotBe(Guid.Empty);
+`CrossSlice/` holds the tests that hold for every endpoint of the module, read from `/openapi/v1.json`: every endpoint declares a policy (the anonymous ones are an explicit list), every declared `ProducesProblem` matches what the handler can return, public request/response type names are unique across slices.
 
-        await using var db = _host.CreateContext();
-        var persisted = await db.Trips.FindAsync(new TripId(body.TripId));
-        persisted.ShouldNotBeNull();
-    }
-}
-```
+## Pagination cases (mandatory for every paginated endpoint)
 
-## Pagination test cases (mandatory)
+Single page; multi-page first/middle/last; empty; invalid page values coerced; unknown sort column falls back; ascending and descending; sort column case-insensitive.
 
-For every paginated endpoint:
-1. Single page (TotalCount ≤ PageSize)
-2. Multi-page, first page (HasNext=true, HasPrevious=false)
-3. Multi-page, middle page
-4. Multi-page, last page
-5. Empty result set
-6. Invalid Page/PageSize values coerced correctly
-7. Unknown sort column falls back to default
-8. Sort ascending and descending produce expected order
-9. Sort column case-insensitivity
+## Forbidden
 
-## N+1 prevention
-
-Enable EF Core warning escalation in test setup:
-
-```csharp
-options.ConfigureWarnings(w => w.Throw(
-    RelationalEventId.MultipleCollectionIncludeWarning));
-```
-
-If a test triggers cartesian explosion, the test fails. Fix with `.AsSplitQuery()`.
-
-## Forbidden patterns
-
-- `Microsoft.EntityFrameworkCore.InMemory` — vietato. Use Testcontainers.
-- `EnsureCreated()` — use `MigrateAsync()`.
-- `Substitute.For<DomainType>()` — never mock domain (only mock application dependencies).
-- Hardcoded error code strings (use `{Aggregate}Errors` references).
-- Time-dependent tests without `FakeClock` (use injected clock with fixed value).
-- `.Result`, `.Wait()`, `GetAwaiter().GetResult()` — always async.
-- Skipping AAA comments in tests.
+- `Microsoft.EntityFrameworkCore.InMemory`, `EnsureCreated()`, the development database
+- `Substitute.For<DomainType>()`, mocking `DbContext`
+- hard-coded error code strings
+- `.Result`, `.Wait()`, `GetAwaiter().GetResult()`
+- tests without AAA comments

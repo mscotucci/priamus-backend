@@ -1,44 +1,45 @@
 # Priamus Trips — Backend
 
-Backend repository for **Priamus Trips**, the digital management and monitoring system for freight trips operated by Priamus Ecologica S.r.l.
-
-The frontend (Angular PWA + back-office web app) lives in a separate repository (link TBD) and communicates with this backend exclusively through the OpenAPI contract produced by the ASP.NET Core endpoints.
+Backend of **Priamus Trips**, the digital management and monitoring system for freight trips operated by Priamus Ecologica S.r.l., as a .NET 10 modular monolith on PostgreSQL. The frontend (driver PWA and back-office web app) lives in a separate repository and talks to this backend only through the OpenAPI contract.
 
 ## Repository structure
 
 ```
-priamus-trips/
-├── .claude/agents/         Specialized AI agents for Claude Code
+priamus-trips-backend/
+├── CLAUDE.md                 Instructions for Claude Code
+├── CONTEXT-MAP.md            Bounded contexts and where each CONTEXT.md glossary lives
 ├── docs/
-│   ├── context.md          System overview, universal rules, backend technical context
-│   ├── glossary.md         Italian PRD terms → English code identifiers
-│   └── appendices/         Detailed rules loaded on demand by agents
-├── src/                    .NET 10 modular monolith (Host, SharedKernel, Modules)
-├── tests/                  Unit + integration tests (xUnit, Testcontainers)
-├── Priamus.Trips.slnx      Solution file
-├── Directory.Build.props   Project-wide MSBuild settings
-├── Directory.Packages.props Central package management
-├── global.json             SDK version pin
-└── NuGet.config            Feed configuration
+│   ├── context.md            Stack, architecture, universal rules, delivery workflow
+│   ├── PRD.md                Functional requirements
+│   ├── glossary.md           Italian PRD terms → English code identifiers
+│   ├── backlog.md            Work deferred on purpose
+│   ├── adr/                  Architecture decision records
+│   └── appendices/           Detailed rules loaded on demand (slices, errors, persistence, testing, pricing)
+├── src/                      Host, SharedKernel, Modules/{Identity, Registry, Operations, BackOffice}
+├── tests/                    Unit and integration tests (xUnit v3, Testcontainers PostgreSQL)
+├── Priamus.Trips.slnx
+├── Directory.Build.props     Project-wide MSBuild settings
+├── Directory.Packages.props  Central package management
+└── global.json               SDK pin and Microsoft.Testing.Platform opt-in
 ```
 
 ## Prerequisites
 
-- .NET 10 SDK (`dotnet --version` must report `10.x`)
-- Docker (required by Testcontainers for integration tests)
+- .NET 10 SDK
+- Docker (Testcontainers for integration tests)
 - `dotnet-ef` global tool: `dotnet tool install --global dotnet-ef --version 10.*`
 
 ## Quick start
 
 ```bash
-dotnet restore
-dotnet build
-dotnet test
+dotnet build Priamus.Trips.slnx
+dotnet test --project tests/Priamus.Trips.Identity.UnitTests
+dotnet test --project tests/Priamus.Trips.Identity.IntegrationTests   # starts a PostgreSQL container
 ```
 
 ## Documentation
 
-Start with [`docs/context.md`](docs/context.md). The appendices in `docs/appendices/` provide deep detail on persistence, slices, pricing, testing, and the architecture audit rules.
+Start with [`docs/context.md`](docs/context.md). Delivery follows the workflow described there (§7): one slice → `grilling` → `plan-and-split` → `execute-plan` → `ai-code-review` → `qa-walkthrough` → `strip-plan-refs`.
 
 ## License
 
