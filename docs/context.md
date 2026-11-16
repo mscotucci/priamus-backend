@@ -59,8 +59,8 @@ Forbidden: MediatR, FluentValidation, AutoMapper, MassTransit, EF Core InMemory,
 - **Slices before shared persistence**: a module is built outside-in, whole slices first (ADR 0012).
 - Inter-module calls are synchronous through `*.Contracts` interfaces; asynchronous integration goes through an outbox persisted in the database. No external message bus in MVP.
 - A module project references only `Priamus.Trips.{X}.Contracts` of other modules, never `Priamus.Trips.{X}`. Contracts projects reference only `Priamus.Trips.SharedKernel`.
-- Each module owns its PostgreSQL schema. No cross-schema foreign keys; a reference to another module is a bare `Guid`.
-- Single deploy artifact (`Priamus.Trips.Host`, Docker). In production, migrations are applied before startup by a dedicated job.
+- One PostgreSQL database for the whole application, one connection string (`ConnectionStrings:Database`) read by every module; each module owns its schema in it. No cross-schema foreign keys; a reference to another module is a bare `Guid`.
+- Single deploy artifact (`Priamus.Trips.Host`, Docker). Migrations are applied at host startup in Development only; in production a dedicated job applies them before startup. After that step the host runs the bootstrap administrator step in every environment: it creates the first `Admin` from `Identity:BootstrapAdmin` when no user exists; in Production it needs the schema already migrated, otherwise the host does not start.
 
 ### Solution structure
 

@@ -26,7 +26,11 @@ public static class ApiFactory
         return new WebApplicationFactory<Program>()
             .WithWebHostBuilder(builder =>
             {
-                builder.UseSetting("ConnectionStrings:Identity", connectionString);
+                builder.UseSetting("ConnectionStrings:Database", connectionString);
+                // appsettings.Development.json carries development bootstrap credentials: an
+                // empty value keeps every test host free of an administrator unless a test sets one.
+                builder.UseSetting("Identity:BootstrapAdmin:Username", string.Empty);
+                builder.UseSetting("Identity:BootstrapAdmin:Password", string.Empty);
                 builder.UseSetting("Jwt:Issuer", "test-issuer");
                 builder.UseSetting("Jwt:Audience", "test-audience");
                 builder.UseSetting("Jwt:SigningKey", "test-signing-key-endpoint-32chars!!");

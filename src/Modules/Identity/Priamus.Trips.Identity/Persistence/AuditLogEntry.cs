@@ -41,6 +41,9 @@ public static class AuditEventTypes
 
     /// <summary>A refresh token was revoked by a back-office user or admin.</summary>
     public const string TokenRevokedByAdmin = "identity.refresh_token.revoked_by_admin";
+
+    /// <summary>The first administrator was created at startup from configuration.</summary>
+    public const string AdminBootstrapped = "identity.user.admin_bootstrapped";
 }
 
 /// <summary>

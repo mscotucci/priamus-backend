@@ -15,7 +15,7 @@ public static class IdentityPersistenceModuleExtensions
     /// handlers depend on <see cref="IdentityDbContext"/> directly.
     /// </summary>
     /// <param name="services">The service collection to configure.</param>
-    /// <param name="connectionString">The Npgsql connection string for the Identity database.</param>
+    /// <param name="connectionString">The Npgsql connection string of the application database.</param>
     /// <returns>The same <paramref name="services"/> for chaining.</returns>
     public static IServiceCollection AddIdentityPersistence(
         this IServiceCollection services,

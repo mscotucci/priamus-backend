@@ -4,7 +4,7 @@ Bounded contexts of the Priamus Trips backend, one per module. Each context owns
 
 ## Contexts
 
-- **Identity** — authentication, sessions (refresh tokens), users and roles, audit log of identity events. Built before the per-context glossaries existed: its `CONTEXT.md` is written at the next grilling of the module (`docs/backlog.md`).
+- [Identity](./src/Modules/Identity/CONTEXT.md) — authentication, sessions (refresh tokens), users and roles, audit log of identity events.
 - **Registry** — customers, contracts, rates and overrides, vehicles, drivers, locations, pricing engine. Not yet built.
 - **Operations** — trips with their attachments and issues, daily summaries. Not yet built.
 - **BackOffice** — reporting, filterable trip list, Excel/PDF export. Not yet built.

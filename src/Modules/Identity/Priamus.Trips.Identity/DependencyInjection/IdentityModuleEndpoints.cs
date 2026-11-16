@@ -3,6 +3,7 @@ using Priamus.Trips.Identity.Features.AdminRevoke;
 using Priamus.Trips.Identity.Features.CreateUser;
 using Priamus.Trips.Identity.Features.DisableUser;
 using Priamus.Trips.Identity.Features.EnableUser;
+using Priamus.Trips.Identity.Features.GetCurrentUser;
 using Priamus.Trips.Identity.Features.ListUsers;
 using Priamus.Trips.Identity.Features.Login;
 using Priamus.Trips.Identity.Features.Refresh;
@@ -28,6 +29,7 @@ public static class IdentityModuleEndpoints
         app.MapDisableUser();
         app.MapEnableUser();
         app.MapListUsers();
+        app.MapGetCurrentUser();
         return app;
     }
 }

@@ -11,8 +11,14 @@ The Identity module was built in May 2026, before the rules in `docs/context.md`
 - **`PostgresFixture` is registered per collection** (`IdentityIntegrationTestsCollection`) and migrates only the Identity schema. It becomes an assembly fixture migrating every module's schema when a second module has tests.
 - **No sweep compares each endpoint's `ProducesProblem` with what its handler can return.** The declared statuses were checked by hand on 2026-11-15.
 - **`IClock` has no `Today`.** Needed by the first slice that reasons on calendar dates in the business time zone (trip execution date, daily summary).
-- **No `src/Modules/Identity/CONTEXT.md`.** To write at the next grilling of the module.
 - **Italian texts of `IdentityMessages.resx`** were written with the alignment, not reviewed with the customer.
+- **Audit payloads of domain events are serialized as the event's raw shape**: enums as numbers (`"role": 3`) and value objects as objects (`"userId": {"value": "…"}`), while the hand-written payloads use names and plain values (`{"username": "admin"}`). Found by the QA of the local-run slice on 2026-11-15; to align with "enums by name" when something first reads the audit log, deciding what happens to the rows already written.
+
+## Identity — deferred by the local-run and bootstrap slice (recorded 2026-11-15)
+
+- **Change-password endpoint.** The first administrator's password comes from configuration and nothing in the API can change it; needed before any real use.
+- **A disabled user's access token** is accepted by every endpoint but `me` until it expires, at most one hour (ADR 0005); rejecting it on every endpoint would cost a database read per request.
+- **CORS.** The frontend reaches the backend through its dev-server proxy in development; the policy is decided with the deployment.
 
 ## Shared test infrastructure
 

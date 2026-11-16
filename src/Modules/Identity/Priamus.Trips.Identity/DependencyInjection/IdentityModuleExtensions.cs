@@ -8,6 +8,7 @@ using Microsoft.Extensions.Localization;
 using Microsoft.Extensions.Validation;
 using Microsoft.IdentityModel.Tokens;
 using Priamus.Trips.Identity.Application.Abstractions;
+using Priamus.Trips.Identity.Application.Services;
 using Priamus.Trips.Identity.Contracts;
 using Priamus.Trips.Identity.Domain.Users;
 using Priamus.Trips.Identity.Infrastructure;
@@ -45,9 +46,12 @@ public static class IdentityModuleExtensions
             options.CustomizeProblemDetails += LocalizeProblemDetail);
 
         // ── Persistence ──────────────────────────────────────────────────────────
-        var connectionString = configuration.GetConnectionString("Identity")
-            ?? throw new InvalidOperationException(
-                "Connection string 'Identity' is required for the Identity module.");
+        var connectionString = configuration.GetConnectionString("Database");
+        if (string.IsNullOrWhiteSpace(connectionString))
+        {
+            throw new InvalidOperationException(
+                "Connection string 'Database' is required for the Identity module.");
+        }
 
         services.AddIdentityPersistence(connectionString);
 
@@ -57,6 +61,13 @@ public static class IdentityModuleExtensions
             .BindConfiguration("Jwt")
             .ValidateDataAnnotations()
             .ValidateOnStart();
+
+        // ── Bootstrap administrator ──────────────────────────────────────────────
+        // No validation: absent or incomplete values only mean that no administrator is created.
+        services
+            .AddOptions<BootstrapAdminOptions>()
+            .BindConfiguration("Identity:BootstrapAdmin");
+        services.AddScoped<AdminBootstrapService>();
 
         // ── Infrastructure ───────────────────────────────────────────────────────
         services.AddSingleton<IJwtTokenIssuer, JwtTokenIssuer>();

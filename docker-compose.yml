@@ -1,0 +1,15 @@
+# Local development database. Credentials are for localhost only; never reuse them elsewhere.
+services:
+  postgres:
+    image: postgres:16-alpine
+    ports:
+      - "127.0.0.1:5432:5432"
+    environment:
+      POSTGRES_DB: priamus_trips
+      POSTGRES_USER: priamus_dev
+      POSTGRES_PASSWORD: priamus_dev_local_only
+    volumes:
+      - priamus_trips_data:/var/lib/postgresql/data
+
+volumes:
+  priamus_trips_data:

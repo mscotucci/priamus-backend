@@ -58,6 +58,16 @@ builder.Services.AddIdentityModule(builder.Configuration);
 
 var app = builder.Build();
 
+// ── Startup ───────────────────────────────────────────────────────────────────
+// Development applies pending migrations; elsewhere a dedicated pre-deploy job does.
+if (app.Environment.IsDevelopment())
+{
+    await app.Services.MigrateIdentityDatabaseAsync();
+}
+
+// The first administrator is created from configuration in every environment, only when no user exists.
+await app.Services.BootstrapAdministratorAsync();
+
 // ── Middleware ────────────────────────────────────────────────────────────────
 app.UseExceptionHandler();
 app.UseAuthentication();

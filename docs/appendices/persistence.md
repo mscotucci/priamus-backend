@@ -8,6 +8,7 @@ Detailed rules for mapping the domain to EF Core and PostgreSQL.
 - `HasDefaultSchema("operations")` declared in `OnModelCreating`.
 - Own migration history table: `MigrationsHistoryTable("__ef_migrations_history", "operations")`.
 - Never share a `DbContext` between modules.
+- All modules live in one database, one schema each, behind one connection string `ConnectionStrings:Database` (locally the Docker Compose database `priamus_trips`).
 
 ## Configurations
 
@@ -430,7 +431,7 @@ Rules:
 
 - Forward-only: never edit a migration after merging to main.
 - For destructive changes (drop column, rename table), produce two migrations across two releases: additive first, cleanup second.
-- Apply: dev auto on startup via `MigrateAsync()`; prod via dedicated pre-deploy job. Never `EnsureCreated()`.
+- Apply: Development only, at host startup, through a public startup extension of the module (`MigrateIdentityDatabaseAsync` for Identity) that the host calls after `builder.Build()`; prod via dedicated pre-deploy job. Never `EnsureCreated()`. After the migration step the host runs the bootstrap administrator step (`BootstrapAdministratorAsync` for Identity) in every environment: it creates the first `Admin` from `Identity:BootstrapAdmin` when no user exists, so in Production the schema must already be migrated or the host does not start.
 
 ## Design-time factory
 
