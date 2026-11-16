@@ -337,19 +337,21 @@ public sealed class ListUsersEndpointTests : IdentityIntegrationTestBase
             createdAt: base2.AddMinutes(1),
             ct: ct);
 
-        // User B: username "mmmm_user", BackOffice, Active, middle timestamps
-        var adminUser = await SeedUserAsync(
-            UserRole.Admin, "Adm1n!P6",
-            username: "mmmm_user",
-            createdAt: base2.AddMinutes(2),
-            ct: ct);
-
-        // User C: username "zzzz_user", Admin, Disabled, latest timestamps
+        // User C: username "zzzz_user", Admin, Disabled, latest timestamps.
+        // Inserted before User B so that the insertion order of the two Admins differs from
+        // their user-name order: the tie-breaker, not the storage order, must decide.
         var userC = await SeedUserAsync(
             UserRole.Admin, "Adm1n!P7",
             username: "zzzz_user",
             disabled: true,
             createdAt: base2.AddMinutes(3),
+            ct: ct);
+
+        // User B: username "mmmm_user", Admin, Active, middle timestamps
+        var adminUser = await SeedUserAsync(
+            UserRole.Admin, "Adm1n!P6",
+            username: "mmmm_user",
+            createdAt: base2.AddMinutes(2),
             ct: ct);
 
         await using var factory = CreateFactory();
@@ -386,35 +388,23 @@ public sealed class ListUsersEndpointTests : IdentityIntegrationTestBase
             }
 
             case "role":
-                // Driver=1, Admin=3 (two Admins — assert only the cross-role boundary)
-                if (ascending)
-                {
-                    body.Data[0].Role.ShouldBe(UserRole.Driver,
-                        "role ASC: Driver user (lowest enum value) must be first.");
-                }
-                else
-                {
-                    body.Data[2].Role.ShouldBe(UserRole.Driver,
-                        "role DESC: Driver user (lowest enum value) must be last.");
-                }
+                // Driver=1, Admin=3; the two Admins tie and are ordered by user name A–Z
+                // in both directions (tie-breaker).
+                body.Data.Select(u => u.Username).ShouldBe(
+                    ascending
+                        ? ["aaaa_user", "mmmm_user", "zzzz_user"]
+                        : ["mmmm_user", "zzzz_user", "aaaa_user"],
+                    $"role {(ascending ? "ASC" : "DESC")}: roles by enum value, ties by user name A–Z.");
                 break;
 
             case "status":
-                // Active=1, Disabled=2 — one disabled (userC), two active
-                if (ascending)
-                {
-                    body.Data[0].Status.ShouldBe(UserStatus.Active,
-                        "status ASC: Active users must come before Disabled.");
-                    body.Data[2].Status.ShouldBe(UserStatus.Disabled,
-                        "status ASC: Disabled user must be last.");
-                }
-                else
-                {
-                    body.Data[0].Status.ShouldBe(UserStatus.Disabled,
-                        "status DESC: Disabled user must be first.");
-                    body.Data[2].Status.ShouldBe(UserStatus.Active,
-                        "status DESC: Active users must come last.");
-                }
+                // Active=1, Disabled=2 — one disabled (zzzz_user); the two active users tie
+                // and are ordered by user name A–Z in both directions (tie-breaker).
+                body.Data.Select(u => u.Username).ShouldBe(
+                    ascending
+                        ? ["aaaa_user", "mmmm_user", "zzzz_user"]
+                        : ["zzzz_user", "aaaa_user", "mmmm_user"],
+                    $"status {(ascending ? "ASC" : "DESC")}: statuses by enum value, ties by user name A–Z.");
                 break;
 
             case "createdat":

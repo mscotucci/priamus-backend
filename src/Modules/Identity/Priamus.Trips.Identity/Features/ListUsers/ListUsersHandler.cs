@@ -79,7 +79,7 @@ internal sealed class ListUsersHandler
         // Sort on Username uses the value-object property directly: EF Core translates
         // the ORDER BY through the UsernameConverter into ORDER BY on the underlying
         // varchar column.
-        query = (sortColumn, ascending) switch
+        var ordered = (sortColumn, ascending) switch
         {
             ("username",       true)  => query.OrderBy(u => u.Username),
             ("username",       false) => query.OrderByDescending(u => u.Username),
@@ -93,6 +93,11 @@ internal sealed class ListUsersHandler
             ("lastmodifiedat", false) => query.OrderByDescending(u => u.LastModifiedAt),
             _                         => query.OrderByDescending(u => u.CreatedAt), // default: createdAt DESC
         };
+
+        // Role, status and timestamps are not unique: without a unique tie-breaker PostgreSQL
+        // may return equal rows in a different order on each query, so a user could appear on
+        // two pages or on none. The user name is unique and gives ties a readable A–Z order.
+        query = ordered.ThenBy(u => u.Username);
 
         // ── Project, page, and materialise ───────────────────────────────────
         var effectivePage = request.EffectivePage;
