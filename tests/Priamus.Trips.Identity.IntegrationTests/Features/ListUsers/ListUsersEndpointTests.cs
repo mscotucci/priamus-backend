@@ -90,20 +90,6 @@ public sealed class ListUsersEndpointTests : IdentityIntegrationTestBase
         return user;
     }
 
-    private static async Task<LoginResponse> LoginAsync(
-        HttpClient client,
-        string username,
-        string password,
-        CancellationToken ct)
-    {
-        var resp = await client.PostAsJsonAsync("/api/identity/auth/login", new LoginRequest(username, password), ct);
-        resp.StatusCode.ShouldBe(HttpStatusCode.OK,
-            $"Login must succeed for user '{username}' to obtain a JWT for this test.");
-        var body = await resp.Content.ReadFromJsonAsync<LoginResponse>(ct);
-        body.ShouldNotBeNull();
-        return body;
-    }
-
     private static async Task<HttpClient> CreateAuthenticatedAdminClientAsync(
         WebApplicationFactory<Program> factory,
         User adminUser,
@@ -154,6 +140,35 @@ public sealed class ListUsersEndpointTests : IdentityIntegrationTestBase
         body.Data[2].Id.ShouldBe(user3.Id.Value);
         body.Data[3].Id.ShouldBe(user2.Id.Value);
         body.Data[4].Id.ShouldBe(adminUser.Id.Value);
+    }
+
+    // ══════════════════════════════════════════════════════════════════════════
+    // Version on every item
+    // ══════════════════════════════════════════════════════════════════════════
+
+    [Fact]
+    public async Task GetUsers_EveryItemCarriesTheStoredVersionOfItsUser()
+    {
+        var ct = TestContext.Current.CancellationToken;
+
+        // Arrange: an active user and a disabled one (disabling bumped its version)
+        var adminUser = await SeedUserAsync(UserRole.Admin, "Adm1n!P1", ct: ct);
+        var active    = await SeedUserAsync(UserRole.Driver, "Driv3r!P1", ct: ct);
+        var disabled  = await SeedUserAsync(UserRole.Driver, "Driv3r!P2", disabled: true, ct: ct);
+
+        await using var factory = CreateFactory();
+        var client = await CreateAuthenticatedAdminClientAsync(factory, adminUser, "Adm1n!P1", ct);
+
+        // Act
+        var response = await client.GetAsync("/api/identity/users", ct);
+
+        // Assert
+        response.StatusCode.ShouldBe(HttpStatusCode.OK);
+        var body = await response.Content.ReadFromJsonAsync<PagedResponse<UserListItemDto>>(TestJson.Options, ct);
+        body.ShouldNotBeNull();
+        body.Data.Single(u => u.Id == active.Id.Value).Version.ShouldBe(active.Version);
+        body.Data.Single(u => u.Id == disabled.Id.Value).Version.ShouldBe(disabled.Version);
+        disabled.Version.ShouldBeGreaterThan(active.Version);
     }
 
     // ══════════════════════════════════════════════════════════════════════════
@@ -311,10 +326,6 @@ public sealed class ListUsersEndpointTests : IdentityIntegrationTestBase
     [Theory]
     [InlineData("username",       0, true)]
     [InlineData("username",       1, false)]
-    [InlineData("role",           0, true)]
-    [InlineData("role",           1, false)]
-    [InlineData("status",         0, true)]
-    [InlineData("status",         1, false)]
     [InlineData("createdAt",      0, true)]
     [InlineData("createdAt",      1, false)]
     [InlineData("lastModifiedAt", 0, true)]
@@ -327,7 +338,7 @@ public sealed class ListUsersEndpointTests : IdentityIntegrationTestBase
         var ct = TestContext.Current.CancellationToken;
 
         // Arrange: seed 3 users with deterministic, distinct timestamps and distinct
-        // username/role/status values so every sort produces an unambiguous order.
+        // username values so every sort produces an unambiguous order.
         var base2 = new DateTime(2026, 2, 1, 0, 0, 0, DateTimeKind.Utc);
 
         // User A: username "aaaa_user", Driver, Active, earliest timestamps
@@ -386,26 +397,6 @@ public sealed class ListUsersEndpointTests : IdentityIntegrationTestBase
                     $"username {(ascending ? "ASC" : "DESC")}: items must be in alphabetical order.");
                 break;
             }
-
-            case "role":
-                // Driver=1, Admin=3; the two Admins tie and are ordered by user name A–Z
-                // in both directions (tie-breaker).
-                body.Data.Select(u => u.Username).ShouldBe(
-                    ascending
-                        ? ["aaaa_user", "mmmm_user", "zzzz_user"]
-                        : ["mmmm_user", "zzzz_user", "aaaa_user"],
-                    $"role {(ascending ? "ASC" : "DESC")}: roles by enum value, ties by user name A–Z.");
-                break;
-
-            case "status":
-                // Active=1, Disabled=2 — one disabled (zzzz_user); the two active users tie
-                // and are ordered by user name A–Z in both directions (tie-breaker).
-                body.Data.Select(u => u.Username).ShouldBe(
-                    ascending
-                        ? ["aaaa_user", "mmmm_user", "zzzz_user"]
-                        : ["zzzz_user", "aaaa_user", "mmmm_user"],
-                    $"status {(ascending ? "ASC" : "DESC")}: statuses by enum value, ties by user name A–Z.");
-                break;
 
             case "createdat":
                 // base2+1m (userA) < base2+2m (adminUser) < base2+3m (userC)
@@ -480,6 +471,43 @@ public sealed class ListUsersEndpointTests : IdentityIntegrationTestBase
         body.Data[2].Id.ShouldBe(adminUser.Id.Value,
             "Unknown sort column must fall back to createdAt DESC: oldest user last.");
     }
+
+    // `role` and `status` are no longer sort columns and fall back to the
+    // default order (createdAt DESC), whatever the direction asked.
+    [Theory]
+    [InlineData("role", 0)]
+    [InlineData("role", 1)]
+    [InlineData("status", 0)]
+    [InlineData("status", 1)]
+    public async Task GetUsers_WithRoleOrStatusAsSortColumn_Returns200WithCreatedAtDescFallback(
+        string sortColumn,
+        int sortDirectionValue)
+    {
+        var ct = TestContext.Current.CancellationToken;
+
+        var base4 = new DateTime(2026, 4, 1, 0, 0, 0, DateTimeKind.Utc);
+        var adminUser = await SeedUserAsync(UserRole.Admin, "Adm1n!PE", username: "mmmm_user", createdAt: base4.AddMinutes(2), ct: ct);
+        var oldest = await SeedUserAsync(UserRole.Driver, "Driv3r!PF", username: "zzzz_user", createdAt: base4.AddMinutes(1), ct: ct);
+        var newest = await SeedUserAsync(UserRole.BackOffice, "B4ck!PA", username: "aaaa_user", disabled: true, createdAt: base4.AddMinutes(3), ct: ct);
+
+        await using var factory = CreateFactory();
+        var client = await CreateAuthenticatedAdminClientAsync(factory, adminUser, "Adm1n!PE", ct);
+
+        var response = await client.GetAsync(
+            $"/api/identity/users?sortColumn={sortColumn}&sortDirection={sortDirectionValue}&page=1&pageSize=20", ct);
+
+        response.StatusCode.ShouldBe(HttpStatusCode.OK);
+        var body = await response.Content.ReadFromJsonAsync<PagedResponse<UserListItemDto>>(TestJson.Options, ct);
+        body.ShouldNotBeNull();
+        body.Data.Select(u => u.Id).ShouldBe(
+            [newest.Id.Value, adminUser.Id.Value, oldest.Id.Value],
+            $"{sortColumn} is not a sort column: createdAt DESC whatever the direction.");
+    }
+
+    // The role and status filters and the projected values still work on the
+    // name-based columns; proved by GetUsers_WithRoleFilterDriver_Returns200WithOnlyDrivers,
+    // GetUsers_WithStatusFilterDisabled_Returns200WithOnlyDisabledUsers and
+    // GetUsers_WithRoleAndStatusAndUsernameContainsFilters_Returns200WithAndIntersection.
 
     // ══════════════════════════════════════════════════════════════════════════
     // Test 8 — Paging: TotalCount reflects the filtered total, not the page count

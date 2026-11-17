@@ -18,11 +18,11 @@ internal sealed class UserConfiguration : IEntityTypeConfiguration<User>
         {
             t.HasCheckConstraint(
                 "chk_users_role",
-                "role IN (1, 2, 3)");
+                "role IN ('Driver', 'BackOffice', 'Admin')");
 
             t.HasCheckConstraint(
                 "chk_users_status",
-                "status IN (1, 2)");
+                "status IN ('Active', 'Disabled')");
         });
 
         // Primary key
@@ -51,16 +51,18 @@ internal sealed class UserConfiguration : IEntityTypeConfiguration<User>
             .HasColumnType("text")
             .IsRequired();
 
-        // Role — stored as int
+        // Role — stored by member name
         builder.Property(u => u.Role)
+            .HasConversion<string>()
             .HasColumnName("role")
-            .HasColumnType("integer")
+            .HasColumnType("text")
             .IsRequired();
 
-        // Status — stored as int
+        // Status — stored by member name
         builder.Property(u => u.Status)
+            .HasConversion<string>()
             .HasColumnName("status")
-            .HasColumnType("integer")
+            .HasColumnType("text")
             .IsRequired();
 
         // Audit timestamps — timestamptz

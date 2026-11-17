@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
+using Npgsql;
 using Priamus.Trips.Identity.Domain.Users;
 using Priamus.Trips.Identity.Domain.Users.ValueObjects;
 using Priamus.Trips.Identity.IntegrationTests.Infrastructure;
@@ -111,6 +112,63 @@ public sealed class UserPersistenceTests : IdentityIntegrationTestBase
             reloaded.CreatedAt.ShouldBe(user.CreatedAt, TimeSpan.FromSeconds(1));
             reloaded.LastModifiedAt.ShouldBe(user.LastModifiedAt, TimeSpan.FromSeconds(1));
         }
+    }
+
+    // ── Enums stored by name ──────────────────────────────────────────────────
+
+    [Theory]
+    [InlineData(UserRole.Admin, "Admin")]
+    [InlineData(UserRole.BackOffice, "BackOffice")]
+    [InlineData(UserRole.Driver, "Driver")]
+    public async Task User_RoleAndStatus_AreStoredAsMemberNames(UserRole role, string expectedRole)
+    {
+        // The raw columns hold the member names, not the enum's integer values.
+        var ct = TestContext.Current.CancellationToken;
+
+        var userId = UserId.New();
+        var user = TestDataBuilders.AUser().WithId(userId).WithRole(role).Build();
+        user.Disable(new SystemClock(), FakeCurrentUser.ActorId);
+
+        using (var scope = CreateScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<IdentityDbContext>();
+            db.Users.Add(user);
+            await db.SaveChangesAsync(ct);
+        }
+
+        await using var conn = new NpgsqlConnection(ConnectionString);
+        await conn.OpenAsync(ct);
+        await using var cmd = conn.CreateCommand();
+        cmd.CommandText = "SELECT role, status FROM identity.users WHERE id = @id";
+        cmd.Parameters.AddWithValue("id", userId.Value);
+        await using var reader = await cmd.ExecuteReaderAsync(ct);
+        (await reader.ReadAsync(ct)).ShouldBeTrue();
+        reader.GetString(0).ShouldBe(expectedRole);
+        reader.GetString(1).ShouldBe("Disabled");
+    }
+
+    [Theory]
+    [InlineData("role", "1")]
+    [InlineData("role", "'Superuser'")]
+    [InlineData("status", "1")]
+    [InlineData("status", "'Banned'")]
+    public async Task Users_RoleOrStatusOutsideTheMemberNames_IsRejectedByTheCheckConstraint(string column, string value)
+    {
+        // The check constraints are written on the member names.
+        var ct = TestContext.Current.CancellationToken;
+
+        await using var conn = new NpgsqlConnection(ConnectionString);
+        await conn.OpenAsync(ct);
+        await using var cmd = conn.CreateCommand();
+        var role = column == "role" ? value : "'Driver'";
+        var status = column == "status" ? value : "'Active'";
+        cmd.CommandText =
+            "INSERT INTO identity.users (id, username, password_hash, role, status, created_at, created_by, " +
+            "last_modified_at, last_modified_by) VALUES " +
+            $"(gen_random_uuid(), 'badenum', 'x', {role}, {status}, now(), gen_random_uuid(), now(), gen_random_uuid())";
+
+        var ex = await Should.ThrowAsync<PostgresException>(() => cmd.ExecuteNonQueryAsync(ct));
+        ex.SqlState.ShouldBe(PostgresErrorCodes.CheckViolation);
     }
 
     // ── Version round-trip ────────────────────────────────────────────────────

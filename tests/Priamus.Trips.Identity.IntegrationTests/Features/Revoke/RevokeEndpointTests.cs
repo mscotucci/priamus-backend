@@ -80,24 +80,6 @@ public sealed class RevokeEndpointTests : IdentityIntegrationTestBase
     }
 
     /// <summary>
-    /// Calls <c>POST /api/identity/auth/login</c> with the given credentials and returns the
-    /// <see cref="LoginResponse"/>. Asserts that the response is 200 OK.
-    /// </summary>
-    private static async Task<LoginResponse> LoginAsync(
-        HttpClient client,
-        string username,
-        string password,
-        CancellationToken ct)
-    {
-        var loginRequest = new LoginRequest(username, password);
-        var loginResponse = await client.PostAsJsonAsync("/api/identity/auth/login", loginRequest, ct);
-        loginResponse.StatusCode.ShouldBe(HttpStatusCode.OK);
-        var body = await loginResponse.Content.ReadFromJsonAsync<LoginResponse>(ct);
-        body.ShouldNotBeNull();
-        return body;
-    }
-
-    /// <summary>
     /// Seeds a raw refresh token for <paramref name="userId"/> directly in the DB
     /// and returns the raw token string that can be submitted to <c>/api/identity/auth/revoke</c>.
     /// </summary>
@@ -210,6 +192,18 @@ public sealed class RevokeEndpointTests : IdentityIntegrationTestBase
             payloadDoc.RootElement.TryGetProperty("tokenId", out var tokenIdElement)
                 .ShouldBeTrue("Audit payload must contain the 'tokenId' field.");
             tokenIdElement.GetString().ShouldBe(seededTokenId!.Value.Value.ToString());
+        }
+
+        // The opened and closed session left one row at login and one at revocation, nothing else
+        await using (var scope = CreateAsyncScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<IdentityDbContext>();
+            var eventTypes = await db.AuditLog.AsNoTracking()
+                .Where(a => a.SubjectId == user.Id.Value && a.EventType != AuditEventTypes.UserCreated)
+                .OrderBy(a => a.OccurredAt)
+                .Select(a => a.EventType)
+                .ToListAsync(ct);
+            eventTypes.ShouldBe([AuditEventTypes.UserLoggedIn, AuditEventTypes.TokenRevokedByOwner]);
         }
     }
 

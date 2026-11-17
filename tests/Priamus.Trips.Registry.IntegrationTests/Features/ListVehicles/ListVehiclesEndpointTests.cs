@@ -185,10 +185,6 @@ public sealed class ListVehiclesEndpointTests : RegistryIntegrationTestBase
     [InlineData("licensePlate", "Descending", "CC333CC,BB222BB,AA111AA")]
     [InlineData("description", "Ascending", "BB222BB,CC333CC,AA111AA")]
     [InlineData("description", "Descending", "AA111AA,CC333CC,BB222BB")]
-    [InlineData("type", "Ascending", "CC333CC,AA111AA,BB222BB")]
-    [InlineData("type", "Descending", "BB222BB,AA111AA,CC333CC")]
-    [InlineData("status", "Ascending", "AA111AA,CC333CC,BB222BB")]
-    [InlineData("status", "Descending", "BB222BB,AA111AA,CC333CC")]
     [InlineData("lastModifiedAt", "Ascending", "BB222BB,CC333CC,AA111AA")]
     [InlineData("lastModifiedAt", "Descending", "AA111AA,CC333CC,BB222BB")]
     public async Task EverySortColumn_SortsInBothDirectionsWithThePlateBreakingTies(string column, string direction, string expected)
@@ -219,8 +215,11 @@ public sealed class ListVehiclesEndpointTests : RegistryIntegrationTestBase
     [Theory]
     [InlineData("requiresTrailer")]
     [InlineData("unknown")]
+    [InlineData("type")]
+    [InlineData("status")]
     public async Task ColumnOutsideTheWhitelist_FallsBackToPlateAscendingEvenWhenDescendingIsAsked(string column)
     {
+        // Type and status are no longer sort columns, they fall back like any unknown one.
         // Arrange
         await SeedSortSetAsync();
 

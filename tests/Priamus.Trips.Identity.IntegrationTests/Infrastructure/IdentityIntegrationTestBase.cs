@@ -1,9 +1,20 @@
+using System.Net;
+using System.Net.Http.Headers;
+using System.Net.Http.Json;
+using System.Text.Json;
+using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Npgsql;
+using Priamus.Trips.Identity.Domain.Users;
+using Priamus.Trips.Identity.Domain.Users.ValueObjects;
+using Priamus.Trips.Identity.Features.Login;
+using Priamus.Trips.Identity.IntegrationTests.TestData;
 using Priamus.Trips.Identity.Persistence;
 using Priamus.Trips.Identity.Persistence.DependencyInjection;
 using Priamus.Trips.SharedKernel.Security;
+using Priamus.Trips.SharedKernel.Time;
+using Shouldly;
 using Xunit;
 
 namespace Priamus.Trips.Identity.IntegrationTests.Infrastructure;
@@ -90,5 +101,75 @@ public abstract class IdentityIntegrationTestBase : IAsyncLifetime
         // The Postgres 16 image used by PostgresFixture supports this option.
         cmd.CommandText = $"DROP DATABASE \"{_databaseName}\" WITH (FORCE);";
         await cmd.ExecuteNonQueryAsync();
+    }
+
+    /// <summary>
+    /// Calls <c>POST /api/identity/auth/login</c> and returns the <see cref="LoginResponse"/>.
+    /// Asserts 200 OK so that test failures are surfaced clearly.
+    /// </summary>
+    protected static async Task<LoginResponse> LoginAsync(
+        HttpClient client,
+        string username,
+        string password,
+        CancellationToken ct)
+    {
+        var resp = await client.PostAsJsonAsync(
+            "/api/identity/auth/login", new LoginRequest(username, password), ct);
+        resp.StatusCode.ShouldBe(HttpStatusCode.OK,
+            $"Login must succeed for user '{username}' to obtain a JWT for this test.");
+        var body = await resp.Content.ReadFromJsonAsync<LoginResponse>(ct);
+        body.ShouldNotBeNull();
+        return body;
+    }
+
+    protected static async Task<HttpClient> AdminClientAsync(
+        WebApplicationFactory<Program> factory, User admin, string password, CancellationToken ct)
+    {
+        var client = factory.CreateClient();
+        var loginBody = await LoginAsync(client, admin.Username.Value, password, ct);
+        client.DefaultRequestHeaders.Authorization =
+            new AuthenticationHeaderValue("Bearer", loginBody.AccessToken);
+        return client;
+    }
+
+    /// <summary>
+    /// Changes the stored user twice (enable then disable, or the reverse) so its status is the
+    /// same but its version has moved on by two.
+    /// </summary>
+    protected async Task BumpVersionKeepingStatusAsync(UserId id, CancellationToken ct)
+    {
+        await using var scope = CreateAsyncScope();
+        var db = scope.ServiceProvider.GetRequiredService<IdentityDbContext>();
+        var user = await db.Users.FirstAsync(u => u.Id == id, ct);
+        if (user.Status == UserStatus.Active)
+        {
+            user.Disable(new SystemClock(), TestDataBuilders.ActorId);
+            user.Enable(new SystemClock(), TestDataBuilders.ActorId);
+        }
+        else
+        {
+            user.Enable(new SystemClock(), TestDataBuilders.ActorId);
+            user.Disable(new SystemClock(), TestDataBuilders.ActorId);
+        }
+
+        user.ClearDomainEvents();
+        await db.SaveChangesAsync(ct);
+    }
+
+    protected async Task<(User Stored, int AuditRows)> LoadAsync(
+        UserId id, string eventType, CancellationToken ct)
+    {
+        await using var scope = CreateAsyncScope();
+        var db = scope.ServiceProvider.GetRequiredService<IdentityDbContext>();
+        var stored = await db.Users.AsNoTracking().FirstAsync(u => u.Id == id, ct);
+        var audit = await db.AuditLog.AsNoTracking()
+            .CountAsync(a => a.SubjectId == id.Value && a.EventType == eventType, ct);
+        return (stored, audit);
+    }
+
+    protected static async Task<string> ErrorCodeAsync(HttpResponseMessage response, CancellationToken ct)
+    {
+        using var doc = JsonDocument.Parse(await response.Content.ReadAsStringAsync(ct));
+        return doc.RootElement.GetProperty("errorCode").GetString()!;
     }
 }

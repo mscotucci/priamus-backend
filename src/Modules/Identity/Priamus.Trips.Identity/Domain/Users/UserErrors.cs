@@ -67,6 +67,14 @@ public static class UserErrors
         "Identity.User.CannotDisableSelf",
         "Cannot disable your own account.");
 
+    /// <summary>
+    /// The version sent with a write does not match the stored one: someone else changed
+    /// the user in the meantime.
+    /// </summary>
+    public static readonly Error ConcurrentUpdate = Error.Conflict(
+        "Identity.User.ConcurrentUpdate",
+        "The user was modified by another user in the meantime.");
+
     // ─── Authentication errors ────────────────────────────────────────────
 
     /// <summary>

@@ -59,6 +59,8 @@ public sealed class AuditInterceptorTests : IdentityIntegrationTestBase
 
             using var doc = JsonDocument.Parse(entry.Payload);
             doc.RootElement.GetProperty("userId").GetProperty("value").GetGuid().ShouldBe(userId.Value);
+            // The payload still carries the role as its integer value, although the column now
+            // stores the member name.
             doc.RootElement.GetProperty("role").GetInt32().ShouldBe((int)UserRole.Driver);
         }
     }
@@ -209,209 +211,57 @@ public sealed class AuditInterceptorTests : IdentityIntegrationTestBase
         }
     }
 
-    // ── RefreshTokenIssued ───────────────────────────────────────────────────
+    // ── Refresh tokens: no audit rows ────────────────────────────────────────
 
+    /// <summary>
+    /// Issuing, rotating and revoking a refresh token (and a repeated revoke) write
+    /// no audit row at all; the handlers' own rows are the only trace of a session.
+    /// </summary>
     [Fact]
-    public async Task RefreshTokenIssued_ProducesAuditRowWithCorrectShape()
+    public async Task IssueRotateRevoke_WriteNoAuditRows()
     {
         var ct = TestContext.Current.CancellationToken;
 
         // Arrange
         var userId = UserId.New();
-        var tokenId = RefreshTokenId.New();
-        var token = RefreshToken.Issue(tokenId, userId,
-            TestDataBuilders.ValidRefreshTokenHash('i'), new SystemClock(), TimeSpan.FromDays(7));
+        var firstId = RefreshTokenId.New();
+        var secondId = RefreshTokenId.New();
 
-        // Act
-        using (var actScope = CreateScope())
-        {
-            var db = actScope.ServiceProvider.GetRequiredService<IdentityDbContext>();
-            db.RefreshTokens.Add(token);
-            await db.SaveChangesAsync(ct);
-        }
-
-        // Assert
-        using (var assertScope = CreateScope())
-        {
-            var db = assertScope.ServiceProvider.GetRequiredService<IdentityDbContext>();
-
-            var entry = await db.AuditLog.AsNoTracking()
-                .SingleOrDefaultAsync(e => e.SubjectId == userId.Value
-                                        && e.EventType == AuditEventTypes.RefreshTokenIssued, ct);
-
-            entry.ShouldNotBeNull();
-            entry.EventType.ShouldBe(AuditEventTypes.RefreshTokenIssued);
-            entry.SubjectId.ShouldBe(userId.Value);
-            entry.ActorId.ShouldBe(FakeCurrentUser.ActorId.Value);
-
-            using var doc = JsonDocument.Parse(entry.Payload);
-            doc.RootElement.GetProperty("userId").GetProperty("value").GetGuid().ShouldBe(userId.Value);
-            doc.RootElement.GetProperty("refreshTokenId").GetProperty("value").GetGuid().ShouldBe(tokenId.Value);
-        }
-    }
-
-    // ── RefreshTokenRotated ──────────────────────────────────────────────────
-
-    [Fact]
-    public async Task RefreshTokenRotated_ProducesAuditRowWithCorrectShape()
-    {
-        var ct = TestContext.Current.CancellationToken;
-
-        // Arrange — issue original token
-        var userId = UserId.New();
-        var oldTokenId = RefreshTokenId.New();
-        var originalToken = RefreshToken.Issue(oldTokenId, userId,
-            TestDataBuilders.ValidRefreshTokenHash('j'), new SystemClock(), TimeSpan.FromDays(7));
-
+        // Act — issue
         using (var s1 = CreateScope())
         {
             var db = s1.ServiceProvider.GetRequiredService<IdentityDbContext>();
-            db.RefreshTokens.Add(originalToken);
+            db.RefreshTokens.Add(RefreshToken.Issue(firstId, userId,
+                TestDataBuilders.ValidRefreshTokenHash('i'), new SystemClock(), TimeSpan.FromDays(7)));
             await db.SaveChangesAsync(ct);
         }
 
         // Act — rotate
-        RefreshTokenId newTokenId;
-        using (var actScope = CreateScope())
-        {
-            var db = actScope.ServiceProvider.GetRequiredService<IdentityDbContext>();
-            var loaded = await db.RefreshTokens.FirstAsync(rt => rt.Id == oldTokenId, ct);
-            var replacement = loaded.Rotate(RefreshTokenId.New(), TestDataBuilders.ValidRefreshTokenHash('k'),
-                new SystemClock(), TimeSpan.FromDays(7));
-            newTokenId = replacement.Id;
-            db.RefreshTokens.Add(replacement);
-            await db.SaveChangesAsync(ct);
-        }
-
-        // Assert
-        using (var assertScope = CreateScope())
-        {
-            var db = assertScope.ServiceProvider.GetRequiredService<IdentityDbContext>();
-
-            var entry = await db.AuditLog.AsNoTracking()
-                .SingleOrDefaultAsync(e => e.SubjectId == userId.Value
-                                        && e.EventType == AuditEventTypes.RefreshTokenRotated, ct);
-
-            entry.ShouldNotBeNull();
-            entry.EventType.ShouldBe(AuditEventTypes.RefreshTokenRotated);
-            entry.SubjectId.ShouldBe(userId.Value);
-            entry.ActorId.ShouldBe(FakeCurrentUser.ActorId.Value);
-
-            using var doc = JsonDocument.Parse(entry.Payload);
-            doc.RootElement.GetProperty("userId").GetProperty("value").GetGuid().ShouldBe(userId.Value);
-            doc.RootElement.GetProperty("oldRefreshTokenId").GetProperty("value").GetGuid().ShouldBe(oldTokenId.Value);
-            doc.RootElement.GetProperty("newRefreshTokenId").GetProperty("value").GetGuid().ShouldBe(newTokenId.Value);
-        }
-    }
-
-    // ── RefreshTokenRevoked ──────────────────────────────────────────────────
-
-    [Fact]
-    public async Task RefreshTokenRevoked_ProducesAuditRowWithCorrectShape()
-    {
-        var ct = TestContext.Current.CancellationToken;
-
-        // Arrange
-        var userId = UserId.New();
-        var tokenId = RefreshTokenId.New();
-        var token = RefreshToken.Issue(tokenId, userId,
-            TestDataBuilders.ValidRefreshTokenHash('l'), new SystemClock(), TimeSpan.FromDays(7));
-
-        using (var s1 = CreateScope())
-        {
-            var db = s1.ServiceProvider.GetRequiredService<IdentityDbContext>();
-            db.RefreshTokens.Add(token);
-            await db.SaveChangesAsync(ct);
-        }
-
-        // Act — revoke
-        using (var actScope = CreateScope())
-        {
-            var db = actScope.ServiceProvider.GetRequiredService<IdentityDbContext>();
-            var loaded = await db.RefreshTokens.FirstAsync(rt => rt.Id == tokenId, ct);
-            loaded.Revoke(new SystemClock());
-            await db.SaveChangesAsync(ct);
-        }
-
-        // Assert
-        using (var assertScope = CreateScope())
-        {
-            var db = assertScope.ServiceProvider.GetRequiredService<IdentityDbContext>();
-
-            var entry = await db.AuditLog.AsNoTracking()
-                .SingleOrDefaultAsync(e => e.SubjectId == userId.Value
-                                        && e.EventType == AuditEventTypes.RefreshTokenRevoked, ct);
-
-            entry.ShouldNotBeNull();
-            entry.EventType.ShouldBe(AuditEventTypes.RefreshTokenRevoked);
-            entry.SubjectId.ShouldBe(userId.Value);
-            entry.ActorId.ShouldBe(FakeCurrentUser.ActorId.Value);
-
-            using var doc = JsonDocument.Parse(entry.Payload);
-            doc.RootElement.GetProperty("userId").GetProperty("value").GetGuid().ShouldBe(userId.Value);
-            doc.RootElement.GetProperty("refreshTokenId").GetProperty("value").GetGuid().ShouldBe(tokenId.Value);
-        }
-    }
-
-    // ── Idempotency: no audit row on no-op ───────────────────────────────────
-
-    /// <summary>
-    /// Regression guard: Revoke on an already-revoked (but not rotated) token must
-    /// NOT produce a new audit row. This is the correctly-implemented idempotency
-    /// path in RefreshToken.Revoke.
-    /// </summary>
-    [Fact]
-    public async Task Revoke_OnAlreadyRevokedToken_ProducesZeroNewAuditRows()
-    {
-        var ct = TestContext.Current.CancellationToken;
-
-        // Arrange — issue and revoke the token
-        var userId = UserId.New();
-        var tokenId = RefreshTokenId.New();
-        var token = RefreshToken.Issue(tokenId, userId,
-            TestDataBuilders.ValidRefreshTokenHash('m'), new SystemClock(), TimeSpan.FromDays(7));
-
-        using (var s1 = CreateScope())
-        {
-            var db = s1.ServiceProvider.GetRequiredService<IdentityDbContext>();
-            db.RefreshTokens.Add(token);
-            await db.SaveChangesAsync(ct);
-        }
-
         using (var s2 = CreateScope())
         {
             var db = s2.ServiceProvider.GetRequiredService<IdentityDbContext>();
-            var loaded = await db.RefreshTokens.FirstAsync(rt => rt.Id == tokenId, ct);
+            var loaded = await db.RefreshTokens.FirstAsync(rt => rt.Id == firstId, ct);
+            db.RefreshTokens.Add(loaded.Rotate(secondId, TestDataBuilders.ValidRefreshTokenHash('j'),
+                new SystemClock(), TimeSpan.FromDays(7)));
+            await db.SaveChangesAsync(ct);
+        }
+
+        // Act — revoke, then revoke again (idempotent)
+        for (var i = 0; i < 2; i++)
+        {
+            using var s3 = CreateScope();
+            var db = s3.ServiceProvider.GetRequiredService<IdentityDbContext>();
+            var loaded = await db.RefreshTokens.FirstAsync(rt => rt.Id == secondId, ct);
             loaded.Revoke(new SystemClock());
             await db.SaveChangesAsync(ct);
         }
 
-        // Record count before second revoke attempt
-        int auditCountAfterFirstRevoke;
-        using (var check = CreateScope())
-        {
-            var db = check.ServiceProvider.GetRequiredService<IdentityDbContext>();
-            auditCountAfterFirstRevoke = await db.AuditLog.AsNoTracking()
-                .CountAsync(e => e.SubjectId == userId.Value && e.EventType == AuditEventTypes.RefreshTokenRevoked, ct);
-        }
-        auditCountAfterFirstRevoke.ShouldBe(1);
-
-        // Act — attempt second revoke (idempotent: no domain event raised, no audit row)
-        using (var actScope = CreateScope())
-        {
-            var db = actScope.ServiceProvider.GetRequiredService<IdentityDbContext>();
-            var loaded = await db.RefreshTokens.FirstAsync(rt => rt.Id == tokenId, ct);
-            loaded.Revoke(new SystemClock()); // no-op: RevokedAt already set, early return
-            await db.SaveChangesAsync(ct);
-        }
-
-        // Assert — still only 1 revoke audit row
+        // Assert — no audit row for this user, and both tokens are really persisted
         using (var assertScope = CreateScope())
         {
             var db = assertScope.ServiceProvider.GetRequiredService<IdentityDbContext>();
-            var count = await db.AuditLog.AsNoTracking()
-                .CountAsync(e => e.SubjectId == userId.Value && e.EventType == AuditEventTypes.RefreshTokenRevoked, ct);
-            count.ShouldBe(1);
+            (await db.AuditLog.AsNoTracking().CountAsync(e => e.SubjectId == userId.Value, ct)).ShouldBe(0);
+            (await db.RefreshTokens.AsNoTracking().CountAsync(rt => rt.UserId == userId, ct)).ShouldBe(2);
         }
     }
 

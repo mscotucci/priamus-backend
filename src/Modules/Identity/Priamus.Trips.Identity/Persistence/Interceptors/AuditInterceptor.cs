@@ -1,7 +1,6 @@
 using System.Diagnostics;
 using System.Text.Json;
 using Microsoft.EntityFrameworkCore.Diagnostics;
-using Priamus.Trips.Identity.Domain.RefreshTokens.Events;
 using Priamus.Trips.Identity.Domain.Users.Events;
 using Priamus.Trips.SharedKernel.Domain;
 using Priamus.Trips.SharedKernel.Security;
@@ -112,8 +111,7 @@ public sealed class AuditInterceptor : ISaveChangesInterceptor
 
     /// <summary>
     /// Maps a domain event to an <see cref="AuditLogEntry"/> using a switch expression.
-    /// The <c>subject_id</c> is always the affected <c>UserId</c> — for refresh-token
-    /// events, the <c>UserId</c> is carried directly on the event.
+    /// The <c>subject_id</c> is always the affected <c>UserId</c>, carried on the event.
     /// </summary>
     private static AuditLogEntry MapToAuditLogEntry(IDomainEvent domainEvent, Guid? actorId)
     {
@@ -134,18 +132,6 @@ public sealed class AuditInterceptor : ISaveChangesInterceptor
             UserEnabled e => Create(
                 e.EventId, e.OccurredAt, actorId, e.UserId.Value,
                 AuditEventTypes.UserEnabled, e),
-
-            RefreshTokenIssued e => Create(
-                e.EventId, e.OccurredAt, actorId, e.UserId.Value,
-                AuditEventTypes.RefreshTokenIssued, e),
-
-            RefreshTokenRotated e => Create(
-                e.EventId, e.OccurredAt, actorId, e.UserId.Value,
-                AuditEventTypes.RefreshTokenRotated, e),
-
-            RefreshTokenRevoked e => Create(
-                e.EventId, e.OccurredAt, actorId, e.UserId.Value,
-                AuditEventTypes.RefreshTokenRevoked, e),
 
             _ => throw new UnreachableException(
                 $"Unknown domain event type '{domainEvent.GetType().FullName}' reached the AuditInterceptor. " +

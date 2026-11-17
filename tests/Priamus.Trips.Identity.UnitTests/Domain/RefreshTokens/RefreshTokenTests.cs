@@ -1,5 +1,4 @@
 using Priamus.Trips.Identity.Domain.RefreshTokens;
-using Priamus.Trips.Identity.Domain.RefreshTokens.Events;
 using Priamus.Trips.Identity.Domain.RefreshTokens.ValueObjects;
 using Priamus.Trips.Identity.UnitTests.TestData;
 using Priamus.Trips.SharedKernel.Domain;
@@ -39,23 +38,18 @@ public sealed class RefreshTokenTests
     }
 
     [Fact]
-    public void Issue_WithValidArguments_RaisesRefreshTokenIssuedEvent()
+    public void Issue_WithValidArguments_RaisesNoDomainEvent()
     {
+        // Issuing a token no longer writes an audit row, so it raises no event.
         // Arrange
-        var id = RefreshTokenId.New();
-        var userId = UserId.New();
         var clock = TestDataBuilders.DefaultClock();
 
         // Act
-        var token = RefreshToken.Issue(id, userId, TestDataBuilders.ValidRefreshTokenHash(), clock, DefaultLifetime);
+        var token = RefreshToken.Issue(
+            RefreshTokenId.New(), UserId.New(), TestDataBuilders.ValidRefreshTokenHash(), clock, DefaultLifetime);
 
         // Assert
-        token.DomainEvents.Count.ShouldBe(1);
-        var evt = token.DomainEvents[0].ShouldBeOfType<RefreshTokenIssued>();
-        evt.RefreshTokenId.ShouldBe(id);
-        evt.UserId.ShouldBe(userId);
-        evt.OccurredAt.ShouldBe(clock.UtcNow);
-        evt.ExpiresAt.ShouldBe(clock.UtcNow + DefaultLifetime);
+        token.DomainEvents.ShouldBeEmpty();
     }
 
     [Fact]
@@ -214,46 +208,21 @@ public sealed class RefreshTokenTests
     }
 
     [Fact]
-    public void Rotate_OnActiveToken_RaisesRefreshTokenRotatedEventOnOldToken()
+    public void Rotate_OnActiveToken_RaisesNoDomainEventOnEitherToken()
     {
+        // A renewal no longer writes audit rows, so neither token raises an event.
         // Arrange
         var clock = TestDataBuilders.DefaultClock();
-        var userId = UserId.New();
-        var oldToken = TestDataBuilders.ARefreshToken().WithUserId(userId).WithClock(clock).Build();
+        var oldToken = TestDataBuilders.ARefreshToken().WithClock(clock).Build();
         oldToken.ClearDomainEvents();
-        var newId = RefreshTokenId.New();
 
         // Act
-        oldToken.Rotate(newId, TestDataBuilders.ValidRefreshTokenHash('c'), clock, DefaultLifetime);
+        var newToken = oldToken.Rotate(
+            RefreshTokenId.New(), TestDataBuilders.ValidRefreshTokenHash('c'), clock, DefaultLifetime);
 
         // Assert
-        var rotatedEvent = oldToken.DomainEvents
-            .OfType<RefreshTokenRotated>()
-            .ShouldHaveSingleItem();
-        rotatedEvent.OldRefreshTokenId.ShouldBe(oldToken.Id);
-        rotatedEvent.NewRefreshTokenId.ShouldBe(newId);
-        rotatedEvent.UserId.ShouldBe(userId);
-        rotatedEvent.OccurredAt.ShouldBe(clock.UtcNow);
-    }
-
-    [Fact]
-    public void Rotate_OnActiveToken_NewTokenHasRefreshTokenIssuedEvent()
-    {
-        // Arrange
-        var clock = TestDataBuilders.DefaultClock();
-        var userId = UserId.New();
-        var oldToken = TestDataBuilders.ARefreshToken().WithUserId(userId).WithClock(clock).Build();
-        var newId = RefreshTokenId.New();
-
-        // Act
-        var newToken = oldToken.Rotate(newId, TestDataBuilders.ValidRefreshTokenHash('c'), clock, DefaultLifetime);
-
-        // Assert
-        var issuedEvent = newToken.DomainEvents
-            .OfType<RefreshTokenIssued>()
-            .ShouldHaveSingleItem();
-        issuedEvent.RefreshTokenId.ShouldBe(newId);
-        issuedEvent.UserId.ShouldBe(userId);
+        oldToken.DomainEvents.ShouldBeEmpty();
+        newToken.DomainEvents.ShouldBeEmpty();
     }
 
     [Fact]
@@ -415,28 +384,20 @@ public sealed class RefreshTokenTests
     }
 
     [Fact]
-    public void Revoke_OnActiveToken_RaisesRefreshTokenRevokedEvent()
+    public void Revoke_OnActiveToken_RaisesNoDomainEvent()
     {
+        // A revocation is audited by the handler's own row, not by a domain event.
         // Arrange
         var clock = TestDataBuilders.DefaultClock();
-        var tokenId = RefreshTokenId.New();
-        var userId = UserId.New();
-        var token = TestDataBuilders.ARefreshToken()
-            .WithId(tokenId)
-            .WithUserId(userId)
-            .WithClock(clock)
-            .Build();
+        var token = TestDataBuilders.ARefreshToken().WithClock(clock).Build();
         token.ClearDomainEvents();
 
         // Act
         token.Revoke(clock);
 
         // Assert
-        token.DomainEvents.Count.ShouldBe(1);
-        var evt = token.DomainEvents[0].ShouldBeOfType<RefreshTokenRevoked>();
-        evt.RefreshTokenId.ShouldBe(tokenId);
-        evt.UserId.ShouldBe(userId);
-        evt.OccurredAt.ShouldBe(clock.UtcNow);
+        token.DomainEvents.ShouldBeEmpty();
+        token.RevokedAt.ShouldNotBeNull();
     }
 
     [Fact]

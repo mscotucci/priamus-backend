@@ -13,9 +13,15 @@ namespace Priamus.Trips.Identity.Features.EnableUser;
 /// </summary>
 /// <remarks>
 /// <para>
+/// The version the client read becomes the original value of the concurrency token, so a user
+/// changed in the meantime fails the save with <see cref="DbUpdateConcurrencyException"/>, answered
+/// as <see cref="UserErrors.ConcurrentUpdate"/>. A stale version is refused even when the user
+/// already has the requested status.
+/// </para>
+/// <para>
 /// The domain method <see cref="User.Enable"/> is idempotent: if the target user is
-/// already active, no domain event is raised and no audit row is written. The handler
-/// still persists (no-op <c>SaveChangesAsync</c>) and returns success (204).
+/// already active and the version matches, no domain event is raised and no audit row is written.
+/// The handler still persists (no-op <c>SaveChangesAsync</c>) and returns success (204).
 /// </para>
 /// <para>
 /// There is intentionally no <c>CannotEnableSelf</c> guard. A disabled admin cannot
@@ -47,8 +53,12 @@ internal sealed class EnableUserHandler
     /// Enables the user identified by <paramref name="id"/>.
     /// </summary>
     /// <param name="id">The raw <see cref="Guid"/> from the route parameter.</param>
+    /// <param name="request">Carries the version the client read.</param>
     /// <param name="cancellationToken">Propagated to all async operations.</param>
-    public async Task<Result> HandleAsync(Guid id, CancellationToken cancellationToken)
+    public async Task<Result> HandleAsync(
+        Guid id,
+        EnableUserRequest request,
+        CancellationToken cancellationToken)
     {
         var actorId = _currentUser.UserId;
 
@@ -64,8 +74,17 @@ internal sealed class EnableUserHandler
         // ── 2. Enable (idempotent domain method) ──────────────────────────────
         user.Enable(_clock, actorId);
 
-        // ── 3. Persist ────────────────────────────────────────────────────────
-        await _db.SaveChangesAsync(cancellationToken);
+        // ── 3. Version check and persist ───────────────────────────────────────
+        _db.Entry(user).Property(u => u.Version).OriginalValue = request.Version!.Value;
+
+        try
+        {
+            await _db.SaveChangesAsync(cancellationToken);
+        }
+        catch (DbUpdateConcurrencyException)
+        {
+            return UserErrors.ConcurrentUpdate;
+        }
 
         _logger.LogInformation(
             "User {TargetUserId} enabled by actor {ActorId}",

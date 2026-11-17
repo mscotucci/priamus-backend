@@ -89,25 +89,6 @@ public sealed class DisableUserEndpointTests : IdentityIntegrationTestBase
         return (user, plainPassword);
     }
 
-    /// <summary>
-    /// Calls <c>POST /api/identity/auth/login</c> and returns the <see cref="LoginResponse"/>.
-    /// Asserts 200 OK so that test failures are surfaced clearly.
-    /// </summary>
-    private static async Task<LoginResponse> LoginAsync(
-        HttpClient client,
-        string username,
-        string password,
-        CancellationToken ct)
-    {
-        var resp = await client.PostAsJsonAsync(
-            "/api/identity/auth/login", new LoginRequest(username, password), ct);
-        resp.StatusCode.ShouldBe(HttpStatusCode.OK,
-            $"Login must succeed for user '{username}' to obtain a JWT for this test.");
-        var body = await resp.Content.ReadFromJsonAsync<LoginResponse>(ct);
-        body.ShouldNotBeNull();
-        return body;
-    }
-
     // ═══════════════════════════════════════════════════════════════════════════
     // Handler-level integration tests (real DB, no HTTP layer)
     // ═══════════════════════════════════════════════════════════════════════════
@@ -121,10 +102,12 @@ public sealed class DisableUserEndpointTests : IdentityIntegrationTestBase
 
         // Arrange: scope #1 — seed a distinct (non-actor) user
         var targetUserId = UserId.New();
+        int targetVersion;
         await using (var arrangeScope = CreateAsyncScope())
         {
             var db = arrangeScope.ServiceProvider.GetRequiredService<IdentityDbContext>();
             var user = TestDataBuilders.AUser().WithId(targetUserId).Build();
+            targetVersion = user.Version;
             db.Users.Add(user);
             await db.SaveChangesAsync(ct);
         }
@@ -139,7 +122,7 @@ public sealed class DisableUserEndpointTests : IdentityIntegrationTestBase
                 new FixedClockStub(FixedNow),
                 NullLogger<DisableUserHandler>.Instance);
 
-            var result = await handler.HandleAsync(targetUserId.Value, ct);
+            var result = await handler.HandleAsync(targetUserId.Value, new DisableUserRequest(targetVersion), ct);
 
             // Assert inside Act scope: Result is success
             result.IsSuccess.ShouldBeTrue(
@@ -193,7 +176,7 @@ public sealed class DisableUserEndpointTests : IdentityIntegrationTestBase
             NullLogger<DisableUserHandler>.Instance);
 
         // Act
-        var result = await handler.HandleAsync(unknownId, ct);
+        var result = await handler.HandleAsync(unknownId, new DisableUserRequest(1), ct);
 
         // Assert
         result.IsFailure.ShouldBeTrue(
@@ -213,12 +196,14 @@ public sealed class DisableUserEndpointTests : IdentityIntegrationTestBase
         // The seeding explicitly calls User.Disable then ClearDomainEvents before
         // SaveChangesAsync so that no audit row is written during setup.
         var targetUserId = UserId.New();
+        int targetVersion;
 
         await using (var arrangeScope = CreateAsyncScope())
         {
             var db = arrangeScope.ServiceProvider.GetRequiredService<IdentityDbContext>();
             var user = TestDataBuilders.AUser().WithId(targetUserId).Build();
             user.Disable(new SystemClock(), TestDataBuilders.ActorId);
+            targetVersion = user.Version;
             user.ClearDomainEvents(); // suppress audit row from seeding
             db.Users.Add(user);
             await db.SaveChangesAsync(ct);
@@ -246,7 +231,7 @@ public sealed class DisableUserEndpointTests : IdentityIntegrationTestBase
                 new FixedClockStub(FixedNow),
                 NullLogger<DisableUserHandler>.Instance);
 
-            actResult = await handler.HandleAsync(targetUserId.Value, ct);
+            actResult = await handler.HandleAsync(targetUserId.Value, new DisableUserRequest(targetVersion), ct);
         }
 
         // Assert: scope #3
@@ -273,6 +258,7 @@ public sealed class DisableUserEndpointTests : IdentityIntegrationTestBase
 
     // ── Endpoint Test 1: 204 happy path ──────────────────────────────────────
 
+    // With the current version the status changes, the version increases and one audit row is written.
     [Fact]
     public async Task PostDisable_WithAdminJwtAndExistingEnabledUser_Returns204AndPersistsDisabledStatus()
     {
@@ -292,8 +278,8 @@ public sealed class DisableUserEndpointTests : IdentityIntegrationTestBase
             new AuthenticationHeaderValue("Bearer", loginBody.AccessToken);
 
         // Act
-        var response = await client.PostAsync(
-            $"/api/identity/users/{targetUser.Id.Value:D}/disable", content: null, ct);
+        var response = await client.PostAsJsonAsync(
+            $"/api/identity/users/{targetUser.Id.Value:D}/disable", new DisableUserRequest(targetUser.Version), ct);
 
         // Assert — HTTP status
         response.StatusCode.ShouldBe(HttpStatusCode.NoContent,
@@ -309,6 +295,8 @@ public sealed class DisableUserEndpointTests : IdentityIntegrationTestBase
             persisted.ShouldNotBeNull();
             persisted.Status.ShouldBe(UserStatus.Disabled,
                 "User.Status must be Disabled after a successful disable.");
+            persisted.Version.ShouldBe(targetUser.Version + 1,
+                "A disable with the current version must increase the version.");
 
             // Assert — exactly one new audit row for UserDisabled
             var auditRows = await db.AuditLog.AsNoTracking()
@@ -332,7 +320,7 @@ public sealed class DisableUserEndpointTests : IdentityIntegrationTestBase
     // ── Endpoint Test 2: 204 idempotent — no new audit row ───────────────────
 
     [Fact]
-    public async Task PostDisable_WhenUserAlreadyDisabled_Returns204AndWritesNoNewAuditRow()
+    public async Task PostDisable_WhenUserAlreadyDisabledWithMatchingVersion_Returns204AndWritesNoNewAuditRowOrVersionBump()
     {
         var ct = TestContext.Current.CancellationToken;
 
@@ -361,8 +349,8 @@ public sealed class DisableUserEndpointTests : IdentityIntegrationTestBase
             new AuthenticationHeaderValue("Bearer", loginBody.AccessToken);
 
         // Act
-        var response = await client.PostAsync(
-            $"/api/identity/users/{targetUser.Id.Value:D}/disable", content: null, ct);
+        var response = await client.PostAsJsonAsync(
+            $"/api/identity/users/{targetUser.Id.Value:D}/disable", new DisableUserRequest(targetUser.Version), ct);
 
         // Assert — HTTP status
         response.StatusCode.ShouldBe(HttpStatusCode.NoContent,
@@ -375,6 +363,11 @@ public sealed class DisableUserEndpointTests : IdentityIntegrationTestBase
             var postCount = await db.AuditLog.AsNoTracking()
                 .CountAsync(a => a.SubjectId == targetUser.Id.Value
                               && a.EventType == AuditEventTypes.UserDisabled, ct);
+
+            var persisted = await db.Users.AsNoTracking()
+                .FirstAsync(u => u.Id == targetUser.Id, ct);
+            persisted.Version.ShouldBe(targetUser.Version,
+                "A matching-version no-op disable must not bump the version.");
 
             postCount.ShouldBe(0,
                 "No UserDisabled audit row must be written on an idempotent no-op disable. " +
@@ -402,8 +395,8 @@ public sealed class DisableUserEndpointTests : IdentityIntegrationTestBase
             new AuthenticationHeaderValue("Bearer", loginBody.AccessToken);
 
         // Act — disable with the admin's own id
-        var response = await client.PostAsync(
-            $"/api/identity/users/{adminUser.Id.Value:D}/disable", content: null, ct);
+        var response = await client.PostAsJsonAsync(
+            $"/api/identity/users/{adminUser.Id.Value:D}/disable", new DisableUserRequest(adminUser.Version), ct);
 
         // Assert — HTTP status
         response.StatusCode.ShouldBe(HttpStatusCode.Conflict,
@@ -438,8 +431,8 @@ public sealed class DisableUserEndpointTests : IdentityIntegrationTestBase
         var nonExistentId = Guid.NewGuid();
 
         // Act
-        var response = await client.PostAsync(
-            $"/api/identity/users/{nonExistentId:D}/disable", content: null, ct);
+        var response = await client.PostAsJsonAsync(
+            $"/api/identity/users/{nonExistentId:D}/disable", new DisableUserRequest(1), ct);
 
         // Assert
         response.StatusCode.ShouldBe(HttpStatusCode.NotFound,
@@ -529,5 +522,123 @@ public sealed class DisableUserEndpointTests : IdentityIntegrationTestBase
         // Assert
         response.StatusCode.ShouldBe(HttpStatusCode.Forbidden,
             "A BackOffice JWT must not satisfy the Admin policy.");
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // Version rules
+    // Create takes no version: these rules do not apply to it.
+    // ═══════════════════════════════════════════════════════════════════════════
+
+    [Fact]
+    public async Task PostDisable_WithTheSameVersionSentTwice_SecondCallIsRefusedAsStale()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var (admin, adminPassword) = await SeedUserAsync(UserRole.Admin, "Adm1n!Pass5", ct: ct);
+        var (target, _) = await SeedUserAsync(UserRole.Driver, "Driv3r!Pass5", ct: ct);
+        await using var factory = CreateFactory();
+        var client = await AdminClientAsync(factory, admin, adminPassword, ct);
+        var url = $"/api/identity/users/{target.Id.Value:D}/disable";
+
+        var first = await client.PostAsJsonAsync(url, new DisableUserRequest(target.Version), ct);
+        var second = await client.PostAsJsonAsync(url, new DisableUserRequest(target.Version), ct);
+
+        first.StatusCode.ShouldBe(HttpStatusCode.NoContent);
+        second.StatusCode.ShouldBe(HttpStatusCode.Conflict);
+        (await ErrorCodeAsync(second, ct)).ShouldBe(UserErrors.ConcurrentUpdate.Code);
+        var (stored, audit) = await LoadAsync(target.Id, AuditEventTypes.UserDisabled, ct);
+        stored.Version.ShouldBe(target.Version + 1, "Only the first call changes the user.");
+        audit.ShouldBe(1, "The refused second call must write no audit row.");
+    }
+
+    [Fact]
+    public async Task PostDisable_WithStaleVersionOnAUserAlreadyDisabled_Returns409AndChangesNothing()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var (admin, adminPassword) = await SeedUserAsync(UserRole.Admin, "Adm1n!Pass6", ct: ct);
+        var (target, _) = await SeedUserAsync(UserRole.Driver, "Driv3r!Pass6", disabled: true, ct: ct);
+        await BumpVersionKeepingStatusAsync(target.Id, ct);
+        await using var factory = CreateFactory();
+        var client = await AdminClientAsync(factory, admin, adminPassword, ct);
+
+        var response = await client.PostAsJsonAsync(
+            $"/api/identity/users/{target.Id.Value:D}/disable", new DisableUserRequest(target.Version), ct);
+
+        response.StatusCode.ShouldBe(HttpStatusCode.Conflict);
+        (await ErrorCodeAsync(response, ct)).ShouldBe(UserErrors.ConcurrentUpdate.Code);
+        var (stored, audit) = await LoadAsync(target.Id, AuditEventTypes.UserDisabled, ct);
+        stored.Version.ShouldBe(target.Version + 2);
+        stored.Status.ShouldBe(UserStatus.Disabled);
+        audit.ShouldBe(0, "A refused request writes no audit row.");
+    }
+
+    [Fact]
+    public async Task PostDisable_WithAVersionAheadOfTheStoredOne_Returns409AndChangesNothing()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var (admin, adminPassword) = await SeedUserAsync(UserRole.Admin, "Adm1n!Pass7", ct: ct);
+        var (target, _) = await SeedUserAsync(UserRole.Driver, "Driv3r!Pass7", ct: ct);
+        await using var factory = CreateFactory();
+        var client = await AdminClientAsync(factory, admin, adminPassword, ct);
+
+        var response = await client.PostAsJsonAsync(
+            $"/api/identity/users/{target.Id.Value:D}/disable", new DisableUserRequest(target.Version + 7), ct);
+
+        response.StatusCode.ShouldBe(HttpStatusCode.Conflict);
+        (await ErrorCodeAsync(response, ct)).ShouldBe(UserErrors.ConcurrentUpdate.Code);
+        var (stored, audit) = await LoadAsync(target.Id, AuditEventTypes.UserDisabled, ct);
+        stored.Status.ShouldBe(UserStatus.Active);
+        stored.Version.ShouldBe(target.Version);
+        audit.ShouldBe(0);
+    }
+
+    [Fact]
+    public async Task PostDisable_WithMissingVersion_Returns400OnVersionAndChangesNothing()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var (admin, adminPassword) = await SeedUserAsync(UserRole.Admin, "Adm1n!Pass8", ct: ct);
+        var (target, _) = await SeedUserAsync(UserRole.Driver, "Driv3r!Pass8", ct: ct);
+        await using var factory = CreateFactory();
+        var client = await AdminClientAsync(factory, admin, adminPassword, ct);
+
+        var response = await client.PostAsJsonAsync(
+            $"/api/identity/users/{target.Id.Value:D}/disable", new Dictionary<string, object?>(), ct);
+
+        response.StatusCode.ShouldBe(HttpStatusCode.BadRequest);
+        using var doc = JsonDocument.Parse(await response.Content.ReadAsStringAsync(ct));
+        doc.RootElement.GetProperty("errors").EnumerateObject().Select(e => e.Name).ToArray()
+            .ShouldBe(["Version"]);
+        var (stored, audit) = await LoadAsync(target.Id, AuditEventTypes.UserDisabled, ct);
+        stored.Status.ShouldBe(UserStatus.Active);
+        audit.ShouldBe(0);
+    }
+
+    [Fact]
+    public async Task PostDisable_OnOneselfWithAStaleVersion_ReturnsCannotDisableSelfBeforeTheVersionCheck()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var (admin, adminPassword) = await SeedUserAsync(UserRole.Admin, "Adm1n!Pass9", ct: ct);
+        await using var factory = CreateFactory();
+        var client = await AdminClientAsync(factory, admin, adminPassword, ct);
+
+        var response = await client.PostAsJsonAsync(
+            $"/api/identity/users/{admin.Id.Value:D}/disable", new DisableUserRequest(admin.Version + 7), ct);
+
+        response.StatusCode.ShouldBe(HttpStatusCode.Conflict);
+        (await ErrorCodeAsync(response, ct)).ShouldBe(UserErrors.CannotDisableSelf.Code);
+    }
+
+    [Fact]
+    public async Task PostDisable_OnAnUnknownUserWithAStaleVersion_ReturnsNotFoundBeforeTheVersionCheck()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var (admin, adminPassword) = await SeedUserAsync(UserRole.Admin, "Adm1n!Pass10", ct: ct);
+        await using var factory = CreateFactory();
+        var client = await AdminClientAsync(factory, admin, adminPassword, ct);
+
+        var response = await client.PostAsJsonAsync(
+            $"/api/identity/users/{Guid.NewGuid():D}/disable", new DisableUserRequest(99), ct);
+
+        response.StatusCode.ShouldBe(HttpStatusCode.NotFound);
+        (await ErrorCodeAsync(response, ct)).ShouldBe(UserErrors.NotFound.Code);
     }
 }

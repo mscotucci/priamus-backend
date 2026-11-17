@@ -80,24 +80,6 @@ public sealed class AdminRevokeEndpointTests : IdentityIntegrationTestBase
     }
 
     /// <summary>
-    /// Calls <c>POST /api/identity/auth/login</c> with the given credentials and returns the
-    /// <see cref="LoginResponse"/>. Asserts that the response is 200 OK.
-    /// </summary>
-    private static async Task<LoginResponse> LoginAsync(
-        HttpClient client,
-        string username,
-        string password,
-        CancellationToken ct)
-    {
-        var loginRequest = new LoginRequest(username, password);
-        var loginResponse = await client.PostAsJsonAsync("/api/identity/auth/login", loginRequest, ct);
-        loginResponse.StatusCode.ShouldBe(HttpStatusCode.OK);
-        var body = await loginResponse.Content.ReadFromJsonAsync<LoginResponse>(ct);
-        body.ShouldNotBeNull();
-        return body;
-    }
-
-    /// <summary>
     /// Seeds an active refresh token directly in the DB for the given user and returns
     /// its <see cref="RefreshTokenId"/>.
     /// </summary>
@@ -244,6 +226,17 @@ public sealed class AdminRevokeEndpointTests : IdentityIntegrationTestBase
             payloadDoc.RootElement.TryGetProperty("tokenId", out var tokenIdElement)
                 .ShouldBeTrue("Audit payload must contain the 'tokenId' field.");
             tokenIdElement.GetString().ShouldBe(tokenId.Value.ToString());
+        }
+
+        // The revocation leaves only the hand-written row for the token owner; no domain-event row
+        await using (var scope = CreateAsyncScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<IdentityDbContext>();
+            var eventTypes = await db.AuditLog.AsNoTracking()
+                .Where(a => a.SubjectId == driverUser.Id.Value && a.EventType != AuditEventTypes.UserCreated)
+                .Select(a => a.EventType)
+                .ToListAsync(ct);
+            eventTypes.ShouldBe([AuditEventTypes.TokenRevokedByAdmin]);
         }
     }
 

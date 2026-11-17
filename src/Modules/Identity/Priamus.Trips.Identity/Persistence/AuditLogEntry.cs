@@ -19,15 +19,6 @@ public static class AuditEventTypes
     /// <summary>A user was re-enabled.</summary>
     public const string UserEnabled = "identity.user.enabled";
 
-    /// <summary>A refresh token was issued.</summary>
-    public const string RefreshTokenIssued = "identity.refresh_token.issued";
-
-    /// <summary>A refresh token was rotated (old revoked, new issued).</summary>
-    public const string RefreshTokenRotated = "identity.refresh_token.rotated";
-
-    /// <summary>A refresh token was explicitly revoked.</summary>
-    public const string RefreshTokenRevoked = "identity.refresh_token.revoked";
-
     // ─── Handler-written non-domain intent events ─────────────────────────
 
     /// <summary>A user successfully authenticated at login.</summary>

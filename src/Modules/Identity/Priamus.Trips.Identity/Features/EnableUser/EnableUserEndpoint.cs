@@ -28,19 +28,22 @@ public static class EnableUserEndpoint
             .WithName("EnableUser")
             .WithTags("Identity.Users")
             .Produces(StatusCodes.Status204NoContent)
+            .ProducesProblem(StatusCodes.Status400BadRequest)
             .ProducesProblem(StatusCodes.Status401Unauthorized)
             .ProducesProblem(StatusCodes.Status403Forbidden)
-            .ProducesProblem(StatusCodes.Status404NotFound);
+            .ProducesProblem(StatusCodes.Status404NotFound)
+            .ProducesProblem(StatusCodes.Status409Conflict);
 
         return app;
     }
 
     private static async Task<IResult> HandleAsync(
         Guid id,
+        [FromBody] EnableUserRequest request,
         [FromServices] EnableUserHandler handler,
         CancellationToken cancellationToken)
     {
-        var result = await handler.HandleAsync(id, cancellationToken);
+        var result = await handler.HandleAsync(id, request, cancellationToken);
 
         return result.Match(
             onSuccess: () => Results.NoContent(),

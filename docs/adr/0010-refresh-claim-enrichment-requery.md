@@ -75,4 +75,4 @@ Concretely:
 - The Refresh slice depends on `IDriverLookup` in `Registry.Contracts`, identically to the Login slice.
 - The temporary stub in `Host` (returning `null` until the Registry module exists) serves both Login and Refresh with no changes.
 - Tests should cover the case "user logs in as Driver while link is absent (claim missing), then link is established, then user refreshes" — the refresh should produce a JWT with the now-populated `driver_id`. This is a positive consequence of this ADR worth pinning with a test.
-- The audit row written at refresh (`RefreshTokenRotated`, materialized by `AuditInterceptor` from the aggregate's domain event) does not need to record the `driver_id` value. The audit story for the claim lives in the JWT issuance log line, not in the rotation event payload.
+- Refresh writes no audit row, so nothing needs to record the `driver_id` value. The audit story for the claim lives in the JWT issuance log line.

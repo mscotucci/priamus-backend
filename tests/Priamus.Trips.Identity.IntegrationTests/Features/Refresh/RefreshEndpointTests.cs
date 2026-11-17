@@ -130,6 +130,46 @@ public sealed class RefreshEndpointTests : IdentityIntegrationTestBase
         }
     }
 
+    // A renewal writes no audit row, and a row written before this change survives it.
+    [Fact]
+    public async Task PostRefresh_ValidUnusedToken_WritesNoAuditRowAndKeepsExistingOnes()
+    {
+        var ct = TestContext.Current.CancellationToken;
+
+        // Arrange — a legacy `issued` row from before the change, and a user created without audit rows of interest
+        var (user, rawToken, _) = await SeedUserWithActiveTokenAsync(UserRole.BackOffice, ct);
+        var legacyRowId = Guid.NewGuid();
+        await using (var scope = CreateAsyncScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<IdentityDbContext>();
+            db.AuditLog.Add(new AuditLogEntry(
+                legacyRowId, DateTime.UtcNow, user.Id.Value, user.Id.Value,
+                "identity.refresh_token.issued", "{}"));
+            await db.SaveChangesAsync(ct);
+        }
+        int rowsBefore;
+        await using (var scope = CreateAsyncScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<IdentityDbContext>();
+            rowsBefore = await db.AuditLog.AsNoTracking().CountAsync(ct);
+        }
+
+        await using var factory = CreateFactory();
+        var client = factory.CreateClient();
+
+        // Act
+        var response = await client.PostAsJsonAsync("/api/identity/auth/refresh", new RefreshRequest(rawToken), ct);
+
+        // Assert
+        response.StatusCode.ShouldBe(HttpStatusCode.OK);
+        await using (var scope = CreateAsyncScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<IdentityDbContext>();
+            (await db.AuditLog.AsNoTracking().CountAsync(ct)).ShouldBe(rowsBefore);
+            (await db.AuditLog.AsNoTracking().AnyAsync(a => a.Id == legacyRowId, ct)).ShouldBeTrue();
+        }
+    }
+
     // ── Test 2: Unknown refresh token → 401 with RefreshToken.NotFound ────────
 
     [Fact]

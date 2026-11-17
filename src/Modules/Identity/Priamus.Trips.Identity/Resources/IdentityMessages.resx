@@ -41,6 +41,9 @@
   <data name="Identity.User.CannotDisableSelf" xml:space="preserve">
     <value>Non è possibile disabilitare il proprio account.</value>
   </data>
+  <data name="Identity.User.ConcurrentUpdate" xml:space="preserve">
+    <value>L'utente è stato modificato da un altro utente nel frattempo. Controlla i dati aggiornati e riprova.</value>
+  </data>
   <data name="Identity.User.InvalidCredentials" xml:space="preserve">
     <value>Nome utente o password non validi.</value>
   </data>

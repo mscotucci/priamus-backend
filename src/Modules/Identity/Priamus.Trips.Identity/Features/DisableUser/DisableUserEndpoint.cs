@@ -22,6 +22,7 @@ public static class DisableUserEndpoint
             .WithName("DisableUser")
             .WithTags("Identity.Users")
             .Produces(StatusCodes.Status204NoContent)
+            .ProducesProblem(StatusCodes.Status400BadRequest)
             .ProducesProblem(StatusCodes.Status401Unauthorized)
             .ProducesProblem(StatusCodes.Status403Forbidden)
             .ProducesProblem(StatusCodes.Status404NotFound)
@@ -32,10 +33,11 @@ public static class DisableUserEndpoint
 
     private static async Task<IResult> HandleAsync(
         Guid id,
+        [FromBody] DisableUserRequest request,
         [FromServices] DisableUserHandler handler,
         CancellationToken cancellationToken)
     {
-        var result = await handler.HandleAsync(id, cancellationToken);
+        var result = await handler.HandleAsync(id, request, cancellationToken);
 
         return result.Match(
             onSuccess: () => Results.NoContent(),

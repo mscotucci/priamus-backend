@@ -21,8 +21,6 @@ internal sealed class ListVehiclesHandler
         {
             "licensePlate",
             "description",
-            "type",
-            "status",
             "lastModifiedAt",
         };
 
@@ -85,16 +83,12 @@ internal sealed class ListVehiclesHandler
             ("licenseplate",   false) => query.OrderByDescending(v => v.LicensePlate),
             ("description",    true)  => query.OrderBy(v => v.Description),
             ("description",    false) => query.OrderByDescending(v => v.Description),
-            ("type",           true)  => query.OrderBy(v => v.Type),
-            ("type",           false) => query.OrderByDescending(v => v.Type),
-            ("status",         true)  => query.OrderBy(v => v.Status),
-            ("status",         false) => query.OrderByDescending(v => v.Status),
             ("lastmodifiedat", true)  => query.OrderBy(v => v.LastModifiedAt),
             ("lastmodifiedat", false) => query.OrderByDescending(v => v.LastModifiedAt),
             _                         => query.OrderBy(v => v.LicensePlate), // default: plate A-Z
         };
 
-        // Type, status, description and timestamps are not unique: the plate is, so ties get a
+        // Description and timestamps are not unique: the plate is, so ties get a
         // stable order and no vehicle appears on two pages or on none.
         query = ordered.ThenBy(v => v.LicensePlate);
 

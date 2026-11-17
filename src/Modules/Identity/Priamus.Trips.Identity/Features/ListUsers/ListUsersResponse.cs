@@ -15,4 +15,5 @@ public sealed record UserListItemDto(
     UserRole Role,
     UserStatus Status,
     DateTime CreatedAt,
-    DateTime LastModifiedAt);
+    DateTime LastModifiedAt,
+    int Version);

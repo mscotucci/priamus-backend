@@ -1,4 +1,3 @@
-using Priamus.Trips.Identity.Domain.RefreshTokens.Events;
 using Priamus.Trips.Identity.Domain.RefreshTokens.ValueObjects;
 using Priamus.Trips.SharedKernel.Domain;
 using Priamus.Trips.SharedKernel.Security;
@@ -116,15 +115,12 @@ public sealed class RefreshToken : AggregateRoot
         }
 
         var now = clock.UtcNow;
-        var token = new RefreshToken(id, userId, hash, now, now + lifetime);
-        token.RaiseEvent(new RefreshTokenIssued(Guid.NewGuid(), now, id, userId, token.ExpiresAt));
-        return token;
+        return new RefreshToken(id, userId, hash, now, now + lifetime);
     }
 
     /// <summary>
     /// Rotates this token: this instance is marked revoked and pointed at the new
-    /// token; a fresh <see cref="RefreshToken"/> is returned with its own state and
-    /// its own pending <see cref="RefreshTokenIssued"/> event.
+    /// token; a fresh <see cref="RefreshToken"/> is returned with its own state.
     /// </summary>
     /// <remarks>
     /// Method shape: instance method on the receiver, returning the new aggregate.
@@ -135,14 +131,13 @@ public sealed class RefreshToken : AggregateRoot
     /// <list type="bullet">
     ///   <item>It keeps the mutation entry point a verb on the aggregate, consistent with the rest of the rule set ("State changes only via domain methods (verbs).").</item>
     ///   <item>The active-state precondition naturally lives on the receiver.</item>
-    ///   <item>The new aggregate carries its own <see cref="RefreshTokenIssued"/> event, and the receiver carries the <see cref="RefreshTokenRotated"/> event — so each aggregate emits the events that describe its own state change, which is what the outbox interceptor expects.</item>
     /// </list>
     /// </remarks>
     /// <param name="newId">Identifier of the replacement token.</param>
     /// <param name="newHash">SHA-256 hash of the new opaque token.</param>
     /// <param name="clock">Time source.</param>
     /// <param name="newLifetime">Strictly-positive lifetime for the new token.</param>
-    /// <returns>The newly issued replacement token, already populated with a <see cref="RefreshTokenIssued"/> event.</returns>
+    /// <returns>The newly issued replacement token.</returns>
     /// <exception cref="DomainException">
     /// Thrown with one of:
     /// <list type="bullet">
@@ -186,23 +181,20 @@ public sealed class RefreshToken : AggregateRoot
         }
 
         // Issue the replacement first so any failure in its construction does not
-        // leave this aggregate in a half-mutated state. Issue() raises its own
-        // RefreshTokenIssued event.
+        // leave this aggregate in a half-mutated state.
         var replacement = new RefreshToken(newId, UserId, newHash, now, now + newLifetime);
-        replacement.RaiseEvent(new RefreshTokenIssued(Guid.NewGuid(), now, newId, UserId, replacement.ExpiresAt));
 
         // Now mutate this aggregate: revoke and point at the replacement.
         RevokedAt = now;
         ReplacedByTokenId = newId;
         IncrementVersion();
-        RaiseEvent(new RefreshTokenRotated(Guid.NewGuid(), now, Id, newId, UserId));
 
         return replacement;
     }
 
     /// <summary>
     /// Explicitly revokes this token (logout, admin action). Idempotent on tokens
-    /// that are already explicitly revoked: no event, no version bump. Rejects
+    /// that are already explicitly revoked: no version bump. Rejects
     /// rotated tokens loudly — rotation already implies revocation and an explicit
     /// revoke on top of it is a contract violation in the caller.
     /// </summary>
@@ -230,6 +222,5 @@ public sealed class RefreshToken : AggregateRoot
         var now = clock.UtcNow;
         RevokedAt = now;
         IncrementVersion();
-        RaiseEvent(new RefreshTokenRevoked(Guid.NewGuid(), now, Id, UserId));
     }
 }

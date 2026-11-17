@@ -18,7 +18,7 @@ partial class IdentityDbContextModelSnapshot : ModelSnapshot
 #pragma warning disable 612, 618
         modelBuilder
             .HasDefaultSchema("identity")
-            .HasAnnotation("ProductVersion", "10.0.0")
+            .HasAnnotation("ProductVersion", "10.0.12")
             .HasAnnotation("Relational:MaxIdentifierLength", 63);
 
         NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
@@ -107,12 +107,14 @@ partial class IdentityDbContextModelSnapshot : ModelSnapshot
                     .HasColumnType("text")
                     .HasColumnName("password_hash");
 
-                b.Property<int>("Role")
-                    .HasColumnType("integer")
+                b.Property<string>("Role")
+                    .IsRequired()
+                    .HasColumnType("text")
                     .HasColumnName("role");
 
-                b.Property<int>("Status")
-                    .HasColumnType("integer")
+                b.Property<string>("Status")
+                    .IsRequired()
+                    .HasColumnType("text")
                     .HasColumnName("status");
 
                 b.Property<string>("Username")
@@ -138,9 +140,9 @@ partial class IdentityDbContextModelSnapshot : ModelSnapshot
 
                 b.ToTable("users", "identity", t =>
                     {
-                        t.HasCheckConstraint("chk_users_role", "role IN (1, 2, 3)");
+                        t.HasCheckConstraint("chk_users_role", "role IN ('Driver', 'BackOffice', 'Admin')");
 
-                        t.HasCheckConstraint("chk_users_status", "status IN (1, 2)");
+                        t.HasCheckConstraint("chk_users_status", "status IN ('Active', 'Disabled')");
                     });
             });
 

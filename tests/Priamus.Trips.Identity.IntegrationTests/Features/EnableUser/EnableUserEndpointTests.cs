@@ -91,25 +91,6 @@ public sealed class EnableUserEndpointTests : IdentityIntegrationTestBase
         return (user, plainPassword);
     }
 
-    /// <summary>
-    /// Calls <c>POST /api/identity/auth/login</c> and returns the <see cref="LoginResponse"/>.
-    /// Asserts 200 OK so that test failures are surfaced clearly.
-    /// </summary>
-    private static async Task<LoginResponse> LoginAsync(
-        HttpClient client,
-        string username,
-        string password,
-        CancellationToken ct)
-    {
-        var resp = await client.PostAsJsonAsync(
-            "/api/identity/auth/login", new LoginRequest(username, password), ct);
-        resp.StatusCode.ShouldBe(HttpStatusCode.OK,
-            $"Login must succeed for user '{username}' to obtain a JWT for this test.");
-        var body = await resp.Content.ReadFromJsonAsync<LoginResponse>(ct);
-        body.ShouldNotBeNull();
-        return body;
-    }
-
     // ═══════════════════════════════════════════════════════════════════════════
     // Handler-level integration tests (real DB, no HTTP layer)
     // ═══════════════════════════════════════════════════════════════════════════
@@ -123,11 +104,13 @@ public sealed class EnableUserEndpointTests : IdentityIntegrationTestBase
 
         // Arrange: scope #1 — seed a disabled user (no audit row from seeding)
         var targetUserId = UserId.New();
+        int targetVersion;
         await using (var arrangeScope = CreateAsyncScope())
         {
             var db = arrangeScope.ServiceProvider.GetRequiredService<IdentityDbContext>();
             var user = TestDataBuilders.AUser().WithId(targetUserId).Build();
             user.Disable(new SystemClock(), TestDataBuilders.ActorId);
+            targetVersion = user.Version;
             user.ClearDomainEvents(); // suppress seeding audit rows
             db.Users.Add(user);
             await db.SaveChangesAsync(ct);
@@ -144,7 +127,7 @@ public sealed class EnableUserEndpointTests : IdentityIntegrationTestBase
                 new FixedClockStub(FixedNow),
                 NullLogger<EnableUserHandler>.Instance);
 
-            actResult = await handler.HandleAsync(targetUserId.Value, ct);
+            actResult = await handler.HandleAsync(targetUserId.Value, new EnableUserRequest(targetVersion), ct);
         }
 
         // Assert: success result
@@ -198,7 +181,7 @@ public sealed class EnableUserEndpointTests : IdentityIntegrationTestBase
             NullLogger<EnableUserHandler>.Instance);
 
         // Act
-        var result = await handler.HandleAsync(unknownId, ct);
+        var result = await handler.HandleAsync(unknownId, new EnableUserRequest(1), ct);
 
         // Assert
         result.IsFailure.ShouldBeTrue(
@@ -218,11 +201,13 @@ public sealed class EnableUserEndpointTests : IdentityIntegrationTestBase
         // Clear events before saving so that the UserCreated audit row does not
         // inflate the count we assert against for UserEnabled.
         var targetUserId = UserId.New();
+        int targetVersion;
 
         await using (var arrangeScope = CreateAsyncScope())
         {
             var db = arrangeScope.ServiceProvider.GetRequiredService<IdentityDbContext>();
             var user = TestDataBuilders.AUser().WithId(targetUserId).Build();
+            targetVersion = user.Version;
             user.ClearDomainEvents(); // suppress UserCreated audit row from seeding
             db.Users.Add(user);
             await db.SaveChangesAsync(ct);
@@ -250,7 +235,7 @@ public sealed class EnableUserEndpointTests : IdentityIntegrationTestBase
                 new FixedClockStub(FixedNow),
                 NullLogger<EnableUserHandler>.Instance);
 
-            actResult = await handler.HandleAsync(targetUserId.Value, ct);
+            actResult = await handler.HandleAsync(targetUserId.Value, new EnableUserRequest(targetVersion), ct);
         }
 
         // Assert: scope #3
@@ -277,6 +262,7 @@ public sealed class EnableUserEndpointTests : IdentityIntegrationTestBase
 
     // ── Endpoint Test 1: 204 happy path ──────────────────────────────────────
 
+    // With the current version the status changes, the version increases and one audit row is written.
     [Fact]
     public async Task PostEnable_WithAdminJwtAndExistingDisabledUser_Returns204AndPersistsEnabledStatus()
     {
@@ -296,8 +282,8 @@ public sealed class EnableUserEndpointTests : IdentityIntegrationTestBase
             new AuthenticationHeaderValue("Bearer", loginBody.AccessToken);
 
         // Act
-        var response = await client.PostAsync(
-            $"/api/identity/users/{targetUser.Id.Value:D}/enable", content: null, ct);
+        var response = await client.PostAsJsonAsync(
+            $"/api/identity/users/{targetUser.Id.Value:D}/enable", new EnableUserRequest(targetUser.Version), ct);
 
         // Assert — HTTP status
         response.StatusCode.ShouldBe(HttpStatusCode.NoContent,
@@ -313,6 +299,8 @@ public sealed class EnableUserEndpointTests : IdentityIntegrationTestBase
             persisted.ShouldNotBeNull();
             persisted.Status.ShouldBe(UserStatus.Active,
                 "User.Status must be Active after a successful enable.");
+            persisted.Version.ShouldBe(targetUser.Version + 1,
+                "An enable with the current version must increase the version.");
 
             // Exactly one new audit row for UserEnabled
             var auditRows = await db.AuditLog.AsNoTracking()
@@ -336,7 +324,7 @@ public sealed class EnableUserEndpointTests : IdentityIntegrationTestBase
     // ── Endpoint Test 2: 204 idempotent — no new audit row ───────────────────
 
     [Fact]
-    public async Task PostEnable_WhenUserAlreadyEnabled_Returns204AndWritesNoNewAuditRow()
+    public async Task PostEnable_WhenUserAlreadyEnabledWithMatchingVersion_Returns204AndWritesNoNewAuditRowOrVersionBump()
     {
         var ct = TestContext.Current.CancellationToken;
 
@@ -365,8 +353,8 @@ public sealed class EnableUserEndpointTests : IdentityIntegrationTestBase
             new AuthenticationHeaderValue("Bearer", loginBody.AccessToken);
 
         // Act
-        var response = await client.PostAsync(
-            $"/api/identity/users/{targetUser.Id.Value:D}/enable", content: null, ct);
+        var response = await client.PostAsJsonAsync(
+            $"/api/identity/users/{targetUser.Id.Value:D}/enable", new EnableUserRequest(targetUser.Version), ct);
 
         // Assert — HTTP status
         response.StatusCode.ShouldBe(HttpStatusCode.NoContent,
@@ -379,6 +367,11 @@ public sealed class EnableUserEndpointTests : IdentityIntegrationTestBase
             var postCount = await db.AuditLog.AsNoTracking()
                 .CountAsync(a => a.SubjectId == targetUser.Id.Value
                               && a.EventType == AuditEventTypes.UserEnabled, ct);
+
+            var persisted = await db.Users.AsNoTracking()
+                .FirstAsync(u => u.Id == targetUser.Id, ct);
+            persisted.Version.ShouldBe(targetUser.Version,
+                "A matching-version no-op enable must not bump the version.");
 
             postCount.ShouldBe(0,
                 "No UserEnabled audit row must be written on an idempotent no-op enable. " +
@@ -408,8 +401,8 @@ public sealed class EnableUserEndpointTests : IdentityIntegrationTestBase
         var nonExistentId = Guid.NewGuid();
 
         // Act
-        var response = await client.PostAsync(
-            $"/api/identity/users/{nonExistentId:D}/enable", content: null, ct);
+        var response = await client.PostAsJsonAsync(
+            $"/api/identity/users/{nonExistentId:D}/enable", new EnableUserRequest(1), ct);
 
         // Assert
         response.StatusCode.ShouldBe(HttpStatusCode.NotFound,
@@ -499,5 +492,108 @@ public sealed class EnableUserEndpointTests : IdentityIntegrationTestBase
         // Assert
         response.StatusCode.ShouldBe(HttpStatusCode.Forbidden,
             "A BackOffice JWT must not satisfy the Admin policy.");
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // Version rules
+    // Create takes no version: these rules do not apply to it.
+    // ═══════════════════════════════════════════════════════════════════════════
+
+    [Fact]
+    public async Task PostEnable_WithTheSameVersionSentTwice_SecondCallIsRefusedAsStale()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var (admin, adminPassword) = await SeedUserAsync(UserRole.Admin, "Adm1n!Pass5", ct: ct);
+        var (target, _) = await SeedUserAsync(UserRole.Driver, "Driv3r!Pass5", disabled: true, ct: ct);
+        await using var factory = CreateFactory();
+        var client = await AdminClientAsync(factory, admin, adminPassword, ct);
+        var url = $"/api/identity/users/{target.Id.Value:D}/enable";
+
+        var first = await client.PostAsJsonAsync(url, new EnableUserRequest(target.Version), ct);
+        var second = await client.PostAsJsonAsync(url, new EnableUserRequest(target.Version), ct);
+
+        first.StatusCode.ShouldBe(HttpStatusCode.NoContent);
+        second.StatusCode.ShouldBe(HttpStatusCode.Conflict);
+        (await ErrorCodeAsync(second, ct)).ShouldBe(UserErrors.ConcurrentUpdate.Code);
+        var (stored, audit) = await LoadAsync(target.Id, AuditEventTypes.UserEnabled, ct);
+        stored.Version.ShouldBe(target.Version + 1, "Only the first call changes the user.");
+        audit.ShouldBe(1, "The refused second call must write no audit row.");
+    }
+
+    [Fact]
+    public async Task PostEnable_WithStaleVersionOnAUserAlreadyEnabled_Returns409AndChangesNothing()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var (admin, adminPassword) = await SeedUserAsync(UserRole.Admin, "Adm1n!Pass6", ct: ct);
+        var (target, _) = await SeedUserAsync(UserRole.Driver, "Driv3r!Pass6", ct: ct);
+        await BumpVersionKeepingStatusAsync(target.Id, ct);
+        await using var factory = CreateFactory();
+        var client = await AdminClientAsync(factory, admin, adminPassword, ct);
+
+        var response = await client.PostAsJsonAsync(
+            $"/api/identity/users/{target.Id.Value:D}/enable", new EnableUserRequest(target.Version), ct);
+
+        response.StatusCode.ShouldBe(HttpStatusCode.Conflict);
+        (await ErrorCodeAsync(response, ct)).ShouldBe(UserErrors.ConcurrentUpdate.Code);
+        var (stored, audit) = await LoadAsync(target.Id, AuditEventTypes.UserEnabled, ct);
+        stored.Version.ShouldBe(target.Version + 2);
+        stored.Status.ShouldBe(UserStatus.Active);
+        audit.ShouldBe(0, "A refused request writes no audit row.");
+    }
+
+    [Fact]
+    public async Task PostEnable_WithAVersionAheadOfTheStoredOne_Returns409AndChangesNothing()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var (admin, adminPassword) = await SeedUserAsync(UserRole.Admin, "Adm1n!Pass7", ct: ct);
+        var (target, _) = await SeedUserAsync(UserRole.Driver, "Driv3r!Pass7", disabled: true, ct: ct);
+        await using var factory = CreateFactory();
+        var client = await AdminClientAsync(factory, admin, adminPassword, ct);
+
+        var response = await client.PostAsJsonAsync(
+            $"/api/identity/users/{target.Id.Value:D}/enable", new EnableUserRequest(target.Version + 7), ct);
+
+        response.StatusCode.ShouldBe(HttpStatusCode.Conflict);
+        (await ErrorCodeAsync(response, ct)).ShouldBe(UserErrors.ConcurrentUpdate.Code);
+        var (stored, audit) = await LoadAsync(target.Id, AuditEventTypes.UserEnabled, ct);
+        stored.Status.ShouldBe(UserStatus.Disabled);
+        stored.Version.ShouldBe(target.Version);
+        audit.ShouldBe(0);
+    }
+
+    [Fact]
+    public async Task PostEnable_WithMissingVersion_Returns400OnVersionAndChangesNothing()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var (admin, adminPassword) = await SeedUserAsync(UserRole.Admin, "Adm1n!Pass8", ct: ct);
+        var (target, _) = await SeedUserAsync(UserRole.Driver, "Driv3r!Pass8", disabled: true, ct: ct);
+        await using var factory = CreateFactory();
+        var client = await AdminClientAsync(factory, admin, adminPassword, ct);
+
+        var response = await client.PostAsJsonAsync(
+            $"/api/identity/users/{target.Id.Value:D}/enable", new Dictionary<string, object?>(), ct);
+
+        response.StatusCode.ShouldBe(HttpStatusCode.BadRequest);
+        using var doc = JsonDocument.Parse(await response.Content.ReadAsStringAsync(ct));
+        doc.RootElement.GetProperty("errors").EnumerateObject().Select(e => e.Name).ToArray()
+            .ShouldBe(["Version"]);
+        var (stored, audit) = await LoadAsync(target.Id, AuditEventTypes.UserEnabled, ct);
+        stored.Status.ShouldBe(UserStatus.Disabled);
+        audit.ShouldBe(0);
+    }
+
+    [Fact]
+    public async Task PostEnable_OnAnUnknownUserWithAStaleVersion_ReturnsNotFoundBeforeTheVersionCheck()
+    {
+        var ct = TestContext.Current.CancellationToken;
+        var (admin, adminPassword) = await SeedUserAsync(UserRole.Admin, "Adm1n!Pass10", ct: ct);
+        await using var factory = CreateFactory();
+        var client = await AdminClientAsync(factory, admin, adminPassword, ct);
+
+        var response = await client.PostAsJsonAsync(
+            $"/api/identity/users/{Guid.NewGuid():D}/enable", new EnableUserRequest(99), ct);
+
+        response.StatusCode.ShouldBe(HttpStatusCode.NotFound);
+        (await ErrorCodeAsync(response, ct)).ShouldBe(UserErrors.NotFound.Code);
     }
 }

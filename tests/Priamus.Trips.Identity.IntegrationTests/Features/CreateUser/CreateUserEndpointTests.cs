@@ -82,25 +82,6 @@ public sealed class CreateUserEndpointTests : IdentityIntegrationTestBase
         return (user, plainPassword);
     }
 
-    /// <summary>
-    /// Calls <c>POST /api/identity/auth/login</c> with the given credentials and returns the
-    /// <see cref="LoginResponse"/>. Asserts that the response is 200 OK.
-    /// </summary>
-    private static async Task<LoginResponse> LoginAsync(
-        HttpClient client,
-        string username,
-        string password,
-        CancellationToken ct)
-    {
-        var loginRequest = new LoginRequest(username, password);
-        var loginResponse = await client.PostAsJsonAsync("/api/identity/auth/login", loginRequest, ct);
-        loginResponse.StatusCode.ShouldBe(HttpStatusCode.OK,
-            $"Login must succeed for user '{username}' to obtain a JWT for the test.");
-        var body = await loginResponse.Content.ReadFromJsonAsync<LoginResponse>(ct);
-        body.ShouldNotBeNull();
-        return body;
-    }
-
     // ── Test 1: 201 happy path ────────────────────────────────────────────────
 
     [Fact]

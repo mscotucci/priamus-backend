@@ -19,8 +19,6 @@ internal sealed class ListUsersHandler
         new(StringComparer.OrdinalIgnoreCase)
         {
             "username",
-            "role",
-            "status",
             "createdAt",
             "lastModifiedAt",
         };
@@ -83,10 +81,6 @@ internal sealed class ListUsersHandler
         {
             ("username",       true)  => query.OrderBy(u => u.Username),
             ("username",       false) => query.OrderByDescending(u => u.Username),
-            ("role",           true)  => query.OrderBy(u => u.Role),
-            ("role",           false) => query.OrderByDescending(u => u.Role),
-            ("status",         true)  => query.OrderBy(u => u.Status),
-            ("status",         false) => query.OrderByDescending(u => u.Status),
             ("createdat",      true)  => query.OrderBy(u => u.CreatedAt),
             ("createdat",      false) => query.OrderByDescending(u => u.CreatedAt),
             ("lastmodifiedat", true)  => query.OrderBy(u => u.LastModifiedAt),
@@ -94,7 +88,7 @@ internal sealed class ListUsersHandler
             _                         => query.OrderByDescending(u => u.CreatedAt), // default: createdAt DESC
         };
 
-        // Role, status and timestamps are not unique: without a unique tie-breaker PostgreSQL
+        // Timestamps are not unique: without a unique tie-breaker PostgreSQL
         // may return equal rows in a different order on each query, so a user could appear on
         // two pages or on none. The user name is unique and gives ties a readable A–Z order.
         query = ordered.ThenBy(u => u.Username);
@@ -112,7 +106,8 @@ internal sealed class ListUsersHandler
                 u.Role,
                 u.Status,
                 u.CreatedAt,
-                u.LastModifiedAt))
+                u.LastModifiedAt,
+                u.Version))
             .ToListAsync(cancellationToken);
 
         _logger.LogInformation(

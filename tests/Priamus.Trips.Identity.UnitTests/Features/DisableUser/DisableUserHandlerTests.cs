@@ -58,7 +58,7 @@ public sealed class DisableUserHandlerTests
             NullLogger<DisableUserHandler>.Instance);
 
         // Act — pass the same Guid that the current user carries
-        var result = await handler.HandleAsync(actorId.Value, CancellationToken.None);
+        var result = await handler.HandleAsync(actorId.Value, new DisableUserRequest(0), CancellationToken.None);
 
         // Assert
         result.IsFailure.ShouldBeTrue(

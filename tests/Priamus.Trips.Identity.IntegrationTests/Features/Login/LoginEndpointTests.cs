@@ -110,6 +110,32 @@ public sealed class LoginEndpointTests : IdentityIntegrationTestBase
         body.RefreshTokenExpiresAt.ShouldBeGreaterThan(DateTime.UtcNow);
     }
 
+    // A login leaves exactly one audit row, the hand-written logged_in row, and none for the issued token.
+    [Fact]
+    public async Task PostLogin_ValidCredentials_WritesOnlyTheLoggedInAuditRow()
+    {
+        var ct = TestContext.Current.CancellationToken;
+
+        // Arrange
+        var (user, password) = await SeedUserAsync(UserRole.BackOffice, "Sup3rSecret!", ct);
+        await using var factory = CreateFactory();
+        var client = factory.CreateClient();
+
+        // Act
+        var response = await client.PostAsJsonAsync(
+            "/api/identity/auth/login", new LoginRequest(user.Username.Value, password), ct);
+
+        // Assert
+        response.StatusCode.ShouldBe(HttpStatusCode.OK);
+        await using var scope = CreateAsyncScope();
+        var db = scope.ServiceProvider.GetRequiredService<IdentityDbContext>();
+        var eventTypes = await db.AuditLog.AsNoTracking()
+            .Where(a => a.SubjectId == user.Id.Value && a.EventType != AuditEventTypes.UserCreated)
+            .Select(a => a.EventType)
+            .ToListAsync(ct);
+        eventTypes.ShouldBe([AuditEventTypes.UserLoggedIn]);
+    }
+
     // ── Test 2: Wrong password → 401 + InvalidCredentials + LoginFailed audit row
 
     [Fact]

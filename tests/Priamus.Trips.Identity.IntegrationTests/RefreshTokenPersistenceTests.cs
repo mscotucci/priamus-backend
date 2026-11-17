@@ -64,7 +64,7 @@ public sealed class RefreshTokenPersistenceTests : IdentityIntegrationTestBase
             await db.SaveChangesAsync(ct);
         }
 
-        // Assert state and audit log
+        // Assert state and audit log (empty)
         using (var scope = CreateScope())
         {
             var db = scope.ServiceProvider.GetRequiredService<IdentityDbContext>();
@@ -89,12 +89,8 @@ public sealed class RefreshTokenPersistenceTests : IdentityIntegrationTestBase
                 .OrderBy(e => e.OccurredAt)
                 .ToListAsync(ct);
 
-            auditRows.Count.ShouldBe(3);
-            auditRows[0].EventType.ShouldBe(AuditEventTypes.RefreshTokenIssued);
-
-            var secondSaveEvents = auditRows.Skip(1).Select(e => e.EventType).ToHashSet();
-            secondSaveEvents.ShouldContain(AuditEventTypes.RefreshTokenIssued);
-            secondSaveEvents.ShouldContain(AuditEventTypes.RefreshTokenRotated);
+            // Issuing and rotating write no audit row.
+            auditRows.ShouldBeEmpty();
         }
     }
 
@@ -267,7 +263,7 @@ public sealed class RefreshTokenPersistenceTests : IdentityIntegrationTestBase
     // ── Audit log for Revoke ──────────────────────────────────────────────────
 
     [Fact]
-    public async Task RefreshToken_Revoke_WritesRefreshTokenRevokedAuditRow()
+    public async Task RefreshToken_Revoke_WritesNoAuditRow()
     {
         var ct = TestContext.Current.CancellationToken;
 
@@ -299,15 +295,13 @@ public sealed class RefreshTokenPersistenceTests : IdentityIntegrationTestBase
         {
             var db = assertScope.ServiceProvider.GetRequiredService<IdentityDbContext>();
 
-            var revokeRows = await db.AuditLog
+            // The domain revocation writes no audit row.
+            var rows = await db.AuditLog
                 .AsNoTracking()
-                .Where(e => e.SubjectId == userId.Value
-                         && e.EventType == AuditEventTypes.RefreshTokenRevoked)
+                .Where(e => e.SubjectId == userId.Value)
                 .ToListAsync(ct);
 
-            revokeRows.Count.ShouldBe(1);
-            revokeRows[0].ActorId.ShouldBe(FakeCurrentUser.ActorId.Value);
-            revokeRows[0].SubjectId.ShouldBe(userId.Value);
+            rows.ShouldBeEmpty();
         }
     }
 }
