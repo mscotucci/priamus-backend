@@ -17,6 +17,7 @@
   <ItemGroup>
     <ProjectReference Include="..\..\src\Priamus.Trips.Host\Priamus.Trips.Host.csproj" />
     <ProjectReference Include="..\..\src\Modules\Identity\Priamus.Trips.Identity\Priamus.Trips.Identity.csproj" />
+    <ProjectReference Include="..\..\src\Modules\Registry\Priamus.Trips.Registry\Priamus.Trips.Registry.csproj" />
     <ProjectReference Include="..\..\src\Priamus.Trips.SharedKernel\Priamus.Trips.SharedKernel.csproj" />
   </ItemGroup>
 

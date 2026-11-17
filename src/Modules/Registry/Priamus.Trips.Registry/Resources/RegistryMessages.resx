@@ -1,0 +1,52 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Italian user-facing messages of the Registry module. Neutral culture on purpose: Italian is the only
+     language, so the file answers every request and needs no request-localization configuration.
+     Error entries are keyed by Error.Code; Validation.* entries are the messages of the request body.
+     {0} in the "taken" entries is the license plate, supplied by ErrorMessageArguments. -->
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="Validation.Required" xml:space="preserve">
+    <value>Valore obbligatorio.</value>
+  </data>
+  <data name="Validation.MaxLength" xml:space="preserve">
+    <value>Massimo {1} caratteri.</value>
+  </data>
+  <data name="Validation.LicensePlate" xml:space="preserve">
+    <value>La targa deve avere da 2 a 10 tra lettere e cifre; spazi e trattini sono ignorati.</value>
+  </data>
+  <data name="Validation.RequiresTrailerNotAllowed" xml:space="preserve">
+    <value>Solo una motrice può richiedere un rimorchio.</value>
+  </data>
+  <data name="Registry.Vehicle.LicensePlateInvalid" xml:space="preserve">
+    <value>La targa deve avere da 2 a 10 tra lettere e cifre; spazi e trattini sono ignorati.</value>
+  </data>
+  <data name="Registry.Vehicle.DescriptionInvalid" xml:space="preserve">
+    <value>La descrizione è obbligatoria e può avere al massimo 100 caratteri.</value>
+  </data>
+  <data name="Registry.Vehicle.RequiresTrailerNotAllowed" xml:space="preserve">
+    <value>Solo una motrice può richiedere un rimorchio.</value>
+  </data>
+  <data name="Registry.Vehicle.NotFound" xml:space="preserve">
+    <value>Mezzo non trovato.</value>
+  </data>
+  <data name="Registry.Vehicle.LicensePlateTaken" xml:space="preserve">
+    <value>La targa {0} è già registrata su un altro mezzo.</value>
+  </data>
+  <data name="Registry.Vehicle.LicensePlateTakenByDecommissioned" xml:space="preserve">
+    <value>La targa {0} è già registrata su un mezzo dismesso. Per rimetterlo in servizio, riattivalo dalla lista.</value>
+  </data>
+  <data name="Registry.Vehicle.ConcurrentUpdate" xml:space="preserve">
+    <value>Il mezzo è stato modificato da un altro utente nel frattempo. Controlla i dati aggiornati e riprova.</value>
+  </data>
+</root>

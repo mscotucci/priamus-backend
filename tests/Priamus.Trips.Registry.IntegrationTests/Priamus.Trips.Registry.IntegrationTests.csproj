@@ -14,11 +14,17 @@
     <PackageReference Include="NSubstitute" />
     <PackageReference Include="Testcontainers.PostgreSql" />
     <PackageReference Include="coverlet.collector" />
+    <PackageReference Include="Microsoft.AspNetCore.Mvc.Testing" />
   </ItemGroup>
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\Modules\Registry\Priamus.Trips.Registry\Priamus.Trips.Registry.csproj" />
     <ProjectReference Include="..\..\src\Priamus.Trips.Host\Priamus.Trips.Host.csproj" />
+    <ProjectReference Include="..\Priamus.Trips.IntegrationTesting\Priamus.Trips.IntegrationTesting.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Using Include="Priamus.Trips.IntegrationTesting" />
   </ItemGroup>
 
 </Project>

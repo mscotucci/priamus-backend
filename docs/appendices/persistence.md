@@ -52,6 +52,22 @@ builder.Property(t => t.Id)
 
 All converters in `Persistence/Converters/`.
 
+## Enums
+
+An enum is stored by the name of its C# member, spelled exactly as in code (`Tractor`, `StandaloneVehicle`), in a `text` column guarded by a check constraint listing every member. The value is then the same in C#, in the API (enums travel by name, `slices-and-handlers.md`), in the OpenAPI contract, in the frontend types and in SQL: no table to decode, and reordering the enum cannot change the meaning of stored rows. Renaming a member is a migration that rewrites the values and the constraint.
+
+```csharp
+builder.Property(v => v.Type)
+    .HasConversion<string>()
+    .HasColumnName("type")
+    .IsRequired();
+
+builder.ToTable("vehicles", "registry", t =>
+    t.HasCheckConstraint("chk_vehicles_type", "type IN ('Tractor', 'Trailer', 'StandaloneVehicle')"));
+```
+
+Identity predates this rule and still stores `role` and `status` as integers (`docs/backlog.md`).
+
 ## Sealed types mapping
 
 Two patterns:
@@ -221,7 +237,9 @@ builder.Property<int>("Version")
     .HasDefaultValue(0);
 ```
 
-The aggregate increments it manually in modification methods. Persistence only configures it as token. `DbUpdateConcurrencyException` propagates to global middleware which maps to HTTP 409.
+The aggregate increments it manually in modification methods. Persistence only configures it as token. There is no global handler: the handler catches `DbUpdateConcurrencyException` around its `SaveChangesAsync` and returns the aggregate's concurrency error, a Conflict that answers 409 (`slices-and-handlers.md`, "Unit of work").
+
+A write on an entity the user edited from a screen sends back the version it read (decided 2026-11-16). The handler sets it as the original value of the token before saving — `db.Entry(vehicle).Property(v => v.Version).OriginalValue = request.Version` — so a stale version fails the save with `DbUpdateConcurrencyException`. Every response that returns such an entity carries its `version`.
 
 ## Check constraints (defense in depth)
 
@@ -232,8 +250,8 @@ builder.ToTable("trips", "operations", t =>
 {
     t.HasCheckConstraint(
         "chk_trips_composition_trailer",
-        "(composition_type = 1 AND trailer_id IS NOT NULL) OR " +
-        "(composition_type IN (2, 3) AND trailer_id IS NULL)");
+        "(composition_type = 'TractorWithTrailer' AND trailer_id IS NOT NULL) OR " +
+        "(composition_type IN ('StandaloneTractor', 'StandaloneVehicle') AND trailer_id IS NULL)");
 });
 ```
 
@@ -381,7 +399,7 @@ public sealed class AuditInterceptor(IClock clock, ICurrentUser currentUser)
 }
 ```
 
-The interceptor lives inside the owning module at `Persistence/Interceptors/`. **Do not pre-extract** to `SharedKernel`. When a second module needs the same mechanism, promote the shared pieces then.
+The interceptor lives inside the owning module at `Persistence/Interceptors/`. **Do not pre-extract** to `SharedKernel`. Registry, the second module, copies the mechanism (decided 2026-11-16: the event mapping differs per module and the shared part is small); the shared pieces are promoted to a shared persistence library when a third module needs them (`docs/backlog.md`).
 
 ### Opt-in: outbox for cross-module communication
 

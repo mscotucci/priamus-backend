@@ -8,21 +8,28 @@ The Identity module was built in May 2026, before the rules in `docs/context.md`
 
 - **Tests build one host per test** instead of one per class (`appendices/testing.md`, "End-to-end tests"). Each endpoint test class calls `ApiFactory.Create` inside the test; moving to a class-level host needs the per-scope re-pointing of the `DbContext` that a shared host requires.
 - **Endpoint tests parse `errorCode` by hand** instead of `ShouldBeProblemAsync`.
-- **`PostgresFixture` is registered per collection** (`IdentityIntegrationTestsCollection`) and migrates only the Identity schema. It becomes an assembly fixture migrating every module's schema when a second module has tests.
+- **`PostgresFixture` is registered per collection** (`IdentityIntegrationTestsCollection`, `RegistryIntegrationTestsCollection`), so each collection starts its own container. It migrates every module's schema into one template; making it a single assembly-level fixture shared by all test projects is what remains.
 - **No sweep compares each endpoint's `ProducesProblem` with what its handler can return.** The declared statuses were checked by hand on 2026-11-15.
 - **`IClock` has no `Today`.** Needed by the first slice that reasons on calendar dates in the business time zone (trip execution date, daily summary).
 - **Italian texts of `IdentityMessages.resx`** were written with the alignment, not reviewed with the customer.
 - **Audit payloads of domain events are serialized as the event's raw shape**: enums as numbers (`"role": 3`) and value objects as objects (`"userId": {"value": "…"}`), while the hand-written payloads use names and plain values (`{"username": "admin"}`). Found by the QA of the local-run slice on 2026-11-15; to align with "enums by name" when something first reads the audit log, deciding what happens to the rows already written.
+
+- **`role` and `status` of `identity.users` are stored as integers** (`role IN (1, 2, 3)`), while the rule decided on 2026-11-16 (`appendices/persistence.md`, "Enums") stores enums by member name. A migration rewrites the values and the two check constraints; to do when Identity's persistence is next touched.
+
+- **No optimistic concurrency from the client.** `User` has a `Version`, but no response carries it and no write sends it back, so two administrators acting on the same user overwrite each other silently. Decided on 2026-11-16 (grilling of the vehicle registry): every write on an entity the user edited from a screen sends the version it read and gets 409 when it changed. Identity must be brought to the same rule: the user list returns the version, disable and enable send it back (backend and frontend). Planned as a small Identity slice right after the vehicle registry, before any other.
+- **Session renewals fill the audit log.** `identity.refresh_token.issued` and `identity.refresh_token.rotated` write a row at every renewal, about one per hour per open session (an estimate of 90,000 rows a year for 20 drivers), and RNF-08 does not ask for them. Decided on 2026-11-16: stop writing them; logins, failed logins, revocations and user changes stay. Same Identity slice as the version check.
+
+## Audit logs — retention (recorded 2026-11-16)
+
+- **The audit mechanism is copied, not shared.** Identity and Registry each hold their own `AuditLogEntry`, its configuration, the serializer options and the `AuditInterceptor` loop (decided 2026-11-16, vehicle registry slice). When Operations needs it, promote the module-independent pieces to a shared persistence library (SharedKernel cannot reference EF Core) and keep only the event mapping in each module.
+
+- **Nothing is ever deleted from the `audit_log` tables.** Decided on 2026-11-16: retention per category of event, enforced by a daily job that deletes in batches the rows older than their category's duration (durations in configuration), decided in an ADR and built as a slice of its own. Starting proposal, durations to confirm with Priamus and its advisor: access and session events (login, failed login, revocation) 12 months, for GDPR storage limitation; changes to master data and users as long as the data they explain; changes to trips and anomaly resolutions as long as the trips, which are billing records. Until then nothing is deleted.
 
 ## Identity — deferred by the local-run and bootstrap slice (recorded 2026-11-15)
 
 - **Change-password endpoint.** The first administrator's password comes from configuration and nothing in the API can change it; needed before any real use.
 - **A disabled user's access token** is accepted by every endpoint but `me` until it expires, at most one hour (ADR 0005); rejecting it on every endpoint would cost a database read per request.
 - **CORS.** The frontend reaches the backend through its dev-server proxy in development; the policy is decided with the deployment.
-
-## Shared test infrastructure
-
-- **Test authentication handler.** Endpoint tests of Registry, Operations and BackOffice should not seed a user and log in to obtain a token: a test scheme issuing the claims of a caller (user id, role, linked driver) belongs in `tests/Priamus.Trips.IntegrationTesting`, written with the first endpoint test that needs it. Identity keeps testing the real JWT.
 
 ## Documentation
 

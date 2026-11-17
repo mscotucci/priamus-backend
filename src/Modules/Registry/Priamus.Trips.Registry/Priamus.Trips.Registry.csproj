@@ -1,14 +1,45 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
+  <PropertyGroup>
+    <!-- Microsoft.Extensions.Validation is used via the [ValidatableType] source generator;
+         the package analyzer cannot detect source-generator usage and emits NU1510.
+         ASP0029 is the experimental-API warning: Microsoft.Extensions.Validation and [ValidatableType]
+         are still marked experimental in ASP.NET Core. -->
+    <NoWarn>$(NoWarn);NU1510;ASP0029</NoWarn>
+  </PropertyGroup>
+
   <ItemGroup>
     <FrameworkReference Include="Microsoft.AspNetCore.App" />
   </ItemGroup>
 
   <ItemGroup>
     <PackageReference Include="Microsoft.EntityFrameworkCore" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Design">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers</IncludeAssets>
+    </PackageReference>
     <PackageReference Include="Microsoft.EntityFrameworkCore.Relational" />
     <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" />
+    <PackageReference Include="Microsoft.Extensions.Validation" />
     <PackageReference Include="Scrutor" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Italian messages, keyed by Error.Code. MSBuild generates the strongly-typed accessor class (public,
+         because ErrorMessageResourceType on a validation attribute requires a visible type). -->
+    <EmbeddedResource Update="Resources\RegistryMessages.resx">
+      <Generator>MSBuild:Compile</Generator>
+      <StronglyTypedFileName>$(IntermediateOutputPath)RegistryMessages.Designer.cs</StronglyTypedFileName>
+      <StronglyTypedLanguage>CSharp</StronglyTypedLanguage>
+      <StronglyTypedNamespace>Priamus.Trips.Registry.Resources</StronglyTypedNamespace>
+      <StronglyTypedClassName>RegistryMessages</StronglyTypedClassName>
+      <PublicClass>true</PublicClass>
+    </EmbeddedResource>
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="Priamus.Trips.Registry.IntegrationTests" />
+    <InternalsVisibleTo Include="Priamus.Trips.Registry.UnitTests" />
   </ItemGroup>
 
   <ItemGroup>

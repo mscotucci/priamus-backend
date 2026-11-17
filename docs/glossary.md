@@ -50,6 +50,18 @@ This file lives in the backend repository and is the source of truth for the pro
 | Cut-off riepilogo | SummaryCutoff |
 | Livello di fatturazione | BillingLevel |
 
+## Vehicles
+
+| Italian | English |
+|---|---|
+| Targa | LicensePlate |
+| Descrizione / modello (mezzo) | Description |
+| Tipologia mezzo | VehicleType (`Tractor`, `Trailer`, `StandaloneVehicle`) |
+| Richiede rimorchio | RequiresTrailer |
+| Stato mezzo: attivo / dismesso | VehicleStatus (`Active`, `Decommissioned`) |
+| Dismissione / dismettere | Decommission |
+| Riattivazione / riattivare | Reactivate |
+
 ## Pricing modes (sealed type variants)
 
 | Italian | English |

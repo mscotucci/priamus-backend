@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using Npgsql;
 using Priamus.Trips.Identity.Persistence;
+using Priamus.Trips.Registry.Persistence;
 using Testcontainers.PostgreSql;
 using Xunit;
 
@@ -8,7 +9,7 @@ namespace Priamus.Trips.IntegrationTesting;
 
 /// <summary>
 /// Assembly-scoped fixture that owns a single PostgreSQL container for the full test run.
-/// At initialization it applies migrations once to a template database; each test then
+/// At initialization it applies the migrations of every module once to a template database; each test then
 /// creates its own database from that template (cheap Postgres file-system clone).
 /// </summary>
 public sealed class PostgresFixture : IAsyncLifetime
@@ -20,7 +21,7 @@ public sealed class PostgresFixture : IAsyncLifetime
     public string AdminConnectionString { get; private set; } = null!;
 
     /// <summary>Name of the migrated template database.</summary>
-    public string TemplateDatabaseName => "identity_template";
+    public string TemplateDatabaseName => "migrated_template";
 
     /// <inheritdoc />
     public async ValueTask InitializeAsync()
@@ -38,7 +39,7 @@ public sealed class PostgresFixture : IAsyncLifetime
             await cmd.ExecuteNonQueryAsync();
         }
 
-        // Pooling=false ensures no Npgsql pool connections remain open on identity_template
+        // Pooling=false ensures no Npgsql pool connections remain open on the template database
         // after migration completes. Without this, concurrent CREATE DATABASE ... TEMPLATE
         // calls from test InitializeAsync will fail with "source database is being accessed
         // by other users".
@@ -51,13 +52,25 @@ public sealed class PostgresFixture : IAsyncLifetime
             Pooling = false,
         }.ConnectionString;
 
-        var options = new DbContextOptionsBuilder<IdentityDbContext>()
+        var identityOptions = new DbContextOptionsBuilder<IdentityDbContext>()
             .UseNpgsql(templateConnStr, npgsql =>
                 npgsql.MigrationsHistoryTable("__ef_migrations_history", "identity"))
             .Options;
 
-        await using var templateCtx = new IdentityDbContext(options);
-        await templateCtx.Database.MigrateAsync();
+        await using (var identityCtx = new IdentityDbContext(identityOptions))
+        {
+            await identityCtx.Database.MigrateAsync();
+        }
+
+        var registryOptions = new DbContextOptionsBuilder<RegistryDbContext>()
+            .UseNpgsql(templateConnStr, npgsql =>
+                npgsql.MigrationsHistoryTable("__ef_migrations_history", "registry"))
+            .Options;
+
+        await using (var registryCtx = new RegistryDbContext(registryOptions))
+        {
+            await registryCtx.Database.MigrateAsync();
+        }
 
         // Belt-and-suspenders: clear any remaining pooled connections to guarantee that
         // the template database has zero open backends before tests begin cloning it.

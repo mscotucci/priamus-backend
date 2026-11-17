@@ -1,3 +1,4 @@
+using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.Extensions.DependencyInjection;
@@ -17,9 +18,15 @@ public static class ApiFactory
     /// </summary>
     /// <param name="connectionString">Connection string of the test's isolated database.</param>
     /// <param name="configureServices">Optional DI overrides (a fixed clock, a stubbed lookup).</param>
+    /// <param name="useTestAuthentication">
+    /// Replaces the JWT bearer scheme with the test scheme, so a client authenticates as a
+    /// <see cref="TestCaller"/> (<see cref="TestCaller.ApplyTo"/>) instead of logging in. Identity's
+    /// tests leave it off and keep the real JWT.
+    /// </param>
     public static WebApplicationFactory<Program> Create(
         string connectionString,
-        Action<IServiceCollection>? configureServices = null)
+        Action<IServiceCollection>? configureServices = null,
+        bool useTestAuthentication = false)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(connectionString);
 
@@ -36,6 +43,18 @@ public static class ApiFactory
                 builder.UseSetting("Jwt:SigningKey", "test-signing-key-endpoint-32chars!!");
                 builder.UseSetting("Jwt:AccessTokenLifetime", "01:00:00");
                 builder.UseSetting("Jwt:RefreshTokenLifetime", "12:00:00");
+
+                if (useTestAuthentication)
+                {
+                    builder.ConfigureServices(services => services
+                        .AddAuthentication(options =>
+                        {
+                            options.DefaultAuthenticateScheme = TestCaller.Scheme;
+                            options.DefaultChallengeScheme = TestCaller.Scheme;
+                            options.DefaultForbidScheme = TestCaller.Scheme;
+                        })
+                        .AddScheme<AuthenticationSchemeOptions, TestAuthenticationHandler>(TestCaller.Scheme, _ => { }));
+                }
 
                 if (configureServices is not null)
                 {
