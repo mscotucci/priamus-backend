@@ -14,10 +14,6 @@ The Identity module was built in May 2026, before the rules in `docs/context.md`
 - **Italian texts of `IdentityMessages.resx`** were written with the alignment, not reviewed with the customer.
 - **Audit payloads of domain events are serialized as the event's raw shape**: enums as numbers (`"role": 3`) and value objects as objects (`"userId": {"value": "…"}`), while the hand-written payloads use names and plain values (`{"username": "admin"}`). Found by the QA of the local-run slice on 2026-11-15; to align with "enums by name" when something first reads the audit log, deciding what happens to the rows already written.
 
-## Docs — migrations appendix (recorded 2026-11-17)
-
-- **`appendices/persistence.md`, "Migrations", does not match how migrations are made.** It prescribes `--startup-project src/Priamus.Trips.Host`, which fails because the EF Core design package and the design-time factories live in the modules (the Identity slice of 2026-11-17 generated `Identity_EnumsByName` without it), and names in the `{Verb}{Entity}` form (`AddTripsTable`), while every migration so far is named `Module_Change` (`Identity_Initial`, `Registry_Vehicles`, `Identity_EnumsByName`). Which of the two becomes the rule is Michele's decision; then the appendix or the practice is aligned.
-
 ## Audit logs — retention (recorded 2026-11-16)
 
 - **The audit mechanism is copied, not shared.** Identity and Registry each hold their own `AuditLogEntry`, its configuration, the serializer options and the `AuditInterceptor` loop (decided 2026-11-16, vehicle registry slice). When Operations needs it, promote the module-independent pieces to a shared persistence library (SharedKernel cannot reference EF Core) and keep only the event mapping in each module.

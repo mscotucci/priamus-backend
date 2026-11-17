@@ -433,17 +433,18 @@ The decision to add an outbox to a module is documented in an ADR, with the cros
 
 ## Migrations
 
-Naming: `{Verb}{Entity}` in PascalCase. Examples: `AddTripsTable`, `AddIssueAcceptanceReason`, `CreateOutboxIndex`. No auto-generated timestamp-only names.
+Naming: `{Module}_{Change}`, the change in PascalCase. Examples: `Identity_Initial`, `Registry_Vehicles`, `Identity_EnumsByName`. No auto-generated timestamp-only names.
 
-Generation:
+Generation, from the repository root:
 
 ```bash
-dotnet ef migrations add AddTripsTable \
+dotnet ef migrations add Operations_Trips \
     --project src/Modules/Operations/Priamus.Trips.Operations \
-    --startup-project src/Priamus.Trips.Host \
     --context OperationsDbContext \
     --output-dir Persistence/Migrations
 ```
+
+No `--startup-project`: the EF Core design package and the design-time factory (`IdentityDbContextFactory`, `RegistryDbContextFactory`) live in each module, so the module is its own startup project. The generated migration, designer and snapshot use block namespaces: convert them to file-scoped namespaces (the build treats IDE0161 as an error).
 
 Rules:
 
