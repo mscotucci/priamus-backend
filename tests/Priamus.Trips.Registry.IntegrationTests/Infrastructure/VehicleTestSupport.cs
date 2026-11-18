@@ -86,13 +86,16 @@ public static class VehicleTestSupport
         private readonly string _connectionString;
         private readonly string _licensePlate;
         private readonly string _status;
+        private readonly bool _vanishAfterFailure;
+        private readonly Guid _competitorId = Guid.NewGuid();
         private bool _fired;
 
-        public CompetingInsertInterceptor(string connectionString, string licensePlate, string status)
+        public CompetingInsertInterceptor(string connectionString, string licensePlate, string status, bool vanishAfterFailure = false)
         {
             _connectionString = connectionString;
             _licensePlate = licensePlate;
             _status = status;
+            _vanishAfterFailure = vanishAfterFailure;
         }
 
         public override async ValueTask<InterceptionResult<int>> SavingChangesAsync(
@@ -116,12 +119,30 @@ public static class VehicleTestSupport
                     (@id, @plate, 'Concurrent', 'Trailer', false, @status,
                      now(), @actor, now(), @actor, 0)
                 """;
-            command.Parameters.AddWithValue("id", Guid.NewGuid());
+            command.Parameters.AddWithValue("id", _competitorId);
             command.Parameters.AddWithValue("plate", _licensePlate);
             command.Parameters.AddWithValue("status", _status);
             command.Parameters.AddWithValue("actor", FakeCurrentUser.ActorId.Value);
             await command.ExecuteNonQueryAsync(cancellationToken);
             return result;
+        }
+
+        public override async Task SaveChangesFailedAsync(
+            DbContextErrorEventData eventData, CancellationToken cancellationToken = default)
+        {
+            if (!_vanishAfterFailure)
+            {
+                return;
+            }
+
+            // The competitor that won the race on the unique index is gone before the handler
+            // looks it up again to name it.
+            await using var connection = new NpgsqlConnection(_connectionString);
+            await connection.OpenAsync(cancellationToken);
+            await using var command = connection.CreateCommand();
+            command.CommandText = "DELETE FROM registry.vehicles WHERE id = @id";
+            command.Parameters.AddWithValue("id", _competitorId);
+            await command.ExecuteNonQueryAsync(cancellationToken);
         }
     }
 }

@@ -46,6 +46,32 @@ _Avoid_: deleted, disabled, archived
 Moving a vehicle from active to decommissioned and back. Neither changes any trip already recorded.
 _Avoid_: delete, retire, restore
 
+### Customers
+
+**Customer** (Cliente):
+A company or public body Priamus carries goods for, and bills. Identified for people by its company name and, when it has one, by its VAT number. Its billing rules come from its contracts.
+_Avoid_: client, account, company (alone)
+
+**Company name** (Ragione sociale):
+The name of the customer as it appears on its documents. Two customers may share it.
+_Avoid_: name (alone), business name, denominazione
+
+**VAT number** (Partita IVA):
+The Italian VAT registration of the customer: 11 digits with a check digit, kept without spaces or the "IT" prefix. Unique among all customers, deactivated ones included. A foreign customer has none.
+_Avoid_: P.IVA (in code), tax ID
+
+**Tax code** (Codice fiscale):
+The Italian tax identifier of the customer: 16 letters and digits for a person, 11 digits for a company or public body, often equal to its VAT number. Not unique.
+_Avoid_: fiscal code, CF (in code)
+
+**Customer status** (Stato):
+Whether a customer can be chosen for new trips and contracts: `Active` (Attivo) or `Deactivated` (Disattivato). A deactivated customer stays in the registry for the trips and contracts that name it.
+_Avoid_: deleted, archived, decommissioned (that is a vehicle's)
+
+**Deactivate** / **Reactivate** (Disattivare / Riattivare):
+Moving a customer from active to deactivated and back. Neither changes its data, its contracts or any trip already recorded.
+_Avoid_: delete, close, disable
+
 ## Relationships
 
 - A trip records its own vehicle composition when it is registered (Operations); changing a vehicle's type or its requires-trailer property later does not change it.

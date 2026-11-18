@@ -138,6 +138,24 @@ public sealed class RegistryEndpointSweepTests : RegistryIntegrationTestBase
     }
 
     [Fact]
+    public async Task NoRoutedRegistryOperationDeletesACustomer()
+    {
+        // Arrange
+        await using var factory = ApiFactory.Create(ConnectionString);
+
+        // Act
+        var customerOperations = RoutedOperations(factory.Services)
+            .Where(o => o.Route.StartsWith(Prefix + "customers", StringComparison.Ordinal))
+            .Select(o => $"{o.Method} {o.Route}")
+            .ToList();
+
+        // Assert
+        customerOperations.ShouldContain("POST /api/registry/customers/{id}/deactivate");
+        customerOperations.ShouldContain("POST /api/registry/customers/{id}/reactivate");
+        customerOperations.Where(o => o.StartsWith("DELETE ", StringComparison.Ordinal)).ShouldBeEmpty();
+    }
+
+    [Fact]
     public async Task EveryRoutedRegistryOperation_AnonymousCaller_Returns401()
     {
         // Arrange

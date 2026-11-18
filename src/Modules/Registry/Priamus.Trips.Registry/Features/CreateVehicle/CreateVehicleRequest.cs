@@ -9,7 +9,7 @@ namespace Priamus.Trips.Registry.Features.CreateVehicle;
 /// <summary>
 /// Request body for <c>POST /api/registry/vehicles</c> (PRD RF-26, RF-27). The description is
 /// measured once trimmed, as the aggregate stores it, so its length is checked in
-/// <see cref="Validate"/> rather than with a length attribute on the raw text.
+/// <c>Validate</c> rather than with a length attribute on the raw text.
 /// </summary>
 [ValidatableType]
 public sealed record CreateVehicleRequest(

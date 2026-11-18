@@ -4,6 +4,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Localization;
 using Microsoft.Extensions.Options;
 using Priamus.Trips.Registry.Application.Services;
+using Priamus.Trips.Registry.Domain.Customers;
 using Priamus.Trips.Registry.Domain.Vehicles;
 using Priamus.Trips.Registry.IntegrationTests.Infrastructure;
 using Priamus.Trips.Registry.Resources;
@@ -87,6 +88,62 @@ public sealed class RegistryMessagesTests : RegistryIntegrationTestBase
     }
 
     [Fact]
+    public async Task VatNumberTaken_AnswersInItalianWithVatNumberAndHolder()
+    {
+        var detail = await DetailAsync(CustomerErrors.VatNumberTaken, "01455280683", "Comune di Penne");
+
+        detail.ShouldBe("La partita IVA 01455280683 è già registrata sul cliente Comune di Penne.");
+    }
+
+    [Fact]
+    public async Task VatNumberTakenByDeactivated_AnswersInItalianWithVatNumberAndHolder()
+    {
+        var detail = await DetailAsync(CustomerErrors.VatNumberTakenByDeactivated, "01455280683", "Comune di Penne");
+
+        detail.ShouldBe(
+            "La partita IVA 01455280683 è già registrata sul cliente Comune di Penne (disattivato). Per riprenderlo, riattivalo dalla lista.");
+    }
+
+    [Fact]
+    public async Task VatNumberTakenByAnother_AnswersInItalianWithTheVatNumberOnly()
+    {
+        var detail = await DetailAsync(CustomerErrors.VatNumberTakenByAnother, "01455280683");
+
+        detail.ShouldBe("La partita IVA 01455280683 è già registrata su un altro cliente.");
+    }
+
+    [Fact]
+    public async Task CustomerConcurrentUpdate_AnswersInItalian()
+    {
+        var detail = await DetailAsync(CustomerErrors.ConcurrentUpdate);
+
+        detail.ShouldBe("Il cliente è stato modificato da un altro utente nel frattempo. Controlla i dati aggiornati e riprova.");
+    }
+
+    [Fact]
+    public async Task EveryCustomerError_HasAnItalianText()
+    {
+        var errors = new[]
+        {
+            CustomerErrors.CompanyNameInvalid,
+            CustomerErrors.AddressInvalid,
+            CustomerErrors.VatNumberInvalid,
+            CustomerErrors.TaxCodeInvalid,
+            CustomerErrors.NotFound,
+            CustomerErrors.VatNumberTaken,
+            CustomerErrors.VatNumberTakenByDeactivated,
+            CustomerErrors.VatNumberTakenByAnother,
+            CustomerErrors.ConcurrentUpdate,
+        };
+
+        foreach (var error in errors)
+        {
+            var detail = await DetailAsync(error, "01455280683", "Comune di Penne");
+            detail.ShouldNotBe(error.Description, error.Code);
+        }
+    }
+
+    [Fact]
     public async Task ValidationMessages_AreItalian()
     {
         await using var factory = ApiFactory.Create(ConnectionString);
@@ -96,5 +153,7 @@ public sealed class RegistryMessagesTests : RegistryIntegrationTestBase
         localizer["Validation.MaxLength"].Value.ShouldBe("Massimo {1} caratteri.");
         localizer["Validation.LicensePlate"].ResourceNotFound.ShouldBeFalse();
         localizer["Validation.RequiresTrailerNotAllowed"].ResourceNotFound.ShouldBeFalse();
+        localizer["Validation.VatNumber"].ResourceNotFound.ShouldBeFalse();
+        localizer["Validation.TaxCode"].ResourceNotFound.ShouldBeFalse();
     }
 }

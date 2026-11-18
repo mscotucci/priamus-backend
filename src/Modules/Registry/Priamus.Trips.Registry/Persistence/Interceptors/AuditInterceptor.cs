@@ -1,6 +1,9 @@
 using System.Diagnostics;
 using System.Text.Json;
 using Microsoft.EntityFrameworkCore.Diagnostics;
+using Priamus.Trips.Registry.Domain.Customers;
+using Priamus.Trips.Registry.Domain.Customers.Events;
+using Priamus.Trips.Registry.Domain.Customers.ValueObjects;
 using Priamus.Trips.Registry.Domain.Vehicles;
 using Priamus.Trips.Registry.Domain.Vehicles.Events;
 using Priamus.Trips.SharedKernel.Domain;
@@ -16,8 +19,8 @@ namespace Priamus.Trips.Registry.Persistence.Interceptors;
 /// <remarks>
 /// Registered as <b>scoped</b> in DI (because it depends on <see cref="ICurrentUser"/>, which is
 /// scoped) and added to the DbContext options in the DI registration extension. The event → entry
-/// mapping is a switch expression: the module has four event types. Created and updated rows carry
-/// the full state after the change, with the plate as a plain string and enums by name; the
+/// mapping is a switch expression: the module has eight event types. Created and updated rows carry
+/// the full state after the change, with the plate, VAT number and tax code as plain strings and enums by name; the
 /// payload is built explicitly instead of serializing the event, whose value objects would
 /// otherwise appear as nested objects. <c>OccurredAt</c> is taken from the domain event, not
 /// from a clock.
@@ -85,7 +88,7 @@ public sealed class AuditInterceptor : ISaveChangesInterceptor
 
     /// <summary>
     /// Maps a domain event to an <see cref="AuditLogEntry"/>. The <c>subject_id</c> is always
-    /// the affected <c>VehicleId</c>.
+    /// the affected <c>VehicleId</c> or <c>CustomerId</c>.
     /// </summary>
     internal static AuditLogEntry MapToAuditLogEntry(IDomainEvent domainEvent, Guid? actorId)
     {
@@ -107,6 +110,22 @@ public sealed class AuditInterceptor : ISaveChangesInterceptor
                 e.EventId, e.OccurredAt, actorId, e.VehicleId.Value, AuditEventTypes.VehicleReactivated,
                 new { VehicleId = e.VehicleId.Value }),
 
+            CustomerCreated e => Create(
+                e.EventId, e.OccurredAt, actorId, e.CustomerId.Value, AuditEventTypes.CustomerCreated,
+                CustomerState(e.CustomerId, e.CompanyName, e.VatNumber, e.TaxCode, e.Address, e.Status)),
+
+            CustomerUpdated e => Create(
+                e.EventId, e.OccurredAt, actorId, e.CustomerId.Value, AuditEventTypes.CustomerUpdated,
+                CustomerState(e.CustomerId, e.CompanyName, e.VatNumber, e.TaxCode, e.Address, e.Status)),
+
+            CustomerDeactivated e => Create(
+                e.EventId, e.OccurredAt, actorId, e.CustomerId.Value, AuditEventTypes.CustomerDeactivated,
+                new { CustomerId = e.CustomerId.Value }),
+
+            CustomerReactivated e => Create(
+                e.EventId, e.OccurredAt, actorId, e.CustomerId.Value, AuditEventTypes.CustomerReactivated,
+                new { CustomerId = e.CustomerId.Value }),
+
             _ => throw new UnreachableException(
                 $"Unknown domain event type '{domainEvent.GetType().FullName}' reached the AuditInterceptor. " +
                 "Add a case to the switch expression in AuditInterceptor.MapToAuditLogEntry.")
@@ -127,6 +146,23 @@ public sealed class AuditInterceptor : ISaveChangesInterceptor
             Description = description,
             Type = type,
             RequiresTrailer = requiresTrailer,
+            Status = status,
+        };
+
+    private static object CustomerState(
+        CustomerId customerId,
+        string companyName,
+        VatNumber? vatNumber,
+        TaxCode? taxCode,
+        string? address,
+        CustomerStatus status) =>
+        new
+        {
+            CustomerId = customerId.Value,
+            CompanyName = companyName,
+            VatNumber = vatNumber?.Value,
+            TaxCode = taxCode?.Value,
+            Address = address,
             Status = status,
         };
 

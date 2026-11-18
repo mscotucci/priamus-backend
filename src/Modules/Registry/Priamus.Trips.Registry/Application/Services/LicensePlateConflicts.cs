@@ -63,7 +63,7 @@ internal static class LicensePlateConflicts
     /// <summary>
     /// The error to raise after losing a race on the unique index: looks the competitor up again to
     /// tell an active holder from a decommissioned one, and falls back to
-    /// <see cref="VehicleErrors.LicensePlateTaken"/> when it can no longer be found.
+    /// <see cref="VehicleErrors.LicensePlateTaken"/>, still naming the plate, when it can no longer be found.
     /// </summary>
     public static async Task<Error> ErrorAfterLostRaceAsync(
         RegistryDbContext db,
@@ -72,7 +72,12 @@ internal static class LicensePlateConflicts
         ErrorMessageArguments arguments,
         CancellationToken cancellationToken)
     {
-        var raced = await FindAsync(db, plate, excluding, arguments, cancellationToken);
-        return raced ?? VehicleErrors.LicensePlateTaken;
+        if (await FindAsync(db, plate, excluding, arguments, cancellationToken) is { } raced)
+        {
+            return raced;
+        }
+
+        arguments.Set(plate.Value);
+        return VehicleErrors.LicensePlateTaken;
     }
 }

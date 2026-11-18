@@ -232,6 +232,24 @@ public sealed class CreateVehicleEndpointTests : RegistryIntegrationTestBase
     }
 
     [Fact]
+    public async Task PlateTakenByARaceWinnerThatIsGoneBeforeTheLookup_Returns409NamingThePlate()
+    {
+        // Arrange
+        await using var factory = CreateFactory(services =>
+            services.AddDbContext<RegistryDbContext>(options =>
+                options.AddInterceptors(
+                    new CompetingInsertInterceptor(ConnectionString, "AB456CD", "Active", vanishAfterFailure: true))));
+
+        // Act
+        var response = await PostAsync(BackOfficeClient(factory), Body());
+
+        // Assert
+        (await DetailAsync(response)).ShouldBe("La targa AB456CD è già registrata su un altro mezzo.");
+        await response.ShouldBeProblemAsync(HttpStatusCode.Conflict, VehicleErrors.LicensePlateTaken, Ct);
+        (await CountVehiclesAsync()).ShouldBe(0);
+    }
+
+    [Fact]
     public async Task TwoCreationsWithTheSamePlateAtTheSameMoment_OneSucceedsTheOtherGets409()
     {
         // Arrange

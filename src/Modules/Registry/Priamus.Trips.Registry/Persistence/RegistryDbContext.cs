@@ -1,6 +1,8 @@
 using System.Reflection;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Query.SqlExpressions;
+using Priamus.Trips.Registry.Domain.Customers;
+using Priamus.Trips.Registry.Domain.Customers.ValueObjects;
 using Priamus.Trips.Registry.Domain.Vehicles;
 using Priamus.Trips.Registry.Domain.Vehicles.ValueObjects;
 
@@ -29,6 +31,9 @@ public sealed class RegistryDbContext : DbContext
     /// <summary>The company's vehicles.</summary>
     public DbSet<Vehicle> Vehicles => Set<Vehicle>();
 
+    /// <summary>The company's customers.</summary>
+    public DbSet<Customer> Customers => Set<Customer>();
+
     /// <summary>Audit log entries written synchronously by the <see cref="Interceptors.AuditInterceptor"/>.</summary>
     public DbSet<AuditLogEntry> AuditLog => Set<AuditLogEntry>();
 
@@ -52,6 +57,34 @@ public sealed class RegistryDbContext : DbContext
                 typeMapping: null))
             .HasParameter("licensePlate")
                 .HasStoreType("varchar(10)");
+
+        // VatNumber.Unwrap() and TaxCode.Unwrap() — the same identity translation as the plate's,
+        // over the nullable code columns.
+        modelBuilder
+            .HasDbFunction(typeof(VatNumberQueryExtensions)
+                .GetMethod(nameof(VatNumberQueryExtensions.Unwrap), [typeof(VatNumber)])!)
+            .HasTranslation(args => new SqlFunctionExpression(
+                functionName: string.Empty,
+                arguments: args,
+                nullable: true,
+                argumentsPropagateNullability: new[] { true },
+                type: typeof(string),
+                typeMapping: null))
+            .HasParameter("vatNumber")
+                .HasStoreType("varchar(11)");
+
+        modelBuilder
+            .HasDbFunction(typeof(TaxCodeQueryExtensions)
+                .GetMethod(nameof(TaxCodeQueryExtensions.Unwrap), [typeof(TaxCode)])!)
+            .HasTranslation(args => new SqlFunctionExpression(
+                functionName: string.Empty,
+                arguments: args,
+                nullable: true,
+                argumentsPropagateNullability: new[] { true },
+                type: typeof(string),
+                typeMapping: null))
+            .HasParameter("taxCode")
+                .HasStoreType("varchar(16)");
 
         base.OnModelCreating(modelBuilder);
     }

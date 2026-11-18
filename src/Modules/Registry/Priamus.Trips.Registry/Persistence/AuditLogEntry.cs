@@ -18,6 +18,18 @@ public static class AuditEventTypes
 
     /// <summary>A vehicle was reactivated.</summary>
     public const string VehicleReactivated = "registry.vehicle.reactivated";
+
+    /// <summary>A new customer was created.</summary>
+    public const string CustomerCreated = "registry.customer.created";
+
+    /// <summary>A customer was edited.</summary>
+    public const string CustomerUpdated = "registry.customer.updated";
+
+    /// <summary>A customer was deactivated.</summary>
+    public const string CustomerDeactivated = "registry.customer.deactivated";
+
+    /// <summary>A customer was reactivated.</summary>
+    public const string CustomerReactivated = "registry.customer.reactivated";
 }
 
 /// <summary>
@@ -68,7 +80,7 @@ public sealed class AuditLogEntry
     public Guid? ActorId { get; private set; }
 
     /// <summary>
-    /// Identifier of the affected entity. For vehicle events this is the <c>VehicleId</c>.
+    /// Identifier of the affected entity. For vehicle events this is the <c>VehicleId</c>, for customer events the <c>CustomerId</c>.
     /// </summary>
     public Guid SubjectId { get; private set; }
 

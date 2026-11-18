@@ -49,4 +49,37 @@
   <data name="Registry.Vehicle.ConcurrentUpdate" xml:space="preserve">
     <value>Il mezzo è stato modificato da un altro utente nel frattempo. Controlla i dati aggiornati e riprova.</value>
   </data>
+  <data name="Validation.VatNumber" xml:space="preserve">
+    <value>La partita IVA deve avere 11 cifre con cifra di controllo valida; spazi e un IT iniziale sono ignorati.</value>
+  </data>
+  <data name="Validation.TaxCode" xml:space="preserve">
+    <value>Il codice fiscale deve avere 16 tra lettere e cifre oppure 11 cifre; gli spazi sono ignorati.</value>
+  </data>
+  <data name="Registry.Customer.CompanyNameInvalid" xml:space="preserve">
+    <value>La ragione sociale è obbligatoria e può avere al massimo 150 caratteri.</value>
+  </data>
+  <data name="Registry.Customer.AddressInvalid" xml:space="preserve">
+    <value>La sede può avere al massimo 200 caratteri.</value>
+  </data>
+  <data name="Registry.Customer.VatNumberInvalid" xml:space="preserve">
+    <value>La partita IVA deve avere 11 cifre con cifra di controllo valida; spazi e un IT iniziale sono ignorati.</value>
+  </data>
+  <data name="Registry.Customer.TaxCodeInvalid" xml:space="preserve">
+    <value>Il codice fiscale deve avere 16 tra lettere e cifre oppure 11 cifre; gli spazi sono ignorati.</value>
+  </data>
+  <data name="Registry.Customer.NotFound" xml:space="preserve">
+    <value>Cliente non trovato.</value>
+  </data>
+  <data name="Registry.Customer.VatNumberTaken" xml:space="preserve">
+    <value>La partita IVA {0} è già registrata sul cliente {1}.</value>
+  </data>
+  <data name="Registry.Customer.VatNumberTakenByDeactivated" xml:space="preserve">
+    <value>La partita IVA {0} è già registrata sul cliente {1} (disattivato). Per riprenderlo, riattivalo dalla lista.</value>
+  </data>
+  <data name="Registry.Customer.VatNumberTakenByAnother" xml:space="preserve">
+    <value>La partita IVA {0} è già registrata su un altro cliente.</value>
+  </data>
+  <data name="Registry.Customer.ConcurrentUpdate" xml:space="preserve">
+    <value>Il cliente è stato modificato da un altro utente nel frattempo. Controlla i dati aggiornati e riprova.</value>
+  </data>
 </root>

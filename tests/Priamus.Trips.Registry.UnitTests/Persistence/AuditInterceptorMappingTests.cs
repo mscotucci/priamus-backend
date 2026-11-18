@@ -1,4 +1,6 @@
 using System.Text.Json;
+using Priamus.Trips.Registry.Domain.Customers;
+using Priamus.Trips.Registry.Domain.Customers.ValueObjects;
 using Priamus.Trips.Registry.Domain.Vehicles;
 using Priamus.Trips.Registry.Domain.Vehicles.ValueObjects;
 using Priamus.Trips.Registry.Persistence;
@@ -11,8 +13,8 @@ using Xunit;
 namespace Priamus.Trips.Registry.UnitTests.Persistence;
 
 /// <summary>
-/// The audit row each vehicle event produces: event type, subject, actor, timestamp and a payload
-/// that writes the plate as a plain string and enums by name.
+/// The audit row each vehicle and customer event produces: event type, subject, actor, timestamp and
+/// a payload that writes the plate, VAT number and tax code as plain strings and enums by name.
 /// </summary>
 public sealed class AuditInterceptorMappingTests
 {
@@ -97,6 +99,105 @@ public sealed class AuditInterceptorMappingTests
             entry.SubjectId.ShouldBe(vehicle.Id.Value);
             using var payload = JsonDocument.Parse(entry.Payload);
             payload.RootElement.GetProperty("vehicleId").GetGuid().ShouldBe(vehicle.Id.Value);
+        }
+    }
+
+    private static Customer NewCustomer() =>
+        Customer.Create(
+            CustomerId.New(),
+            "  Comune di Penne ",
+            VatNumber.Create("IT 01455280683"),
+            TaxCode.Create("mrcgli72d45g438k"),
+            " Corso Alessandrini 1 ",
+            new FakeClock(new DateTime(2026, 11, 18, 9, 0, 0, DateTimeKind.Utc)),
+            Actor);
+
+    private static AuditLogEntry MapSingleEvent(Customer customer) =>
+        AuditInterceptor.MapToAuditLogEntry(customer.DomainEvents.Single(), ActorGuid);
+
+    [Fact]
+    public void CustomerCreated_WritesFullStateWithPlainCodesAndEnumsByName()
+    {
+        var customer = NewCustomer();
+
+        var entry = MapSingleEvent(customer);
+
+        entry.EventType.ShouldBe(AuditEventTypes.CustomerCreated);
+        entry.EventType.ShouldBe("registry.customer.created");
+        entry.SubjectId.ShouldBe(customer.Id.Value);
+        entry.ActorId.ShouldBe(ActorGuid);
+        entry.OccurredAt.ShouldBe(customer.CreatedAt);
+        using var payload = JsonDocument.Parse(entry.Payload);
+        var root = payload.RootElement;
+        root.GetProperty("customerId").GetGuid().ShouldBe(customer.Id.Value);
+        root.GetProperty("companyName").GetString().ShouldBe("Comune di Penne");
+        root.GetProperty("vatNumber").ValueKind.ShouldBe(JsonValueKind.String);
+        root.GetProperty("vatNumber").GetString().ShouldBe("01455280683");
+        root.GetProperty("taxCode").ValueKind.ShouldBe(JsonValueKind.String);
+        root.GetProperty("taxCode").GetString().ShouldBe("MRCGLI72D45G438K");
+        root.GetProperty("address").GetString().ShouldBe("Corso Alessandrini 1");
+        root.GetProperty("status").GetString().ShouldBe("Active");
+    }
+
+    [Fact]
+    public void CustomerCreated_WithoutCodesAndAddress_OmitsThem()
+    {
+        var customer = Customer.Create(
+            CustomerId.New(), "Acme GmbH", null, null, null,
+            new FakeClock(new DateTime(2026, 11, 18, 9, 0, 0, DateTimeKind.Utc)), Actor);
+
+        var entry = MapSingleEvent(customer);
+
+        using var payload = JsonDocument.Parse(entry.Payload);
+        var root = payload.RootElement;
+        root.TryGetProperty("vatNumber", out _).ShouldBeFalse();
+        root.TryGetProperty("taxCode", out _).ShouldBeFalse();
+        root.TryGetProperty("address", out _).ShouldBeFalse();
+    }
+
+    [Fact]
+    public void CustomerUpdated_WritesFullStateAfterTheChange()
+    {
+        var customer = NewCustomer();
+        customer.ClearDomainEvents();
+        customer.Update(
+            "Acme Srl", VatNumber.Create("00743110157"), null, null,
+            new FakeClock(new DateTime(2026, 11, 19, 9, 0, 0, DateTimeKind.Utc)), Actor);
+
+        var entry = MapSingleEvent(customer);
+
+        entry.EventType.ShouldBe("registry.customer.updated");
+        entry.SubjectId.ShouldBe(customer.Id.Value);
+        entry.OccurredAt.ShouldBe(customer.LastModifiedAt);
+        using var payload = JsonDocument.Parse(entry.Payload);
+        var root = payload.RootElement;
+        root.GetProperty("companyName").GetString().ShouldBe("Acme Srl");
+        root.GetProperty("vatNumber").GetString().ShouldBe("00743110157");
+        root.TryGetProperty("taxCode", out _).ShouldBeFalse();
+        root.TryGetProperty("address", out _).ShouldBeFalse();
+        root.GetProperty("status").GetString().ShouldBe("Active");
+    }
+
+    [Fact]
+    public void CustomerDeactivatedAndReactivated_WriteTheCustomerIdUnderTheirOwnEventType()
+    {
+        var customer = NewCustomer();
+        var clock = new FakeClock(new DateTime(2026, 11, 19, 9, 0, 0, DateTimeKind.Utc));
+        customer.ClearDomainEvents();
+
+        customer.Deactivate(clock, Actor);
+        var deactivated = MapSingleEvent(customer);
+        customer.ClearDomainEvents();
+        customer.Reactivate(clock, Actor);
+        var reactivated = MapSingleEvent(customer);
+
+        deactivated.EventType.ShouldBe("registry.customer.deactivated");
+        reactivated.EventType.ShouldBe("registry.customer.reactivated");
+        foreach (var entry in new[] { deactivated, reactivated })
+        {
+            entry.SubjectId.ShouldBe(customer.Id.Value);
+            using var payload = JsonDocument.Parse(entry.Payload);
+            payload.RootElement.GetProperty("customerId").GetGuid().ShouldBe(customer.Id.Value);
         }
     }
 
