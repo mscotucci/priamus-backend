@@ -1,3 +1,4 @@
+using System.Linq.Expressions;
 using Priamus.Trips.Registry.Domain.Customers;
 
 namespace Priamus.Trips.Registry.Features.ListCustomers;
@@ -21,4 +22,19 @@ public sealed record CustomerListItemDto(
     string? Address,
     CustomerStatus Status,
     DateTime LastModifiedAt,
-    int Version);
+    int Version)
+{
+    /// <summary>
+    /// The projection from a <see cref="Customer"/>, an expression so that EF Core translates it
+    /// into the query.
+    /// </summary>
+    public static readonly Expression<Func<Customer, CustomerListItemDto>> Projection = c => new CustomerListItemDto(
+        c.Id.Value,
+        c.CompanyName,
+        c.VatNumber == null ? null : c.VatNumber.Value,
+        c.TaxCode == null ? null : c.TaxCode.Value,
+        c.Address,
+        c.Status,
+        c.LastModifiedAt,
+        c.Version);
+}

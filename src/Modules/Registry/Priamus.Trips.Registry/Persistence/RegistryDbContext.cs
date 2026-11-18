@@ -1,6 +1,7 @@
 using System.Reflection;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Query.SqlExpressions;
+using Priamus.Trips.Registry.Domain.Contracts;
 using Priamus.Trips.Registry.Domain.Customers;
 using Priamus.Trips.Registry.Domain.Customers.ValueObjects;
 using Priamus.Trips.Registry.Domain.Vehicles;
@@ -33,6 +34,9 @@ public sealed class RegistryDbContext : DbContext
 
     /// <summary>The company's customers.</summary>
     public DbSet<Customer> Customers => Set<Customer>();
+
+    /// <summary>The customers' contracts.</summary>
+    public DbSet<Contract> Contracts => Set<Contract>();
 
     /// <summary>Audit log entries written synchronously by the <see cref="Interceptors.AuditInterceptor"/>.</summary>
     public DbSet<AuditLogEntry> AuditLog => Set<AuditLogEntry>();

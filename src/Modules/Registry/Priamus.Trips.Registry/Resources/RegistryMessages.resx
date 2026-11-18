@@ -82,4 +82,22 @@
   <data name="Registry.Customer.ConcurrentUpdate" xml:space="preserve">
     <value>Il cliente è stato modificato da un altro utente nel frattempo. Controlla i dati aggiornati e riprova.</value>
   </data>
+  <data name="Registry.Contract.ValidityEndBeforeStart" xml:space="preserve">
+    <value>La data di fine validità non può essere precedente alla data di inizio.</value>
+  </data>
+  <data name="Registry.Contract.NotFound" xml:space="preserve">
+    <value>Contratto non trovato.</value>
+  </data>
+  <data name="Registry.Contract.Overlap" xml:space="preserve">
+    <value>La validità si sovrappone al contratto {0}.</value>
+  </data>
+  <data name="Registry.Contract.OverlapWithAnother" xml:space="preserve">
+    <value>La validità si sovrappone a un altro contratto del cliente.</value>
+  </data>
+  <data name="Registry.Contract.CustomerDeactivated" xml:space="preserve">
+    <value>Il cliente è disattivato: non si possono aggiungere contratti. Riattivalo per aggiungerne uno.</value>
+  </data>
+  <data name="Registry.Contract.ConcurrentUpdate" xml:space="preserve">
+    <value>Il contratto è stato modificato da un altro utente nel frattempo. Controlla i dati aggiornati e riprova.</value>
+  </data>
 </root>

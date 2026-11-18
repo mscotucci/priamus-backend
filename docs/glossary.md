@@ -49,6 +49,9 @@ This file lives in the backend repository and is the source of truth for the pro
 | Giornata operativa | OperatingDay |
 | Cut-off riepilogo | SummaryCutoff |
 | Livello di fatturazione | BillingLevel |
+| Maggiorazione notturna | NightSurcharge |
+| Validità (contratto) | Validity |
+| Stato contratto: in vigore / futuro / scaduto | ContractStatus (`Current`, `Upcoming`, `Expired`) |
 
 ## Vehicles
 

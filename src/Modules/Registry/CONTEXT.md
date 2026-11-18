@@ -72,6 +72,40 @@ _Avoid_: deleted, archived, decommissioned (that is a vehicle's)
 Moving a customer from active to deactivated and back. Neither changes its data, its contracts or any trip already recorded.
 _Avoid_: delete, close, disable
 
+### Contracts
+
+**Contract** (Contratto):
+The billing rules agreed with one customer for a period: how detailed its rates are, how a trip's amount is measured, which documents a trip must carry, whether night trips cost more. A customer may have many contracts over time, never two whose validity overlaps.
+_Avoid_: agreement, deal, contratto attivo (a contract's status is read from its validity)
+
+**Validity** (Validità):
+The days a contract applies to: a start date and, when known, an end date, both included. Days, not instants.
+_Avoid_: duration, term, effective dates
+
+**Open contract** (Contratto aperto):
+A contract with no end date. A customer has at most one, and it is the latest. Creating a later contract closes it on the day before the new one starts.
+_Avoid_: active contract, current contract (those say whether today falls in it)
+
+**Contract status** (Stato del contratto):
+Where today falls against a contract's validity, read from the calendar and never set by hand: `Current` (In vigore) when today is inside it, `Upcoming` (Futuro) when it starts later, `Expired` (Scaduto) when it has ended.
+_Avoid_: active / inactive (those are a customer's or a vehicle's status), open (that is about the end date)
+
+**Night surcharge** (Maggiorazione notturna):
+Whether a contract charges night trips more. When it does, each of its rates has a night price and a night call fee besides the day price; when it does not, a rate has the day price only.
+_Avoid_: night rate (that is one price of a rate), night band (that is when night is)
+
+**Billing level** (Livello di fatturazione):
+How finely a contract's rates are set, and so which locations a trip must name: `FlatRate` (Forfettario, one rate for the customer), `PerPickupLocation` (Per luogo di partenza), `PerDeliveryLocation` (Per luogo di consegna), `PerLocationPair` (Per coppia di luoghi).
+_Avoid_: rate level, granularity
+
+**Pricing mode** (Modalità di pagamento):
+What a trip's amount is measured by, and so what the driver enters: `ByHour` (A ore), `ByWeight` (A peso), `ByDistance` (A km), `ByTrip` (A viaggio).
+_Avoid_: payment method (it is not how the customer pays), rate type
+
+**Required documents** (Documenti obbligatori):
+The documents a contract asks for: on every trip a delivery note (DDT), a delivery slip (bolla) or a waste form (FIR), and at the end of the driver's day a daily summary. Any of them, or none.
+_Avoid_: attachments (an attachment is the file a driver uploads)
+
 ## Relationships
 
 - A trip records its own vehicle composition when it is registered (Operations); changing a vehicle's type or its requires-trailer property later does not change it.

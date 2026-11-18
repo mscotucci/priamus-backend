@@ -30,6 +30,12 @@ public static class AuditEventTypes
 
     /// <summary>A customer was reactivated.</summary>
     public const string CustomerReactivated = "registry.customer.reactivated";
+
+    /// <summary>A new contract was created.</summary>
+    public const string ContractCreated = "registry.contract.created";
+
+    /// <summary>A contract was updated: its terms were edited, or it was closed on the day before a later contract starts (created in the same save).</summary>
+    public const string ContractUpdated = "registry.contract.updated";
 }
 
 /// <summary>
@@ -80,7 +86,7 @@ public sealed class AuditLogEntry
     public Guid? ActorId { get; private set; }
 
     /// <summary>
-    /// Identifier of the affected entity. For vehicle events this is the <c>VehicleId</c>, for customer events the <c>CustomerId</c>.
+    /// Identifier of the affected entity. For vehicle events this is the <c>VehicleId</c>, for customer events the <c>CustomerId</c>, for contract events the <c>ContractId</c>.
     /// </summary>
     public Guid SubjectId { get; private set; }
 

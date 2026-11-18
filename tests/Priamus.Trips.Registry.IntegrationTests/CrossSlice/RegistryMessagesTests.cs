@@ -4,6 +4,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Localization;
 using Microsoft.Extensions.Options;
 using Priamus.Trips.Registry.Application.Services;
+using Priamus.Trips.Registry.Domain.Contracts;
 using Priamus.Trips.Registry.Domain.Customers;
 using Priamus.Trips.Registry.Domain.Vehicles;
 using Priamus.Trips.Registry.IntegrationTests.Infrastructure;
@@ -139,6 +140,34 @@ public sealed class RegistryMessagesTests : RegistryIntegrationTestBase
         foreach (var error in errors)
         {
             var detail = await DetailAsync(error, "01455280683", "Comune di Penne");
+            detail.ShouldNotBe(error.Description, error.Code);
+        }
+    }
+
+    [Fact]
+    public async Task ContractOverlap_AnswersInItalianWithTheOtherValidity()
+    {
+        var detail = await DetailAsync(ContractErrors.Overlap, "dal 01/04/2026 al 31/12/2026");
+
+        detail.ShouldBe("La validità si sovrappone al contratto dal 01/04/2026 al 31/12/2026.");
+    }
+
+    [Fact]
+    public async Task EveryContractError_HasAnItalianText()
+    {
+        var errors = new[]
+        {
+            ContractErrors.ValidityEndBeforeStart,
+            ContractErrors.NotFound,
+            ContractErrors.Overlap,
+            ContractErrors.OverlapWithAnother,
+            ContractErrors.CustomerDeactivated,
+            ContractErrors.ConcurrentUpdate,
+        };
+
+        foreach (var error in errors)
+        {
+            var detail = await DetailAsync(error, "dal 01/04/2026 al 31/12/2026");
             detail.ShouldNotBe(error.Description, error.Code);
         }
     }

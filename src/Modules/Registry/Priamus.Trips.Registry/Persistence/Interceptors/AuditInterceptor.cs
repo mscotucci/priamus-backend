@@ -1,6 +1,9 @@
 using System.Diagnostics;
+using System.Globalization;
 using System.Text.Json;
 using Microsoft.EntityFrameworkCore.Diagnostics;
+using Priamus.Trips.Registry.Domain.Contracts;
+using Priamus.Trips.Registry.Domain.Contracts.Events;
 using Priamus.Trips.Registry.Domain.Customers;
 using Priamus.Trips.Registry.Domain.Customers.Events;
 using Priamus.Trips.Registry.Domain.Customers.ValueObjects;
@@ -19,8 +22,8 @@ namespace Priamus.Trips.Registry.Persistence.Interceptors;
 /// <remarks>
 /// Registered as <b>scoped</b> in DI (because it depends on <see cref="ICurrentUser"/>, which is
 /// scoped) and added to the DbContext options in the DI registration extension. The event → entry
-/// mapping is a switch expression: the module has eight event types. Created and updated rows carry
-/// the full state after the change, with the plate, VAT number and tax code as plain strings and enums by name; the
+/// mapping is a switch expression: the module has ten event types. Created and updated rows carry
+/// the full state after the change, with the plate, VAT number and tax code as plain strings, dates as <c>yyyy-MM-dd</c> and enums by name; the
 /// payload is built explicitly instead of serializing the event, whose value objects would
 /// otherwise appear as nested objects. <c>OccurredAt</c> is taken from the domain event, not
 /// from a clock.
@@ -88,7 +91,7 @@ public sealed class AuditInterceptor : ISaveChangesInterceptor
 
     /// <summary>
     /// Maps a domain event to an <see cref="AuditLogEntry"/>. The <c>subject_id</c> is always
-    /// the affected <c>VehicleId</c> or <c>CustomerId</c>.
+    /// the affected <c>VehicleId</c>, <c>CustomerId</c> or <c>ContractId</c>.
     /// </summary>
     internal static AuditLogEntry MapToAuditLogEntry(IDomainEvent domainEvent, Guid? actorId)
     {
@@ -125,6 +128,14 @@ public sealed class AuditInterceptor : ISaveChangesInterceptor
             CustomerReactivated e => Create(
                 e.EventId, e.OccurredAt, actorId, e.CustomerId.Value, AuditEventTypes.CustomerReactivated,
                 new { CustomerId = e.CustomerId.Value }),
+
+            ContractCreated e => Create(
+                e.EventId, e.OccurredAt, actorId, e.ContractId.Value, AuditEventTypes.ContractCreated,
+                ContractState(e.ContractId, e.CustomerId, e.ValidFrom, e.ValidTo, e.BillingLevel, e.PricingMode, e.RequiredDocuments, e.NightSurcharge)),
+
+            ContractUpdated e => Create(
+                e.EventId, e.OccurredAt, actorId, e.ContractId.Value, AuditEventTypes.ContractUpdated,
+                ContractState(e.ContractId, e.CustomerId, e.ValidFrom, e.ValidTo, e.BillingLevel, e.PricingMode, e.RequiredDocuments, e.NightSurcharge)),
 
             _ => throw new UnreachableException(
                 $"Unknown domain event type '{domainEvent.GetType().FullName}' reached the AuditInterceptor. " +
@@ -164,6 +175,27 @@ public sealed class AuditInterceptor : ISaveChangesInterceptor
             TaxCode = taxCode?.Value,
             Address = address,
             Status = status,
+        };
+
+    private static object ContractState(
+        ContractId contractId,
+        CustomerId customerId,
+        DateOnly validFrom,
+        DateOnly? validTo,
+        BillingLevel billingLevel,
+        PricingMode pricingMode,
+        IReadOnlyList<RequiredDocument> requiredDocuments,
+        bool nightSurcharge) =>
+        new
+        {
+            ContractId = contractId.Value,
+            CustomerId = customerId.Value,
+            ValidFrom = validFrom.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture),
+            ValidTo = validTo?.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture),
+            BillingLevel = billingLevel,
+            PricingMode = pricingMode,
+            RequiredDocuments = requiredDocuments,
+            NightSurcharge = nightSurcharge,
         };
 
     private static AuditLogEntry Create<TPayload>(

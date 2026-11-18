@@ -100,15 +100,7 @@ internal sealed class ListCustomersHandler
         var items = await stable
             .Skip(request.Skip)
             .Take(effectivePageSize)
-            .Select(c => new CustomerListItemDto(
-                c.Id.Value,
-                c.CompanyName,
-                c.VatNumber == null ? null : c.VatNumber.Value,
-                c.TaxCode == null ? null : c.TaxCode.Value,
-                c.Address,
-                c.Status,
-                c.LastModifiedAt,
-                c.Version))
+            .Select(CustomerListItemDto.Projection)
             .ToListAsync(cancellationToken);
 
         _logger.LogInformation(

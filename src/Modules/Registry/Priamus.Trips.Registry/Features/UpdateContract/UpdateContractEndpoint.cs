@@ -1,0 +1,47 @@
+using Microsoft.AspNetCore.Builder;
+using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Routing;
+using Priamus.Trips.Identity.Contracts;
+using Priamus.Trips.SharedKernel.Http;
+
+namespace Priamus.Trips.Registry.Features.UpdateContract;
+
+/// <summary>
+/// HTTP endpoint for <c>PUT /api/registry/customers/{customerId:guid}/contracts/{contractId:guid}</c>.
+/// </summary>
+public static class UpdateContractEndpoint
+{
+    /// <summary>
+    /// Maps the UpdateContract endpoint.
+    /// </summary>
+    public static IEndpointRouteBuilder MapUpdateContract(this IEndpointRouteBuilder app)
+    {
+        app.MapPut("/api/registry/customers/{customerId:guid}/contracts/{contractId:guid}", HandleAsync)
+            .RequireAuthorization(AuthorizationPolicies.BackOfficeOrAdmin)
+            .WithName("UpdateContract")
+            .WithTags("Registry.Contracts")
+            .Produces(StatusCodes.Status204NoContent)
+            .ProducesProblem(StatusCodes.Status400BadRequest)
+            .ProducesProblem(StatusCodes.Status401Unauthorized)
+            .ProducesProblem(StatusCodes.Status403Forbidden)
+            .ProducesProblem(StatusCodes.Status404NotFound)
+            .ProducesProblem(StatusCodes.Status409Conflict);
+
+        return app;
+    }
+
+    private static async Task<IResult> HandleAsync(
+        Guid customerId,
+        Guid contractId,
+        [FromBody] UpdateContractRequest request,
+        [FromServices] UpdateContractHandler handler,
+        CancellationToken cancellationToken)
+    {
+        var result = await handler.HandleAsync(customerId, contractId, request, cancellationToken);
+
+        return result.Match(
+            onSuccess: () => Results.NoContent(),
+            onFailure: error => error.ToProblemDetails());
+    }
+}
