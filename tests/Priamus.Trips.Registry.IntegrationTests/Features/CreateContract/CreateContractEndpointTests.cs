@@ -414,6 +414,119 @@ public sealed class CreateContractEndpointTests : RegistryIntegrationTestBase
         (await db.AuditLog.CountAsync(a => a.EventType.StartsWith("registry.contract"), Ct)).ShouldBe(1);
     }
 
+    // AC-1, AC-10, AC-11, AC-15
+    [Theory]
+    [MemberData(nameof(ValidRates), MemberType = typeof(ContractTestSupport))]
+    public async Task ValidRate_Returns201AndStoresAndReturnsTheRateWithTheContract(
+        string billingLevel, string pricingMode, bool nightSurcharge, string rate)
+    {
+        // Arrange
+        var customer = await SeedCustomerAsync();
+        await using var factory = CreateFactory();
+        var body = ContractBody();
+        SetRate(body, billingLevel, pricingMode, nightSurcharge, rate);
+
+        // Act
+        var response = await PostAsync(BackOfficeClient(factory), customer.Id.Value, body);
+
+        // Assert
+        response.StatusCode.ShouldBe(HttpStatusCode.Created);
+        var returned = await response.Content.ReadFromJsonAsync<JsonElement>(Ct);
+        var stored = (await StoredAsync(customer.Id)).ShouldHaveSingleItem();
+        using var members = JsonDocument.Parse(rate);
+        decimal? Sent(string name) =>
+            members.RootElement.TryGetProperty(name, out var value) ? value.GetDecimal() : null;
+        decimal? Returned(string name) =>
+            returned.GetProperty(name) is { ValueKind: JsonValueKind.Number } value ? value.GetDecimal() : null;
+
+        foreach (var member in new[] { "dayPrice", "nightPrice", "nightCallFee", "minimumAmount", "minimumThreshold", "minimumOveragePrice" })
+        {
+            Returned(member).ShouldBe(Sent(member), member);
+        }
+
+        (stored.Rate is null).ShouldBe(billingLevel != "FlatRate");
+        stored.Rate?.DayPrice.ShouldBe(Sent("dayPrice")!.Value);
+        stored.Rate?.NightPrice.ShouldBe(Sent("nightPrice"));
+        stored.Rate?.NightCallFee.ShouldBe(Sent("nightCallFee"));
+        stored.Rate?.Minimum.Amount.ShouldBe(Sent("minimumAmount"));
+        stored.Rate?.Minimum.Threshold.ShouldBe(Sent("minimumThreshold"));
+        stored.Rate?.Minimum.OveragePrice.ShouldBe(Sent("minimumOveragePrice"));
+        var expectedRule = billingLevel != "FlatRate" ? null
+            : members.RootElement.TryGetProperty("minimumRule", out var rule) ? rule.GetString() : "None";
+        returned.GetProperty("minimumRule").GetString().ShouldBe(expectedRule);
+    }
+
+    // AC-10, AC-11, AC-15
+    [Theory]
+    [MemberData(nameof(InvalidRates), MemberType = typeof(ContractTestSupport))]
+    public async Task InvalidRate_Returns400UnderTheMembersKeys_AndSavesNothing(
+        string billingLevel, string pricingMode, bool nightSurcharge, string rate, string keys)
+    {
+        // Arrange
+        var customer = await SeedCustomerAsync();
+        var before = await AuditCountAsync();
+        await using var factory = CreateFactory();
+        var body = ContractBody();
+        SetRate(body, billingLevel, pricingMode, nightSurcharge, rate);
+
+        // Act
+        var response = await PostAsync(BackOfficeClient(factory), customer.Id.Value, body);
+
+        // Assert
+        response.StatusCode.ShouldBe(HttpStatusCode.BadRequest);
+        (await ErrorKeysAsync(response)).ShouldBe(keys.Split(','));
+        (await StoredAsync(customer.Id)).ShouldBeEmpty();
+        (await AuditCountAsync()).ShouldBe(before);
+    }
+
+    // AC-10, AC-11
+    [Fact]
+    public async Task RateErrors_AreInItalian()
+    {
+        var customer = await SeedCustomerAsync();
+        await using var factory = CreateFactory();
+        var body = ContractBody();
+        SetRate(body, "FlatRate", "ByHour", false,
+            """{"dayPrice":0,"nightPrice":55,"minimumRule":"FixedMinimum","minimumAmount":10.123}""");
+
+        var response = await PostAsync(BackOfficeClient(factory), customer.Id.Value, body);
+
+        var errors = (await response.Content.ReadFromJsonAsync<JsonElement>(Ct)).GetProperty("errors");
+        errors.GetProperty("DayPrice")[0].GetString().ShouldBe("Inserisci un importo maggiore di zero.");
+        errors.GetProperty("NightPrice")[0].GetString().ShouldBe("Questo valore non si applica al contratto.");
+        errors.GetProperty("MinimumAmount")[0].GetString().ShouldBe("Usa al massimo due decimali.");
+    }
+
+    // AC-1, AC-25
+    [Fact]
+    public async Task SuccessfulCreationWithARate_WritesTheRateInTheAuditRow()
+    {
+        // Arrange
+        var customer = await SeedCustomerAsync();
+        await using var factory = CreateFactory();
+        var body = ContractBody();
+        SetRate(body, "FlatRate", "ByHour", true,
+            """{"dayPrice":45,"nightPrice":55.5,"nightCallFee":0,"minimumRule":"TieredOverage","minimumAmount":300,"minimumThreshold":4,"minimumOveragePrice":60.25}""");
+
+        // Act
+        var response = await PostAsync(BackOfficeClient(factory), customer.Id.Value, body);
+
+        // Assert
+        var id = (await response.Content.ReadFromJsonAsync<JsonElement>(Ct)).GetProperty("id").GetGuid();
+        await using var db = CreateDbContext();
+        var row = await db.AuditLog.SingleAsync(a => a.SubjectId == id, Ct);
+        using var payload = JsonDocument.Parse(row.Payload);
+        var root = payload.RootElement;
+        root.GetProperty("dayPrice").GetDecimal().ShouldBe(45m);
+        root.GetProperty("nightPrice").GetDecimal().ShouldBe(55.5m);
+        root.GetProperty("nightCallFee").GetDecimal().ShouldBe(0m);
+        root.GetProperty("minimumRule").GetString().ShouldBe("TieredOverage");
+        root.GetProperty("minimumAmount").GetDecimal().ShouldBe(300m);
+        root.GetProperty("minimumThreshold").GetDecimal().ShouldBe(4m);
+        root.GetProperty("minimumOveragePrice").GetDecimal().ShouldBe(60.25m);
+    }
+
+    // AC-25
     [Fact]
     public async Task SuccessfulCreation_WritesOneAuditRowWithTheFullStateAndTheActor()
     {
@@ -492,6 +605,7 @@ public sealed class CreateContractEndpointTests : RegistryIntegrationTestBase
         await response.ShouldBeProblemAsync(HttpStatusCode.NotFound, CustomerErrors.NotFound, Ct);
     }
 
+    // AC-24
     [Theory]
     [InlineData("BackOffice", HttpStatusCode.Created)]
     [InlineData("Admin", HttpStatusCode.Created)]

@@ -92,6 +92,7 @@ public sealed class UpdateCustomerEndpointTests : RegistryIntegrationTestBase
         stored.LastModifiedAt.ShouldBeGreaterThanOrEqualTo(seeded.LastModifiedAt);
     }
 
+    // AC-21
     [Fact]
     public async Task DeactivatedCustomer_CanBeEdited_AndStaysDeactivated()
     {

@@ -76,6 +76,34 @@ namespace Priamus.Trips.Registry.Persistence.Migrations
                         .HasDefaultValue(0)
                         .HasColumnName("version");
 
+                    b.Property<decimal?>("_dayPrice")
+                        .HasColumnType("numeric(12,2)")
+                        .HasColumnName("day_price");
+
+                    b.Property<decimal?>("_minimumAmount")
+                        .HasColumnType("numeric(12,2)")
+                        .HasColumnName("minimum_amount");
+
+                    b.Property<decimal?>("_minimumOveragePrice")
+                        .HasColumnType("numeric(12,2)")
+                        .HasColumnName("minimum_overage_price");
+
+                    b.Property<string>("_minimumRule")
+                        .HasColumnType("text")
+                        .HasColumnName("minimum_rule");
+
+                    b.Property<decimal?>("_minimumThreshold")
+                        .HasColumnType("numeric(12,2)")
+                        .HasColumnName("minimum_threshold");
+
+                    b.Property<decimal?>("_nightCallFee")
+                        .HasColumnType("numeric(12,2)")
+                        .HasColumnName("night_call_fee");
+
+                    b.Property<decimal?>("_nightPrice")
+                        .HasColumnType("numeric(12,2)")
+                        .HasColumnName("night_price");
+
                     b.ComplexProperty(typeof(Dictionary<string, object>), "Validity", "Priamus.Trips.Registry.Domain.Contracts.Contract.Validity#Validity", b1 =>
                         {
                             b1.IsRequired();

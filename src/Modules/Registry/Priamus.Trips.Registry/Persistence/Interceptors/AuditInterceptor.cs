@@ -4,6 +4,7 @@ using System.Text.Json;
 using Microsoft.EntityFrameworkCore.Diagnostics;
 using Priamus.Trips.Registry.Domain.Contracts;
 using Priamus.Trips.Registry.Domain.Contracts.Events;
+using Priamus.Trips.Registry.Domain.Contracts.ValueObjects;
 using Priamus.Trips.Registry.Domain.Customers;
 using Priamus.Trips.Registry.Domain.Customers.Events;
 using Priamus.Trips.Registry.Domain.Customers.ValueObjects;
@@ -131,11 +132,11 @@ public sealed class AuditInterceptor : ISaveChangesInterceptor
 
             ContractCreated e => Create(
                 e.EventId, e.OccurredAt, actorId, e.ContractId.Value, AuditEventTypes.ContractCreated,
-                ContractState(e.ContractId, e.CustomerId, e.ValidFrom, e.ValidTo, e.BillingLevel, e.PricingMode, e.RequiredDocuments, e.NightSurcharge)),
+                ContractState(e.ContractId, e.CustomerId, e.ValidFrom, e.ValidTo, e.BillingLevel, e.PricingMode, e.RequiredDocuments, e.NightSurcharge, e.Rate)),
 
             ContractUpdated e => Create(
                 e.EventId, e.OccurredAt, actorId, e.ContractId.Value, AuditEventTypes.ContractUpdated,
-                ContractState(e.ContractId, e.CustomerId, e.ValidFrom, e.ValidTo, e.BillingLevel, e.PricingMode, e.RequiredDocuments, e.NightSurcharge)),
+                ContractState(e.ContractId, e.CustomerId, e.ValidFrom, e.ValidTo, e.BillingLevel, e.PricingMode, e.RequiredDocuments, e.NightSurcharge, e.Rate)),
 
             _ => throw new UnreachableException(
                 $"Unknown domain event type '{domainEvent.GetType().FullName}' reached the AuditInterceptor. " +
@@ -185,7 +186,8 @@ public sealed class AuditInterceptor : ISaveChangesInterceptor
         BillingLevel billingLevel,
         PricingMode pricingMode,
         IReadOnlyList<RequiredDocument> requiredDocuments,
-        bool nightSurcharge) =>
+        bool nightSurcharge,
+        Rate? rate) =>
         new
         {
             ContractId = contractId.Value,
@@ -196,6 +198,13 @@ public sealed class AuditInterceptor : ISaveChangesInterceptor
             PricingMode = pricingMode,
             RequiredDocuments = requiredDocuments,
             NightSurcharge = nightSurcharge,
+            DayPrice = rate?.DayPrice,
+            NightPrice = rate?.NightPrice,
+            NightCallFee = rate?.NightCallFee,
+            MinimumRule = rate?.Minimum.Kind,
+            MinimumAmount = rate?.Minimum.Amount,
+            MinimumThreshold = rate?.Minimum.Threshold,
+            MinimumOveragePrice = rate?.Minimum.OveragePrice,
         };
 
     private static AuditLogEntry Create<TPayload>(

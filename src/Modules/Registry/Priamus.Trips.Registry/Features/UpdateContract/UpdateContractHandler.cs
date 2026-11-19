@@ -13,7 +13,8 @@ namespace Priamus.Trips.Registry.Features.UpdateContract;
 
 /// <summary>
 /// Handles <c>PUT /api/registry/customers/{customerId}/contracts/{contractId}</c>: replaces the
-/// terms of a contract of an active or deactivated customer (PRD §5.4, RF-16).
+/// terms and rate of a contract of an active customer (PRD §5.4, RF-16); a deactivated customer's
+/// contracts are read-only.
 /// </summary>
 /// <remarks>
 /// The version the client read is compared with the loaded one before anything else, so a stale
@@ -56,9 +57,19 @@ internal sealed class UpdateContractHandler
         CancellationToken cancellationToken)
     {
         var ownerId = new CustomerId(customerId);
-        if (!await _db.Customers.AnyAsync(c => c.Id == ownerId, cancellationToken))
+        var status = await _db.Customers
+            .AsNoTracking()
+            .Where(c => c.Id == ownerId)
+            .Select(c => (CustomerStatus?)c.Status)
+            .FirstOrDefaultAsync(cancellationToken);
+        if (status is null)
         {
             return CustomerErrors.NotFound;
+        }
+
+        if (status is CustomerStatus.Deactivated)
+        {
+            return ContractErrors.CustomerDeactivatedReadOnly;
         }
 
         var id = new ContractId(contractId);
@@ -89,16 +100,27 @@ internal sealed class UpdateContractHandler
             return overlap;
         }
 
+        var rate = request.RateMembers().ToRate();
+        if (rate.IsFailure)
+        {
+            return rate.Error;
+        }
+
         var actorId = _currentUser.UserId;
 
-        contract.Update(
+        var updated = contract.Update(
             validity.Value,
             request.BillingLevel!.Value,
             request.PricingMode!.Value,
             request.RequiredDocuments!,
             request.NightSurcharge!.Value,
+            rate.Value,
             _clock,
             actorId);
+        if (updated.IsFailure)
+        {
+            return updated.Error;
+        }
 
         _db.Entry(contract).Property(c => c.Version).OriginalValue = request.Version!.Value;
 

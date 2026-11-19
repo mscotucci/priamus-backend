@@ -9,6 +9,7 @@ using Priamus.Trips.Registry.Persistence;
 using Priamus.Trips.SharedKernel.Time;
 using Shouldly;
 using Xunit;
+using static Priamus.Trips.Registry.IntegrationTests.Infrastructure.ContractTestSupport;
 using static Priamus.Trips.Registry.IntegrationTests.Infrastructure.CustomerTestSupport;
 
 namespace Priamus.Trips.Registry.IntegrationTests.Persistence;
@@ -40,8 +41,9 @@ public sealed class ContractPersistenceTests : RegistryIntegrationTestBase
             PricingMode.ByTrip,
             documents ?? [RequiredDocument.DailySummary, RequiredDocument.DeliveryNote],
             nightSurcharge: true,
+            rate: null,
             new SystemClock(),
-            FakeCurrentUser.ActorId);
+            FakeCurrentUser.ActorId).Value;
 
     private async Task<Customer> SeedCustomerAsync(string vatNumber = VatNumberA)
     {
@@ -110,8 +112,8 @@ public sealed class ContractPersistenceTests : RegistryIntegrationTestBase
             var loaded = await db.Contracts.SingleAsync(c => c.Id == contract.Id, Ct);
             loaded.Update(
                 loaded.Validity, loaded.BillingLevel, loaded.PricingMode,
-                [RequiredDocument.DeliveryNote, RequiredDocument.DailySummary], loaded.NightSurcharge,
-                new SystemClock(), FakeCurrentUser.ActorId);
+                [RequiredDocument.DeliveryNote, RequiredDocument.DailySummary], loaded.NightSurcharge, loaded.Rate,
+                new SystemClock(), FakeCurrentUser.ActorId).IsSuccess.ShouldBeTrue();
             await db.SaveChangesAsync(Ct);
         }
 
@@ -252,7 +254,9 @@ public sealed class ContractPersistenceTests : RegistryIntegrationTestBase
             var loaded = await db.Contracts.SingleAsync(c => c.Id == contract.Id, Ct);
             loaded.Update(
                 Validity.Create(D(2026, 4, 1), D(2026, 9, 30)).Value, BillingLevel.FlatRate, PricingMode.ByHour,
-                [], nightSurcharge: false, new SystemClock(), FakeCurrentUser.ActorId);
+                [], nightSurcharge: false, Rate.Create(45m, null, null, new MinimumRule.None()).Value,
+                new SystemClock(), FakeCurrentUser.ActorId)
+                .IsSuccess.ShouldBeTrue();
             await db.SaveChangesAsync(Ct);
         }
 
@@ -270,5 +274,163 @@ public sealed class ContractPersistenceTests : RegistryIntegrationTestBase
         root.GetProperty("requiredDocuments").GetArrayLength().ShouldBe(0);
         root.GetProperty("nightSurcharge").GetBoolean().ShouldBeFalse();
         (await read.AuditLog.CountAsync(a => a.SubjectId == contract.Id.Value, Ct)).ShouldBe(2);
+    }
+
+    private static Contract NewFlatRateContract(CustomerId customerId, bool nightSurcharge, Rate? rate) =>
+        Contract.Create(
+            ContractId.New(),
+            customerId,
+            Validity.Create(D(2026, 4, 1), null).Value,
+            BillingLevel.FlatRate,
+            PricingMode.ByHour,
+            [],
+            nightSurcharge,
+            rate,
+            new SystemClock(),
+            FakeCurrentUser.ActorId).Value;
+
+    private async Task<Contract> SaveAsync(Contract contract)
+    {
+        await using var db = CreateDbContext();
+        db.Contracts.Add(contract);
+        await db.SaveChangesAsync(Ct);
+        return contract;
+    }
+
+    public static TheoryData<string, bool, decimal?, decimal?, MinimumRule> RatesOfEveryKind => new()
+    {
+        { "no minimum", false, null, null, new MinimumRule.None() },
+        { "fixed minimum with night values", true, 60.5m, 10m, new MinimumRule.FixedMinimum(120m) },
+        { "tiered overage", false, null, null, new MinimumRule.TieredOverage(100m, 4.5m, 22.25m) },
+    };
+
+    // AC-2
+    [Theory]
+    [MemberData(nameof(RatesOfEveryKind))]
+    public async Task Rate_RoundTripsOnTheContractRow(
+        string description, bool nightSurcharge, decimal? nightPrice, decimal? nightCallFee, MinimumRule minimum)
+    {
+        // Arrange
+        description.ShouldNotBeNullOrEmpty();
+        var customer = await SeedCustomerAsync();
+        var rate = Rate.Create(45.25m, nightPrice, nightCallFee, minimum).Value;
+        var contract = await SaveAsync(NewFlatRateContract(customer.Id, nightSurcharge, rate));
+
+        // Act
+        await using var read = CreateDbContext();
+        var loaded = await read.Contracts.SingleAsync(c => c.Id == contract.Id, Ct);
+
+        // Assert
+        loaded.Rate.ShouldBe(rate);
+    }
+
+    // AC-2
+    [Fact]
+    public async Task ContractStoredWithoutARate_LoadsWithNoRate()
+    {
+        // Arrange
+        var customer = await SeedCustomerAsync();
+        Contract contract;
+        await using (var seed = CreateDbContext())
+        {
+            contract = await SeedFlatRateWithoutRateAsync(seed, customer.Id, D(2026, 4, 1), null);
+        }
+
+
+        // Act
+        await using var read = CreateDbContext();
+        var loaded = await read.Contracts.SingleAsync(c => c.Id == contract.Id, Ct);
+
+        // Assert
+        loaded.Rate.ShouldBeNull();
+    }
+
+    // AC-2
+    [Fact]
+    public async Task Rate_AddedToALoadedContract_IsSaved()
+    {
+        // Arrange
+        var customer = await SeedCustomerAsync();
+        Contract contract;
+        await using (var seed = CreateDbContext())
+        {
+            contract = await SeedFlatRateWithoutRateAsync(seed, customer.Id, D(2026, 4, 1), null);
+        }
+
+        var rate = Rate.Create(30m, null, null, new MinimumRule.FixedMinimum(90m)).Value;
+
+        // Act
+        await using (var db = CreateDbContext())
+        {
+            var loaded = await db.Contracts.SingleAsync(c => c.Id == contract.Id, Ct);
+            loaded.Update(
+                loaded.Validity, loaded.BillingLevel, loaded.PricingMode, [], nightSurcharge: false, rate,
+                new SystemClock(), FakeCurrentUser.ActorId).IsSuccess.ShouldBeTrue();
+            await db.SaveChangesAsync(Ct);
+        }
+
+        // Assert
+        await using var read = CreateDbContext();
+        (await read.Contracts.SingleAsync(c => c.Id == contract.Id, Ct)).Rate.ShouldBe(rate);
+    }
+
+    // AC-25
+    [Fact]
+    public async Task CreatedContractWithARate_WritesTheRateAndTheMinimumInTheAuditRow()
+    {
+        // Arrange
+        var customer = await SeedCustomerAsync();
+        var rate = Rate.Create(45.25m, 60.5m, 10m, new MinimumRule.TieredOverage(100m, 4.5m, 22.25m)).Value;
+
+        // Act
+        var contract = await SaveAsync(NewFlatRateContract(customer.Id, nightSurcharge: true, rate));
+
+        // Assert
+        await using var read = CreateDbContext();
+        var row = await read.AuditLog.SingleAsync(a => a.SubjectId == contract.Id.Value, Ct);
+        using var payload = JsonDocument.Parse(row.Payload);
+        var root = payload.RootElement;
+        root.GetProperty("dayPrice").GetDecimal().ShouldBe(45.25m);
+        root.GetProperty("nightPrice").GetDecimal().ShouldBe(60.5m);
+        root.GetProperty("nightCallFee").GetDecimal().ShouldBe(10m);
+        root.GetProperty("minimumRule").GetString().ShouldBe("TieredOverage");
+        root.GetProperty("minimumAmount").GetDecimal().ShouldBe(100m);
+        root.GetProperty("minimumThreshold").GetDecimal().ShouldBe(4.5m);
+        root.GetProperty("minimumOveragePrice").GetDecimal().ShouldBe(22.25m);
+    }
+
+    // AC-25
+    [Fact]
+    public async Task UpdatedContractWithoutARate_OmitsTheRateMembersFromTheAuditRow()
+    {
+        // Arrange
+        var customer = await SeedCustomerAsync();
+        var rate = Rate.Create(30m, null, null, new MinimumRule.None()).Value;
+        var contract = await SaveAsync(NewFlatRateContract(customer.Id, nightSurcharge: false, rate));
+
+        // Act
+        await using (var db = CreateDbContext())
+        {
+            var loaded = await db.Contracts.SingleAsync(c => c.Id == contract.Id, Ct);
+            loaded.Update(
+                loaded.Validity, BillingLevel.PerLocationPair, PricingMode.ByTrip, [], nightSurcharge: false,
+                rate: null, new SystemClock(), FakeCurrentUser.ActorId).IsSuccess.ShouldBeTrue();
+            await db.SaveChangesAsync(Ct);
+        }
+
+        // Assert
+        await using var read = CreateDbContext();
+        var row = await read.AuditLog.SingleAsync(
+            a => a.SubjectId == contract.Id.Value && a.EventType == AuditEventTypes.ContractUpdated, Ct);
+        using var payload = JsonDocument.Parse(row.Payload);
+        var root = payload.RootElement;
+        foreach (var member in new[]
+                 {
+                     "dayPrice", "nightPrice", "nightCallFee", "minimumRule", "minimumAmount",
+                     "minimumThreshold", "minimumOveragePrice",
+                 })
+        {
+            root.TryGetProperty(member, out _).ShouldBeFalse(member);
+        }
     }
 }

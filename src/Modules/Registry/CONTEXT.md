@@ -65,7 +65,7 @@ The Italian tax identifier of the customer: 16 letters and digits for a person, 
 _Avoid_: fiscal code, CF (in code)
 
 **Customer status** (Stato):
-Whether a customer can be chosen for new trips and contracts: `Active` (Attivo) or `Deactivated` (Disattivato). A deactivated customer stays in the registry for the trips and contracts that name it.
+Whether a customer can be chosen for new trips and contracts: `Active` (Attivo) or `Deactivated` (Disattivato). A deactivated customer stays in the registry for the trips and contracts that name it; its contracts can be read but not added or changed until it is reactivated, while its own data stay editable.
 _Avoid_: deleted, archived, decommissioned (that is a vehicle's)
 
 **Deactivate** / **Reactivate** (Disattivare / Riattivare):
@@ -86,6 +86,14 @@ _Avoid_: duration, term, effective dates
 A contract with no end date. A customer has at most one, and it is the latest. Creating a later contract closes it on the day before the new one starts.
 _Avoid_: active contract, current contract (those say whether today falls in it)
 
+**Change from a date** (Modifica da una data):
+Changing the terms of a contract in force from a given day: the contract keeps its terms and ends on the day before, and a new contract of the same customer with the changed terms starts on that day and ends where the contract ended. The way prices change.
+_Avoid_: renewal, new version, split
+
+**Correction** (Correzione):
+Changing a contract in place because its data were wrong from the start: the change holds for its whole validity, days already passed included.
+_Avoid_: amendment, update (alone)
+
 **Contract status** (Stato del contratto):
 Where today falls against a contract's validity, read from the calendar and never set by hand: `Current` (In vigore) when today is inside it, `Upcoming` (Futuro) when it starts later, `Expired` (Scaduto) when it has ended.
 _Avoid_: active / inactive (those are a customer's or a vehicle's status), open (that is about the end date)
@@ -101,6 +109,10 @@ _Avoid_: rate level, granularity
 **Pricing mode** (Modalità di pagamento):
 What a trip's amount is measured by, and so what the driver enters: `ByHour` (A ore), `ByWeight` (A peso), `ByDistance` (A km), `ByTrip` (A viaggio).
 _Avoid_: payment method (it is not how the customer pays), rate type
+
+**Rate** (Tariffa):
+The prices a contract charges a trip, in the unit of its pricing mode: a day price and, when the contract has the night surcharge, a night price and a night call fee, with its minimum rule. A flat-rate contract has one rate; the other billing levels have one per location or pair of locations. A rate applies for the whole validity of its contract and has no validity of its own: prices that change from a date make a new contract from that date.
+_Avoid_: price list, tariff, rate validity
 
 **Required documents** (Documenti obbligatori):
 The documents a contract asks for: on every trip a delivery note (DDT), a delivery slip (bolla) or a waste form (FIR), and at the end of the driver's day a daily summary. Any of them, or none.

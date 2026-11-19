@@ -1,3 +1,5 @@
+using Microsoft.EntityFrameworkCore;
+using System.Text.Json;
 using Microsoft.EntityFrameworkCore.Diagnostics;
 using Npgsql;
 using Microsoft.AspNetCore.Mvc.Testing;
@@ -47,7 +49,8 @@ public static class ContractTestSupport
         BillingLevel billingLevel = BillingLevel.PerLocationPair,
         PricingMode pricingMode = PricingMode.ByTrip,
         RequiredDocument[]? requiredDocuments = null,
-        bool nightSurcharge = true)
+        bool nightSurcharge = true,
+        Rate? rate = null)
     {
         var contract = Contract.Create(
             ContractId.New(),
@@ -57,11 +60,95 @@ public static class ContractTestSupport
             pricingMode,
             requiredDocuments ?? [RequiredDocument.DailySummary, RequiredDocument.DeliveryNote],
             nightSurcharge,
+            rate,
             new SystemClock(),
-            FakeCurrentUser.ActorId);
+            FakeCurrentUser.ActorId).Value;
 
         db.Contracts.Add(contract);
         await db.SaveChangesAsync(TestContext.Current.CancellationToken);
+        return contract;
+    }
+
+    /// <summary>
+    /// Sets the billing terms and the rate members of a contract request body; <paramref name="rate"/>
+    /// is a JSON object of the rate members (<c>{}</c> for none).
+    /// </summary>
+    public static void SetRate(
+        Dictionary<string, object?> body, string billingLevel, string pricingMode, bool nightSurcharge, string rate)
+    {
+        body["billingLevel"] = billingLevel;
+        body["pricingMode"] = pricingMode;
+        body["nightSurcharge"] = nightSurcharge;
+        foreach (var member in JsonSerializer.Deserialize<Dictionary<string, JsonElement>>(rate)!)
+        {
+            body[member.Key] = member.Value;
+        }
+    }
+
+    /// <summary>Rate members each broken rule: billing level, pricing mode, night surcharge, members, error keys.</summary>
+    public static TheoryData<string, string, bool, string, string> InvalidRates => new()
+    {
+        { "FlatRate", "ByHour", false, """{"minimumRule":"None"}""", "DayPrice" },
+        { "FlatRate", "ByHour", false, """{"dayPrice":0,"minimumRule":"None"}""", "DayPrice" },
+        { "FlatRate", "ByHour", false, """{"dayPrice":-5,"minimumRule":"None"}""", "DayPrice" },
+        { "FlatRate", "ByHour", false, """{"dayPrice":45.123,"minimumRule":"None"}""", "DayPrice" },
+        { "FlatRate", "ByHour", true, """{"dayPrice":45,"minimumRule":"None"}""", "NightCallFee,NightPrice" },
+        { "FlatRate", "ByHour", true, """{"dayPrice":45,"nightPrice":0,"nightCallFee":5,"minimumRule":"None"}""", "NightPrice" },
+        { "FlatRate", "ByHour", true, """{"dayPrice":45,"nightPrice":55.555,"nightCallFee":5,"minimumRule":"None"}""", "NightPrice" },
+        { "FlatRate", "ByHour", true, """{"dayPrice":45,"nightPrice":55,"nightCallFee":-1,"minimumRule":"None"}""", "NightCallFee" },
+        { "FlatRate", "ByHour", true, """{"dayPrice":45,"nightPrice":55,"nightCallFee":5.555,"minimumRule":"None"}""", "NightCallFee" },
+        { "FlatRate", "ByHour", false, """{"dayPrice":45,"nightPrice":55,"minimumRule":"None"}""", "NightPrice" },
+        { "FlatRate", "ByHour", false, """{"dayPrice":45,"nightCallFee":0,"minimumRule":"None"}""", "NightCallFee" },
+        { "FlatRate", "ByHour", false, """{"dayPrice":45}""", "MinimumRule" },
+        { "FlatRate", "ByHour", false, """{"dayPrice":45,"minimumRule":"FixedMinimum"}""", "MinimumAmount" },
+        { "FlatRate", "ByHour", false, """{"dayPrice":45,"minimumRule":"FixedMinimum","minimumAmount":0}""", "MinimumAmount" },
+        { "FlatRate", "ByHour", false, """{"dayPrice":45,"minimumRule":"FixedMinimum","minimumAmount":100.001}""", "MinimumAmount" },
+        { "FlatRate", "ByHour", false, """{"dayPrice":45,"minimumRule":"FixedMinimum","minimumAmount":100,"minimumThreshold":4}""", "MinimumThreshold" },
+        { "FlatRate", "ByHour", false, """{"dayPrice":45,"minimumRule":"None","minimumAmount":100}""", "MinimumAmount" },
+        { "FlatRate", "ByHour", false, """{"dayPrice":45,"minimumRule":"TieredOverage"}""", "MinimumAmount,MinimumOveragePrice,MinimumThreshold" },
+        { "FlatRate", "ByHour", false, """{"dayPrice":45,"minimumRule":"TieredOverage","minimumAmount":300,"minimumThreshold":0,"minimumOveragePrice":60}""", "MinimumThreshold" },
+        { "FlatRate", "ByHour", false, """{"dayPrice":45,"minimumRule":"TieredOverage","minimumAmount":300,"minimumThreshold":4,"minimumOveragePrice":60.555}""", "MinimumOveragePrice" },
+        { "FlatRate", "ByTrip", false, """{"dayPrice":45,"minimumRule":"FixedMinimum","minimumAmount":100}""", "MinimumAmount,MinimumRule" },
+        { "FlatRate", "ByTrip", false, """{"dayPrice":45,"minimumRule":"None","minimumAmount":100}""", "MinimumAmount" },
+        { "PerLocationPair", "ByHour", false, """{"dayPrice":45}""", "DayPrice" },
+        { "PerPickupLocation", "ByHour", true, """{"nightPrice":55,"nightCallFee":0}""", "NightCallFee,NightPrice" },
+        { "PerDeliveryLocation", "ByHour", false, """{"minimumRule":"None"}""", "MinimumRule" },
+        { "PerLocationPair", "ByHour", false, """{"minimumAmount":100,"minimumThreshold":4,"minimumOveragePrice":60}""", "MinimumAmount,MinimumOveragePrice,MinimumThreshold" },
+        { "FlatRate", "ByHour", false, """{"dayPrice":10000000000,"minimumRule":"None"}""", "DayPrice" },
+        { "FlatRate", "ByHour", true, """{"dayPrice":45,"nightPrice":10000000000,"nightCallFee":5,"minimumRule":"None"}""", "NightPrice" },
+        { "FlatRate", "ByHour", true, """{"dayPrice":45,"nightPrice":55,"nightCallFee":10000000000,"minimumRule":"None"}""", "NightCallFee" },
+        { "FlatRate", "ByHour", false, """{"dayPrice":45,"minimumRule":"FixedMinimum","minimumAmount":10000000000}""", "MinimumAmount" },
+        { "FlatRate", "ByHour", false, """{"dayPrice":45,"minimumRule":"TieredOverage","minimumAmount":300,"minimumThreshold":10000000000,"minimumOveragePrice":60}""", "MinimumThreshold" },
+        { "FlatRate", "ByHour", false, """{"dayPrice":45,"minimumRule":"TieredOverage","minimumAmount":300,"minimumThreshold":4,"minimumOveragePrice":10000000000}""", "MinimumOveragePrice" },
+    };
+
+    /// <summary>Rate members each accepted: billing level, pricing mode, night surcharge, members.</summary>
+    public static TheoryData<string, string, bool, string> ValidRates => new()
+    {
+        { "FlatRate", "ByHour", false, """{"dayPrice":45.5,"minimumRule":"None"}""" },
+        { "FlatRate", "ByDistance", true, """{"dayPrice":45,"nightPrice":55.25,"nightCallFee":0,"minimumRule":"FixedMinimum","minimumAmount":120}""" },
+        { "FlatRate", "ByWeight", true, """{"dayPrice":45,"nightPrice":55,"nightCallFee":5,"minimumRule":"TieredOverage","minimumAmount":300,"minimumThreshold":4.5,"minimumOveragePrice":60}""" },
+        { "FlatRate", "ByTrip", false, """{"dayPrice":150,"minimumRule":"None"}""" },
+        { "FlatRate", "ByTrip", false, """{"dayPrice":150}""" },
+        { "FlatRate", "ByHour", true, """{"dayPrice":9999999999.99,"nightPrice":9999999999.99,"nightCallFee":9999999999.99,"minimumRule":"TieredOverage","minimumAmount":9999999999.99,"minimumThreshold":9999999999.99,"minimumOveragePrice":9999999999.99}""" },
+        { "PerLocationPair", "ByHour", true, "{}" },
+    };
+
+    /// <summary>
+    /// Saves a flat-rate contract that has no rate, as one stored before rates existed: the domain
+    /// no longer builds one, so it is seeded as another billing level and switched in the table.
+    /// </summary>
+    public static async Task<Contract> SeedFlatRateWithoutRateAsync(
+        RegistryDbContext db,
+        CustomerId customerId,
+        DateOnly validFrom,
+        DateOnly? validTo)
+    {
+        var contract = await SeedContractAsync(
+            db, customerId, validFrom, validTo, BillingLevel.PerLocationPair, PricingMode.ByHour, nightSurcharge: false);
+        await db.Database.ExecuteSqlInterpolatedAsync(
+            $"UPDATE registry.contracts SET billing_level = 'FlatRate' WHERE id = {contract.Id.Value}",
+            TestContext.Current.CancellationToken);
         return contract;
     }
 

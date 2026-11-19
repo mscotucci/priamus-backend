@@ -1,4 +1,5 @@
 using Priamus.Trips.Registry.Domain.Contracts;
+using Priamus.Trips.Registry.Domain.Contracts.ValueObjects;
 
 namespace Priamus.Trips.Registry.Features.ListContracts;
 
@@ -14,6 +15,13 @@ namespace Priamus.Trips.Registry.Features.ListContracts;
 /// <param name="PricingMode">The pricing mode.</param>
 /// <param name="RequiredDocuments">The required documents, in canonical order.</param>
 /// <param name="NightSurcharge">Whether night trips cost more.</param>
+/// <param name="DayPrice">The day price; <c>null</c> when the contract has no rate.</param>
+/// <param name="NightPrice">The night price; <c>null</c> without the night surcharge or a rate.</param>
+/// <param name="NightCallFee">The night call fee; <c>null</c> without the night surcharge or a rate.</param>
+/// <param name="MinimumRule">The kind of minimum rule; <c>null</c> when the contract has no rate.</param>
+/// <param name="MinimumAmount">The minimum amount M; <c>null</c> unless the rule has one.</param>
+/// <param name="MinimumThreshold">The threshold X; <c>null</c> unless the rule is tiered overage.</param>
+/// <param name="MinimumOveragePrice">The overage price Y; <c>null</c> unless the rule is tiered overage.</param>
 /// <param name="Version">Version the client sends back with its next write on this contract.</param>
 public sealed record ContractDto(
     Guid Id,
@@ -25,13 +33,22 @@ public sealed record ContractDto(
     PricingMode PricingMode,
     IReadOnlyList<RequiredDocument> RequiredDocuments,
     bool NightSurcharge,
+    decimal? DayPrice,
+    decimal? NightPrice,
+    decimal? NightCallFee,
+    MinimumRuleKind? MinimumRule,
+    decimal? MinimumAmount,
+    decimal? MinimumThreshold,
+    decimal? MinimumOveragePrice,
     int Version)
 {
     /// <summary>Maps a contract, computing its status on <paramref name="today"/>.</summary>
     /// <param name="contract">The contract.</param>
     /// <param name="today">Today in Italian time.</param>
-    internal static ContractDto From(Contract contract, DateOnly today) =>
-        new(
+    internal static ContractDto From(Contract contract, DateOnly today)
+    {
+        var rate = contract.Rate;
+        return new(
             contract.Id.Value,
             contract.CustomerId.Value,
             contract.Validity.ValidFrom,
@@ -41,5 +58,13 @@ public sealed record ContractDto(
             contract.PricingMode,
             contract.RequiredDocuments,
             contract.NightSurcharge,
+            rate?.DayPrice,
+            rate?.NightPrice,
+            rate?.NightCallFee,
+            rate?.Minimum.Kind,
+            rate?.Minimum.Amount,
+            rate?.Minimum.Threshold,
+            rate?.Minimum.OveragePrice,
             contract.Version);
+    }
 }

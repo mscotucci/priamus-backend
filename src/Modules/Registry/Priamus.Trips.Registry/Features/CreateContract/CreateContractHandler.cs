@@ -97,7 +97,13 @@ internal sealed class CreateContractHandler
             return overlap;
         }
 
-        var contract = Contract.Create(
+        var rate = request.RateMembers().ToRate();
+        if (rate.IsFailure)
+        {
+            return rate.Error;
+        }
+
+        var created = Contract.Create(
             ContractId.New(),
             ownerId,
             validity.Value,
@@ -105,9 +111,16 @@ internal sealed class CreateContractHandler
             request.PricingMode!.Value,
             request.RequiredDocuments!,
             request.NightSurcharge!.Value,
+            rate.Value,
             _clock,
             actorId);
 
+        if (created.IsFailure)
+        {
+            return created.Error;
+        }
+
+        var contract = created.Value;
         _db.Contracts.Add(contract);
 
         try

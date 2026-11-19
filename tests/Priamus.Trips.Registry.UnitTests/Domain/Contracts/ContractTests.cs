@@ -3,6 +3,7 @@ using Priamus.Trips.Registry.Domain.Contracts.Events;
 using Priamus.Trips.Registry.Domain.Contracts.ValueObjects;
 using Priamus.Trips.Registry.Domain.Customers;
 using Priamus.Trips.Registry.UnitTests.TestData;
+using Priamus.Trips.SharedKernel.Results;
 using Priamus.Trips.SharedKernel.Security;
 using Shouldly;
 using Xunit;
@@ -24,17 +25,24 @@ public sealed class ContractTests
         CustomerId? customerId = null,
         Validity? validity = null,
         IEnumerable<RequiredDocument>? documents = null,
-        bool nightSurcharge = false) =>
+        bool nightSurcharge = false,
+        Rate? rate = null,
+        BillingLevel billingLevel = BillingLevel.FlatRate,
+        PricingMode pricingMode = PricingMode.ByHour) =>
         Contract.Create(
             ContractId.New(),
             customerId ?? CustomerId.New(),
             validity ?? V("2026-04-01", null),
-            BillingLevel.FlatRate,
-            PricingMode.ByHour,
+            billingLevel,
+            pricingMode,
             documents ?? [RequiredDocument.DeliveryNote],
             nightSurcharge,
+            rate ?? (billingLevel == BillingLevel.FlatRate ? DefaultRate(nightSurcharge) : null),
             clock,
-            Actor);
+            Actor).Value;
+
+    private static Rate DefaultRate(bool nightSurcharge) =>
+        nightSurcharge ? NewRate(55m, 5m) : NewRate();
 
     // ── Create ───────────────────────────────────────────────────────────────
 
@@ -47,7 +55,7 @@ public sealed class ContractTests
         var validity = V("2026-04-01", "2026-12-31");
 
         var contract = Contract.Create(id, customerId, validity, BillingLevel.PerLocationPair,
-            PricingMode.ByWeight, [RequiredDocument.WasteForm], true, clock, Actor);
+            PricingMode.ByWeight, [RequiredDocument.WasteForm], true, null, clock, Actor).Value;
 
         contract.Id.ShouldBe(id);
         contract.CustomerId.ShouldBe(customerId);
@@ -123,7 +131,7 @@ public sealed class ContractTests
 
         contract.Update(V("2026-05-01", "2026-09-30"), BillingLevel.PerPickupLocation, PricingMode.ByTrip,
             [RequiredDocument.DailySummary, RequiredDocument.DeliveryNote, RequiredDocument.DailySummary],
-            true, clock, OtherActor);
+            true, null, clock, OtherActor);
 
         contract.Validity.ShouldBe(V("2026-05-01", "2026-09-30"));
         contract.BillingLevel.ShouldBe(BillingLevel.PerPickupLocation);
@@ -141,6 +149,173 @@ public sealed class ContractTests
         updated.BillingLevel.ShouldBe(BillingLevel.PerPickupLocation);
         updated.RequiredDocuments.ShouldBe([RequiredDocument.DeliveryNote, RequiredDocument.DailySummary]);
         updated.NightSurcharge.ShouldBeTrue();
+    }
+
+    // ── Rate ─────────────────────────────────────────────────────────────────
+
+    private static Rate NewRate(decimal? night = null, decimal? fee = null, MinimumRule? minimum = null) =>
+        Rate.Create(45m, night, fee, minimum ?? new MinimumRule.None()).Value;
+
+    private static Result<Contract> CreateWith(
+        BillingLevel billingLevel, PricingMode pricingMode, bool nightSurcharge, Rate? rate) =>
+        Contract.Create(ContractId.New(), CustomerId.New(), V("2026-04-01", null), billingLevel, pricingMode,
+            [], nightSurcharge, rate, NewClock(), Actor);
+
+    // AC-1, AC-2
+    [Fact]
+    public void Create_WithRate_HoldsItAndCarriesItInTheEvent()
+    {
+        var rate = NewRate(55m, 5m, new MinimumRule.FixedMinimum(120m));
+
+        var contract = NewContract(NewClock(), nightSurcharge: true, rate: rate);
+
+        contract.Rate.ShouldBe(rate);
+        var created = contract.DomainEvents.ShouldHaveSingleItem().ShouldBeOfType<ContractCreated>();
+        created.Rate.ShouldBe(rate);
+    }
+
+    // AC-1
+    [Fact]
+    public void Update_WithRate_ReplacesItAndCarriesItInTheEvent()
+    {
+        var clock = NewClock();
+        var contract = NewContract(clock, rate: NewRate());
+        contract.ClearDomainEvents();
+        var newRate = NewRate(minimum: new MinimumRule.TieredOverage(300m, 4m, 60m));
+
+        var result = contract.Update(V("2026-04-01", null), BillingLevel.FlatRate, PricingMode.ByHour,
+            [], false, newRate, clock, OtherActor);
+
+        result.IsSuccess.ShouldBeTrue();
+        contract.Rate.ShouldBe(newRate);
+        contract.DomainEvents.ShouldHaveSingleItem().ShouldBeOfType<ContractUpdated>().Rate.ShouldBe(newRate);
+    }
+
+    // AC-15
+    [Fact]
+    public void Create_FlatRateWithoutRate_Fails()
+    {
+        var result = CreateWith(BillingLevel.FlatRate, PricingMode.ByHour, false, null);
+
+        result.Error.ShouldBe(ContractErrors.RateRequired);
+    }
+
+    // AC-15
+    [Theory]
+    [InlineData(BillingLevel.PerPickupLocation)]
+    [InlineData(BillingLevel.PerDeliveryLocation)]
+    [InlineData(BillingLevel.PerLocationPair)]
+    public void Create_NonFlatWithoutRate_Succeeds(BillingLevel level)
+    {
+        CreateWith(level, PricingMode.ByHour, false, null).IsSuccess.ShouldBeTrue();
+    }
+
+    // AC-15
+    [Fact]
+    public void Update_FlatRateWithoutRate_FailsAndLeavesTheContractUnchanged()
+    {
+        var clock = NewClock();
+        var original = NewRate();
+        var contract = NewContract(clock, rate: original);
+        contract.ClearDomainEvents();
+
+        var result = contract.Update(V("2026-05-01", null), BillingLevel.FlatRate, PricingMode.ByHour,
+            [], false, null, clock, OtherActor);
+
+        result.Error.ShouldBe(ContractErrors.RateRequired);
+        contract.Rate.ShouldBe(original);
+        contract.Version.ShouldBe(0);
+        contract.DomainEvents.ShouldBeEmpty();
+    }
+
+    [Theory]
+    [InlineData(BillingLevel.PerPickupLocation)]
+    [InlineData(BillingLevel.PerDeliveryLocation)]
+    [InlineData(BillingLevel.PerLocationPair)]
+    public void Create_WithRateOnANonFlatBillingLevel_Fails(BillingLevel level)
+    {
+        var result = CreateWith(level, PricingMode.ByHour, false, NewRate());
+
+        result.Error.ShouldBe(ContractErrors.RateNotApplicable);
+    }
+
+    // AC-10
+    [Theory]
+    [InlineData(true, null, 5)]
+    [InlineData(true, 55, null)]
+    [InlineData(true, null, null)]
+    public void Create_WithNightSurchargeAndMissingNightValues_Fails(bool surcharge, int? night, int? fee)
+    {
+        var result = CreateWith(BillingLevel.FlatRate, PricingMode.ByHour, surcharge, NewRate(night, fee));
+
+        result.Error.ShouldBe(ContractErrors.NightRateMissing);
+    }
+
+    // AC-10
+    [Theory]
+    [InlineData(55, 5)]
+    [InlineData(55, null)]
+    [InlineData(null, 0)]
+    public void Create_WithoutNightSurchargeAndNightValues_Fails(int? night, int? fee)
+    {
+        var result = CreateWith(BillingLevel.FlatRate, PricingMode.ByHour, false, NewRate(night, fee));
+
+        result.Error.ShouldBe(ContractErrors.NightRateNotApplicable);
+    }
+
+    // AC-10
+    [Fact]
+    public void Create_WithNightSurchargeAndBothNightValues_Succeeds()
+    {
+        CreateWith(BillingLevel.FlatRate, PricingMode.ByHour, true, NewRate(55m, 0m)).IsSuccess.ShouldBeTrue();
+    }
+
+    // AC-11
+    [Fact]
+    public void Create_ByTripWithAMinimum_Fails()
+    {
+        var result = CreateWith(BillingLevel.FlatRate, PricingMode.ByTrip, false,
+            NewRate(minimum: new MinimumRule.FixedMinimum(100m)));
+
+        result.Error.ShouldBe(ContractErrors.MinimumNotApplicableByTrip);
+    }
+
+    // AC-11
+    [Fact]
+    public void Create_ByTripWithNoMinimum_Succeeds()
+    {
+        CreateWith(BillingLevel.FlatRate, PricingMode.ByTrip, false, NewRate()).IsSuccess.ShouldBeTrue();
+    }
+
+    // AC-10, AC-11
+    [Fact]
+    public void Update_WithARateThatDoesNotFit_FailsAndLeavesTheContractUnchanged()
+    {
+        var clock = NewClock();
+        var original = NewRate();
+        var contract = NewContract(clock, rate: original);
+        contract.ClearDomainEvents();
+
+        var result = contract.Update(V("2026-05-01", null), BillingLevel.FlatRate, PricingMode.ByTrip,
+            [], false, NewRate(minimum: new MinimumRule.FixedMinimum(100m)), clock, OtherActor);
+
+        result.Error.ShouldBe(ContractErrors.MinimumNotApplicableByTrip);
+        contract.Rate.ShouldBe(original);
+        contract.Validity.ShouldBe(V("2026-04-01", null));
+        contract.Version.ShouldBe(0);
+        contract.DomainEvents.ShouldBeEmpty();
+    }
+
+    // AC-2
+    [Fact]
+    public void CloseOn_KeepsTheRate()
+    {
+        var rate = NewRate();
+        var contract = NewContract(NewClock(), rate: rate);
+
+        contract.CloseOn(new DateOnly(2026, 12, 31), NewClock(), OtherActor);
+
+        contract.Rate.ShouldBe(rate);
     }
 
     // ── CloseOn ──────────────────────────────────────────────────────────────

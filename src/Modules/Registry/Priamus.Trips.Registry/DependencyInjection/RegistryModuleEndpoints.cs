@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.Routing;
+using Priamus.Trips.Registry.Features.ChangeContractFromDate;
 using Priamus.Trips.Registry.Features.CreateContract;
 using Priamus.Trips.Registry.Features.CreateCustomer;
 using Priamus.Trips.Registry.Features.CreateVehicle;
@@ -42,6 +43,7 @@ public static class RegistryModuleEndpoints
         app.MapGetContract();
         app.MapCreateContract();
         app.MapUpdateContract();
+        app.MapChangeContractFromDate();
         return app;
     }
 }

@@ -3,6 +3,7 @@ using System.Net.Http.Json;
 using System.Text.Json;
 using Priamus.Trips.IntegrationTesting;
 using Priamus.Trips.Registry.Domain.Contracts;
+using Priamus.Trips.Registry.Domain.Contracts.ValueObjects;
 using Priamus.Trips.Registry.Domain.Customers;
 using Priamus.Trips.Registry.IntegrationTests.Infrastructure;
 using Shouldly;
@@ -66,6 +67,62 @@ public sealed class GetContractEndpointTests : RegistryIntegrationTestBase
         body.GetProperty("version").GetInt32().ShouldBe(0);
     }
 
+    // AC-2
+    [Fact]
+    public async Task ReturnsTheRateAndTheMinimumOfAFlatRateContract()
+    {
+        // Arrange
+        var customer = await SeedCustomerAsync();
+        var rate = Rate.Create(45.25m, 60.5m, 10m, new MinimumRule.TieredOverage(100m, 4.5m, 22.25m)).Value;
+        Contract contract;
+        await using (var db = CreateDbContext())
+        {
+            contract = await SeedContractAsync(
+                db, customer.Id, new DateOnly(2026, 4, 1), null, BillingLevel.FlatRate, PricingMode.ByHour,
+                nightSurcharge: true, rate: rate);
+        }
+
+        await using var factory = CreateFactory(ConnectionString, Midday);
+
+        // Act
+        var response = await BackOfficeClient(factory).GetAsync(Url(customer.Id.Value, contract.Id.Value), Ct);
+
+        // Assert
+        response.StatusCode.ShouldBe(HttpStatusCode.OK);
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>(Ct);
+        body.GetProperty("dayPrice").GetDecimal().ShouldBe(45.25m);
+        body.GetProperty("nightPrice").GetDecimal().ShouldBe(60.5m);
+        body.GetProperty("nightCallFee").GetDecimal().ShouldBe(10m);
+        body.GetProperty("minimumRule").GetString().ShouldBe("TieredOverage");
+        body.GetProperty("minimumAmount").GetDecimal().ShouldBe(100m);
+        body.GetProperty("minimumThreshold").GetDecimal().ShouldBe(4.5m);
+        body.GetProperty("minimumOveragePrice").GetDecimal().ShouldBe(22.25m);
+    }
+
+    // AC-2
+    [Fact]
+    public async Task ContractWithoutARate_ReturnsNullRateMembers()
+    {
+        // Arrange
+        var customer = await SeedCustomerAsync();
+        var contract = await SeedAsync(customer.Id);
+        await using var factory = CreateFactory(ConnectionString, Midday);
+
+        // Act
+        var response = await BackOfficeClient(factory).GetAsync(Url(customer.Id.Value, contract.Id.Value), Ct);
+
+        // Assert
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>(Ct);
+        foreach (var member in new[]
+                 {
+                     "dayPrice", "nightPrice", "nightCallFee", "minimumRule", "minimumAmount",
+                     "minimumThreshold", "minimumOveragePrice",
+                 })
+        {
+            body.GetProperty(member).ValueKind.ShouldBe(JsonValueKind.Null, member);
+        }
+    }
+
     [Fact]
     public async Task UnknownContract_Returns404ContractNotFound()
     {
@@ -109,6 +166,7 @@ public sealed class GetContractEndpointTests : RegistryIntegrationTestBase
         await response.ShouldBeProblemAsync(HttpStatusCode.NotFound, CustomerErrors.NotFound, Ct);
     }
 
+    // AC-24
     [Theory]
     [InlineData("BackOffice", HttpStatusCode.OK)]
     [InlineData("Admin", HttpStatusCode.OK)]

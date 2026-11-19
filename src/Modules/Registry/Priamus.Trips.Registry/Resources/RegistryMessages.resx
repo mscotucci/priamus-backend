@@ -28,6 +28,18 @@
   <data name="Validation.RequiresTrailerNotAllowed" xml:space="preserve">
     <value>Solo una motrice può richiedere un rimorchio.</value>
   </data>
+  <data name="Validation.PositiveAmount" xml:space="preserve">
+    <value>Inserisci un importo maggiore di zero.</value>
+  </data>
+  <data name="Validation.NonNegativeAmount" xml:space="preserve">
+    <value>L'importo non può essere negativo.</value>
+  </data>
+  <data name="Validation.AmountDecimals" xml:space="preserve">
+    <value>Usa al massimo due decimali.</value>
+  </data>
+  <data name="Validation.AmountTooLarge" xml:space="preserve">
+    <value>Importo troppo alto.</value>
+  </data>
   <data name="Registry.Vehicle.LicensePlateInvalid" xml:space="preserve">
     <value>La targa deve avere da 2 a 10 tra lettere e cifre; spazi e trattini sono ignorati.</value>
   </data>
@@ -99,5 +111,53 @@
   </data>
   <data name="Registry.Contract.ConcurrentUpdate" xml:space="preserve">
     <value>Il contratto è stato modificato da un altro utente nel frattempo. Controlla i dati aggiornati e riprova.</value>
+  </data>
+  <data name="Registry.Contract.CustomerDeactivatedReadOnly" xml:space="preserve">
+    <value>Il cliente è disattivato: i suoi contratti non si possono modificare. Riattivalo per modificarli.</value>
+  </data>
+  <data name="Registry.Contract.ChangeFromOutsideValidity" xml:space="preserve">
+    <value>La data deve essere successiva all'inizio e dentro la validità del contratto.</value>
+  </data>
+  <data name="Registry.Contract.ValueNotApplicable" xml:space="preserve">
+    <value>Questo valore non si applica al contratto.</value>
+  </data>
+  <data name="Registry.Contract.DayPriceNotPositive" xml:space="preserve">
+    <value>Inserisci un importo maggiore di zero.</value>
+  </data>
+  <data name="Registry.Contract.NightPriceNotPositive" xml:space="preserve">
+    <value>Inserisci un importo maggiore di zero.</value>
+  </data>
+  <data name="Registry.Contract.NightCallFeeNegative" xml:space="preserve">
+    <value>L'importo non può essere negativo.</value>
+  </data>
+  <data name="Registry.Contract.MinimumAmountNotPositive" xml:space="preserve">
+    <value>Inserisci un importo maggiore di zero.</value>
+  </data>
+  <data name="Registry.Contract.MinimumThresholdNotPositive" xml:space="preserve">
+    <value>Inserisci un valore maggiore di zero.</value>
+  </data>
+  <data name="Registry.Contract.MinimumOveragePriceNotPositive" xml:space="preserve">
+    <value>Inserisci un importo maggiore di zero.</value>
+  </data>
+  <data name="Registry.Contract.AmountTooPrecise" xml:space="preserve">
+    <value>Usa al massimo due decimali.</value>
+  </data>
+  <data name="Registry.Contract.AmountTooLarge" xml:space="preserve">
+    <value>Importo troppo alto.</value>
+  </data>
+  <data name="Registry.Contract.RateRequired" xml:space="preserve">
+    <value>Questo contratto è stato salvato senza tariffa: salvalo prima con «Da sempre», poi cambia le condizioni da una data.</value>
+  </data>
+  <data name="Registry.Contract.RateNotApplicable" xml:space="preserve">
+    <value>Questo valore non si applica al contratto.</value>
+  </data>
+  <data name="Registry.Contract.NightRateMissing" xml:space="preserve">
+    <value>Con la maggiorazione notturna servono il prezzo notturno e la chiamata notturna.</value>
+  </data>
+  <data name="Registry.Contract.NightRateNotApplicable" xml:space="preserve">
+    <value>Questo valore non si applica al contratto.</value>
+  </data>
+  <data name="Registry.Contract.MinimumNotApplicableByTrip" xml:space="preserve">
+    <value>Questo valore non si applica al contratto.</value>
   </data>
 </root>

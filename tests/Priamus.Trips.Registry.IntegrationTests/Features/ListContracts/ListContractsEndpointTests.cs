@@ -3,6 +3,7 @@ using System.Net.Http.Json;
 using System.Text.Json;
 using Priamus.Trips.IntegrationTesting;
 using Priamus.Trips.Registry.Domain.Contracts;
+using Priamus.Trips.Registry.Domain.Contracts.ValueObjects;
 using Priamus.Trips.Registry.Domain.Customers;
 using Priamus.Trips.Registry.IntegrationTests.Infrastructure;
 using Shouldly;
@@ -46,7 +47,8 @@ public sealed class ListContractsEndpointTests : RegistryIntegrationTestBase
         PricingMode mode = PricingMode.ByTrip)
     {
         await using var db = CreateDbContext();
-        await SeedContractAsync(db, customerId, from, to, level, mode, documents, nightSurcharge);
+        var rate = level == BillingLevel.FlatRate ? Rate.Create(45m, null, null, new MinimumRule.None()).Value : null;
+        await SeedContractAsync(db, customerId, from, to, level, mode, documents, nightSurcharge, rate);
     }
 
     private async Task<JsonElement> GetListAsync(Guid customerId, DateTime utcNow)
@@ -110,6 +112,38 @@ public sealed class ListContractsEndpointTests : RegistryIntegrationTestBase
         expired.GetProperty("pricingMode").GetString().ShouldBe("ByHour");
         expired.GetProperty("requiredDocuments").GetArrayLength().ShouldBe(0);
         expired.GetProperty("nightSurcharge").GetBoolean().ShouldBeFalse();
+    }
+
+    // AC-2
+    [Fact]
+    public async Task ReturnsTheRateOfEachContractAndNullsForOneWithout()
+    {
+        // Arrange
+        var customer = await SeedCustomerAsync();
+        var rate = Rate.Create(30m, null, null, new MinimumRule.FixedMinimum(90m)).Value;
+        await using (var db = CreateDbContext())
+        {
+            await SeedContractAsync(
+                db, customer.Id, D(2026, 4, 1), null, BillingLevel.FlatRate, PricingMode.ByDistance,
+                nightSurcharge: false, rate: rate);
+            await SeedContractAsync(db, customer.Id, D(2025, 1, 1), D(2025, 12, 31));
+        }
+
+        // Act
+        var list = await GetListAsync(customer.Id.Value, Midday);
+
+        // Assert
+        var withRate = list[0];
+        withRate.GetProperty("dayPrice").GetDecimal().ShouldBe(30m);
+        withRate.GetProperty("nightPrice").ValueKind.ShouldBe(JsonValueKind.Null);
+        withRate.GetProperty("nightCallFee").ValueKind.ShouldBe(JsonValueKind.Null);
+        withRate.GetProperty("minimumRule").GetString().ShouldBe("FixedMinimum");
+        withRate.GetProperty("minimumAmount").GetDecimal().ShouldBe(90m);
+        withRate.GetProperty("minimumThreshold").ValueKind.ShouldBe(JsonValueKind.Null);
+        withRate.GetProperty("minimumOveragePrice").ValueKind.ShouldBe(JsonValueKind.Null);
+        var withoutRate = list[1];
+        withoutRate.GetProperty("dayPrice").ValueKind.ShouldBe(JsonValueKind.Null);
+        withoutRate.GetProperty("minimumRule").ValueKind.ShouldBe(JsonValueKind.Null);
     }
 
     [Fact]
@@ -177,6 +211,7 @@ public sealed class ListContractsEndpointTests : RegistryIntegrationTestBase
         await response.ShouldBeProblemAsync(HttpStatusCode.NotFound, CustomerErrors.NotFound, Ct);
     }
 
+    // AC-24
     [Theory]
     [InlineData("BackOffice", HttpStatusCode.OK)]
     [InlineData("Admin", HttpStatusCode.OK)]

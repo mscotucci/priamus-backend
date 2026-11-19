@@ -163,6 +163,20 @@ public sealed class RegistryMessagesTests : RegistryIntegrationTestBase
             ContractErrors.OverlapWithAnother,
             ContractErrors.CustomerDeactivated,
             ContractErrors.ConcurrentUpdate,
+            ContractErrors.CustomerDeactivatedReadOnly,
+            ContractErrors.DayPriceNotPositive,
+            ContractErrors.NightPriceNotPositive,
+            ContractErrors.NightCallFeeNegative,
+            ContractErrors.MinimumAmountNotPositive,
+            ContractErrors.MinimumThresholdNotPositive,
+            ContractErrors.MinimumOveragePriceNotPositive,
+            ContractErrors.AmountTooPrecise,
+            ContractErrors.AmountTooLarge,
+            ContractErrors.RateRequired,
+            ContractErrors.RateNotApplicable,
+            ContractErrors.NightRateMissing,
+            ContractErrors.NightRateNotApplicable,
+            ContractErrors.MinimumNotApplicableByTrip,
         };
 
         foreach (var error in errors)
@@ -180,6 +194,14 @@ public sealed class RegistryMessagesTests : RegistryIntegrationTestBase
 
         localizer["Validation.Required"].Value.ShouldBe("Valore obbligatorio.");
         localizer["Validation.MaxLength"].Value.ShouldBe("Massimo {1} caratteri.");
+        localizer["Validation.PositiveAmount"].Value.ShouldBe("Inserisci un importo maggiore di zero.");
+        localizer["Validation.NonNegativeAmount"].Value.ShouldBe("L'importo non può essere negativo.");
+        localizer["Validation.AmountDecimals"].Value.ShouldBe("Usa al massimo due decimali.");
+        localizer["Validation.AmountTooLarge"].Value.ShouldBe("Importo troppo alto.");
+        localizer["Registry.Contract.AmountTooLarge"].Value.ShouldBe("Importo troppo alto.");
+        localizer["Registry.Contract.ValueNotApplicable"].Value.ShouldBe("Questo valore non si applica al contratto.");
+        localizer["Registry.Contract.ChangeFromOutsideValidity"].Value.ShouldBe(
+            "La data deve essere successiva all'inizio e dentro la validità del contratto.");
         localizer["Validation.LicensePlate"].ResourceNotFound.ShouldBeFalse();
         localizer["Validation.RequiresTrailerNotAllowed"].ResourceNotFound.ShouldBeFalse();
         localizer["Validation.VatNumber"].ResourceNotFound.ShouldBeFalse();

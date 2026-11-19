@@ -1,3 +1,4 @@
+using Priamus.Trips.Registry.Domain.Contracts.ValueObjects;
 using Priamus.Trips.Registry.Domain.Customers;
 using Priamus.Trips.SharedKernel.Domain;
 
@@ -17,6 +18,7 @@ namespace Priamus.Trips.Registry.Domain.Contracts.Events;
 /// <param name="PricingMode">Pricing mode.</param>
 /// <param name="RequiredDocuments">Required documents in canonical order.</param>
 /// <param name="NightSurcharge">Whether night trips cost more.</param>
+/// <param name="Rate">The rate; <c>null</c> when the contract has none.</param>
 public sealed record ContractUpdated(
     Guid EventId,
     DateTime OccurredAt,
@@ -27,4 +29,5 @@ public sealed record ContractUpdated(
     BillingLevel BillingLevel,
     PricingMode PricingMode,
     IReadOnlyList<RequiredDocument> RequiredDocuments,
-    bool NightSurcharge) : IDomainEvent;
+    bool NightSurcharge,
+    Rate? Rate) : IDomainEvent;

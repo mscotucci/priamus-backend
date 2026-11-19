@@ -54,6 +54,8 @@ public sealed class UpdateContractEndpointTests : RegistryIntegrationTestBase
             ["pricingMode"] = pricingMode,
             ["requiredDocuments"] = requiredDocuments ?? ["WasteForm"],
             ["nightSurcharge"] = nightSurcharge,
+            ["dayPrice"] = billingLevel == "FlatRate" ? 45.5m : null,
+            ["minimumRule"] = billingLevel == "FlatRate" ? "None" : null,
             ["version"] = version,
         };
 
@@ -410,6 +412,7 @@ public sealed class UpdateContractEndpointTests : RegistryIntegrationTestBase
         (await db.AuditLog.CountAsync(a => a.EventType == AuditEventTypes.ContractUpdated, Ct)).ShouldBe(1);
     }
 
+    // AC-25
     [Fact]
     public async Task SuccessfulEdit_WritesOneUpdatedRowWithTheFullStateAndTheActor()
     {
@@ -466,12 +469,14 @@ public sealed class UpdateContractEndpointTests : RegistryIntegrationTestBase
         (await AuditCountAsync()).ShouldBe(before);
     }
 
+    // AC-20
     [Fact]
-    public async Task ContractOfADeactivatedCustomer_IsEditedSuccessfully()
+    public async Task ContractOfADeactivatedCustomer_Returns409CustomerDeactivatedReadOnly_AndChangesNothing()
     {
         // Arrange
         var customer = await SeedCustomerAsync(deactivated: true);
         var seeded = await SeedAsync(customer.Id, "2026-01-01", "2026-03-31");
+        var before = await AuditCountAsync();
         await using var factory = CreateFactory();
 
         // Act
@@ -479,8 +484,179 @@ public sealed class UpdateContractEndpointTests : RegistryIntegrationTestBase
             BackOfficeClient(factory), customer.Id.Value, seeded.Id.Value, UpdateBody(seeded.Version));
 
         // Assert
+        (await DetailAsync(response)).ShouldBe(
+            "Il cliente è disattivato: i suoi contratti non si possono modificare. Riattivalo per modificarli.");
+        await response.ShouldBeProblemAsync(HttpStatusCode.Conflict, ContractErrors.CustomerDeactivatedReadOnly, Ct);
+        var stored = await StoredOneAsync(seeded.Id);
+        stored.Version.ShouldBe(seeded.Version);
+        stored.BillingLevel.ShouldBe(BillingLevel.PerLocationPair);
+        (await AuditCountAsync()).ShouldBe(before);
+    }
+
+    // AC-20
+    [Fact]
+    public async Task ContractOfADeactivatedCustomer_IsRefusedBeforeItIsLoaded()
+    {
+        var customer = await SeedCustomerAsync(deactivated: true);
+        await using var factory = CreateFactory();
+
+        var response = await PutAsync(BackOfficeClient(factory), customer.Id.Value, Guid.NewGuid(), UpdateBody(0));
+
+        await response.ShouldBeProblemAsync(HttpStatusCode.Conflict, ContractErrors.CustomerDeactivatedReadOnly, Ct);
+    }
+
+    // AC-1, AC-10, AC-11, AC-15
+    [Theory]
+    [MemberData(nameof(ValidRates), MemberType = typeof(ContractTestSupport))]
+    public async Task ValidRate_Returns204AndStoresTheRateWithTheContract(
+        string billingLevel, string pricingMode, bool nightSurcharge, string rate)
+    {
+        // Arrange
+        var customer = await SeedCustomerAsync();
+        var seeded = await SeedAsync(customer.Id, "2026-01-01", "2026-03-31");
+        await using var factory = CreateFactory();
+        var body = UpdateBody(seeded.Version);
+        body.Remove("dayPrice");
+        body.Remove("minimumRule");
+        SetRate(body, billingLevel, pricingMode, nightSurcharge, rate);
+
+        // Act
+        var response = await PutAsync(BackOfficeClient(factory), customer.Id.Value, seeded.Id.Value, body);
+
+        // Assert
         response.StatusCode.ShouldBe(HttpStatusCode.NoContent);
-        (await StoredOneAsync(seeded.Id)).Version.ShouldBe(seeded.Version + 1);
+        var stored = await StoredOneAsync(seeded.Id);
+        using var members = JsonDocument.Parse(rate);
+        decimal? Member(string name) =>
+            members.RootElement.TryGetProperty(name, out var value) ? value.GetDecimal() : null;
+        (stored.Rate is null).ShouldBe(billingLevel != "FlatRate");
+        stored.Rate?.DayPrice.ShouldBe(Member("dayPrice")!.Value);
+        stored.Rate?.NightPrice.ShouldBe(Member("nightPrice"));
+        stored.Rate?.NightCallFee.ShouldBe(Member("nightCallFee"));
+        stored.Rate?.Minimum.Amount.ShouldBe(Member("minimumAmount"));
+        stored.Rate?.Minimum.Threshold.ShouldBe(Member("minimumThreshold"));
+        stored.Rate?.Minimum.OveragePrice.ShouldBe(Member("minimumOveragePrice"));
+    }
+
+    // AC-10, AC-11, AC-15
+    [Theory]
+    [MemberData(nameof(InvalidRates), MemberType = typeof(ContractTestSupport))]
+    public async Task InvalidRate_Returns400UnderTheMembersKeys_AndChangesNothing(
+        string billingLevel, string pricingMode, bool nightSurcharge, string rate, string keys)
+    {
+        // Arrange
+        var customer = await SeedCustomerAsync();
+        var seeded = await SeedAsync(customer.Id, "2026-01-01", "2026-03-31");
+        var before = await AuditCountAsync();
+        await using var factory = CreateFactory();
+        var body = UpdateBody(seeded.Version);
+        body.Remove("dayPrice");
+        body.Remove("minimumRule");
+        SetRate(body, billingLevel, pricingMode, nightSurcharge, rate);
+
+        // Act
+        var response = await PutAsync(BackOfficeClient(factory), customer.Id.Value, seeded.Id.Value, body);
+
+        // Assert
+        response.StatusCode.ShouldBe(HttpStatusCode.BadRequest);
+        (await ErrorKeysAsync(response)).ShouldBe(keys.Split(','));
+        (await StoredOneAsync(seeded.Id)).Version.ShouldBe(seeded.Version);
+        (await AuditCountAsync()).ShouldBe(before);
+    }
+
+    // AC-10, AC-11
+    [Fact]
+    public async Task RateErrors_AreInItalian()
+    {
+        var customer = await SeedCustomerAsync();
+        var seeded = await SeedAsync(customer.Id, "2026-01-01", "2026-03-31");
+        await using var factory = CreateFactory();
+        var body = UpdateBody(seeded.Version);
+        SetRate(body, "FlatRate", "ByHour", false,
+            """{"dayPrice":0,"nightPrice":55,"minimumRule":"FixedMinimum","minimumAmount":10.123}""");
+
+        var response = await PutAsync(BackOfficeClient(factory), customer.Id.Value, seeded.Id.Value, body);
+
+        var errors = (await response.Content.ReadFromJsonAsync<JsonElement>(Ct)).GetProperty("errors");
+        errors.GetProperty("DayPrice")[0].GetString().ShouldBe("Inserisci un importo maggiore di zero.");
+        errors.GetProperty("NightPrice")[0].GetString().ShouldBe("Questo valore non si applica al contratto.");
+        errors.GetProperty("MinimumAmount")[0].GetString().ShouldBe("Usa al massimo due decimali.");
+    }
+
+    [Fact]
+    public async Task MissingPricingModeWithAFixedMinimum_ReportsOnlyThePricingMode()
+    {
+        var customer = await SeedCustomerAsync();
+        var seeded = await SeedAsync(customer.Id, "2026-01-01", "2026-03-31");
+        await using var factory = CreateFactory();
+        var body = UpdateBody(seeded.Version);
+        body.Remove("pricingMode");
+        body["minimumRule"] = "FixedMinimum";
+        body["minimumAmount"] = 100m;
+
+        var response = await PutAsync(BackOfficeClient(factory), customer.Id.Value, seeded.Id.Value, body);
+
+        response.StatusCode.ShouldBe(HttpStatusCode.BadRequest);
+        (await ErrorKeysAsync(response)).ShouldBe(["PricingMode"]);
+    }
+
+    // AC-15
+    [Fact]
+    public async Task FlatRateContractStoredWithoutARate_IsRefusedWithoutOne_AndSavedWithOne()
+    {
+        // Arrange
+        var customer = await SeedCustomerAsync();
+        Contract legacy;
+        await using (var db = CreateDbContext())
+        {
+            legacy = await SeedFlatRateWithoutRateAsync(db, customer.Id, new DateOnly(2026, 1, 1), null);
+        }
+
+        await using var factory = CreateFactory();
+        var client = BackOfficeClient(factory);
+        var withoutRate = UpdateBody(legacy.Version, validTo: null);
+        withoutRate.Remove("dayPrice");
+        withoutRate.Remove("minimumRule");
+
+        // Act
+        var refused = await PutAsync(client, customer.Id.Value, legacy.Id.Value, withoutRate);
+        var saved = await PutAsync(client, customer.Id.Value, legacy.Id.Value, UpdateBody(legacy.Version, validTo: null));
+
+        // Assert
+        refused.StatusCode.ShouldBe(HttpStatusCode.BadRequest);
+        (await ErrorKeysAsync(refused)).ShouldBe(["DayPrice", "MinimumRule"]);
+        saved.StatusCode.ShouldBe(HttpStatusCode.NoContent);
+        (await StoredOneAsync(legacy.Id)).Rate.ShouldNotBeNull().DayPrice.ShouldBe(45.5m);
+    }
+
+    // AC-1, AC-25
+    [Fact]
+    public async Task SuccessfulEditWithARate_WritesTheRateInTheAuditRow()
+    {
+        // Arrange
+        var customer = await SeedCustomerAsync();
+        var seeded = await SeedAsync(customer.Id, "2026-01-01", "2026-03-31");
+        await using var factory = CreateFactory();
+        var body = UpdateBody(seeded.Version);
+        SetRate(body, "FlatRate", "ByHour", true,
+            """{"dayPrice":45,"nightPrice":55.5,"nightCallFee":0,"minimumRule":"TieredOverage","minimumAmount":300,"minimumThreshold":4,"minimumOveragePrice":60.25}""");
+
+        // Act
+        var response = await PutAsync(BackOfficeClient(factory), customer.Id.Value, seeded.Id.Value, body);
+
+        // Assert
+        response.StatusCode.ShouldBe(HttpStatusCode.NoContent);
+        await using var db = CreateDbContext();
+        var row = await db.AuditLog.SingleAsync(a => a.EventType == AuditEventTypes.ContractUpdated, Ct);
+        using var payload = JsonDocument.Parse(row.Payload);
+        var root = payload.RootElement;
+        root.GetProperty("dayPrice").GetDecimal().ShouldBe(45m);
+        root.GetProperty("nightPrice").GetDecimal().ShouldBe(55.5m);
+        root.GetProperty("nightCallFee").GetDecimal().ShouldBe(0m);
+        root.GetProperty("minimumRule").GetString().ShouldBe("TieredOverage");
+        root.GetProperty("minimumAmount").GetDecimal().ShouldBe(300m);
+        root.GetProperty("minimumThreshold").GetDecimal().ShouldBe(4m);
+        root.GetProperty("minimumOveragePrice").GetDecimal().ShouldBe(60.25m);
     }
 
     [Fact]
@@ -521,6 +697,7 @@ public sealed class UpdateContractEndpointTests : RegistryIntegrationTestBase
         (await StoredOneAsync(seeded.Id)).Version.ShouldBe(seeded.Version);
     }
 
+    // AC-24
     [Theory]
     [InlineData("BackOffice", HttpStatusCode.NoContent)]
     [InlineData("Admin", HttpStatusCode.NoContent)]

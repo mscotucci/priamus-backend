@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
 using Priamus.Trips.Registry.Domain.Contracts;
+using Priamus.Trips.Registry.Domain.Contracts.ValueObjects;
 using Priamus.Trips.Registry.Domain.Customers;
 using Priamus.Trips.Registry.Persistence.Converters;
 
@@ -75,6 +76,38 @@ internal sealed class ContractConfiguration : IEntityTypeConfiguration<Contract>
             .HasColumnName("night_surcharge")
             .HasColumnType("boolean")
             .IsRequired();
+
+        // The rate is rebuilt from seven nullable columns held in private fields of the aggregate.
+        builder.Ignore(c => c.Rate);
+
+        builder.Property<decimal?>("_dayPrice")
+            .HasColumnName("day_price")
+            .HasColumnType("numeric(12,2)");
+
+        builder.Property<decimal?>("_nightPrice")
+            .HasColumnName("night_price")
+            .HasColumnType("numeric(12,2)");
+
+        builder.Property<decimal?>("_nightCallFee")
+            .HasColumnName("night_call_fee")
+            .HasColumnType("numeric(12,2)");
+
+        builder.Property<MinimumRuleKind?>("_minimumRule")
+            .HasConversion<string>()
+            .HasColumnName("minimum_rule")
+            .HasColumnType("text");
+
+        builder.Property<decimal?>("_minimumAmount")
+            .HasColumnName("minimum_amount")
+            .HasColumnType("numeric(12,2)");
+
+        builder.Property<decimal?>("_minimumThreshold")
+            .HasColumnName("minimum_threshold")
+            .HasColumnType("numeric(12,2)");
+
+        builder.Property<decimal?>("_minimumOveragePrice")
+            .HasColumnName("minimum_overage_price")
+            .HasColumnType("numeric(12,2)");
 
         builder.Property(c => c.CreatedAt)
             .HasColumnName("created_at")
