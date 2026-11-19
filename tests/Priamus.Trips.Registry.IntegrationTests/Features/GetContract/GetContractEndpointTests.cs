@@ -67,7 +67,6 @@ public sealed class GetContractEndpointTests : RegistryIntegrationTestBase
         body.GetProperty("version").GetInt32().ShouldBe(0);
     }
 
-    // AC-2
     [Fact]
     public async Task ReturnsTheRateAndTheMinimumOfAFlatRateContract()
     {
@@ -99,7 +98,6 @@ public sealed class GetContractEndpointTests : RegistryIntegrationTestBase
         body.GetProperty("minimumOveragePrice").GetDecimal().ShouldBe(22.25m);
     }
 
-    // AC-2
     [Fact]
     public async Task ContractWithoutARate_ReturnsNullRateMembers()
     {
@@ -166,7 +164,6 @@ public sealed class GetContractEndpointTests : RegistryIntegrationTestBase
         await response.ShouldBeProblemAsync(HttpStatusCode.NotFound, CustomerErrors.NotFound, Ct);
     }
 
-    // AC-24
     [Theory]
     [InlineData("BackOffice", HttpStatusCode.OK)]
     [InlineData("Admin", HttpStatusCode.OK)]

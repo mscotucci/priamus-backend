@@ -414,7 +414,6 @@ public sealed class CreateContractEndpointTests : RegistryIntegrationTestBase
         (await db.AuditLog.CountAsync(a => a.EventType.StartsWith("registry.contract"), Ct)).ShouldBe(1);
     }
 
-    // AC-1, AC-10, AC-11, AC-15
     [Theory]
     [MemberData(nameof(ValidRates), MemberType = typeof(ContractTestSupport))]
     public async Task ValidRate_Returns201AndStoresAndReturnsTheRateWithTheContract(
@@ -456,7 +455,6 @@ public sealed class CreateContractEndpointTests : RegistryIntegrationTestBase
         returned.GetProperty("minimumRule").GetString().ShouldBe(expectedRule);
     }
 
-    // AC-10, AC-11, AC-15
     [Theory]
     [MemberData(nameof(InvalidRates), MemberType = typeof(ContractTestSupport))]
     public async Task InvalidRate_Returns400UnderTheMembersKeys_AndSavesNothing(
@@ -479,7 +477,6 @@ public sealed class CreateContractEndpointTests : RegistryIntegrationTestBase
         (await AuditCountAsync()).ShouldBe(before);
     }
 
-    // AC-10, AC-11
     [Fact]
     public async Task RateErrors_AreInItalian()
     {
@@ -497,7 +494,6 @@ public sealed class CreateContractEndpointTests : RegistryIntegrationTestBase
         errors.GetProperty("MinimumAmount")[0].GetString().ShouldBe("Usa al massimo due decimali.");
     }
 
-    // AC-1, AC-25
     [Fact]
     public async Task SuccessfulCreationWithARate_WritesTheRateInTheAuditRow()
     {
@@ -526,7 +522,6 @@ public sealed class CreateContractEndpointTests : RegistryIntegrationTestBase
         root.GetProperty("minimumOveragePrice").GetDecimal().ShouldBe(60.25m);
     }
 
-    // AC-25
     [Fact]
     public async Task SuccessfulCreation_WritesOneAuditRowWithTheFullStateAndTheActor()
     {
@@ -605,7 +600,6 @@ public sealed class CreateContractEndpointTests : RegistryIntegrationTestBase
         await response.ShouldBeProblemAsync(HttpStatusCode.NotFound, CustomerErrors.NotFound, Ct);
     }
 
-    // AC-24
     [Theory]
     [InlineData("BackOffice", HttpStatusCode.Created)]
     [InlineData("Admin", HttpStatusCode.Created)]

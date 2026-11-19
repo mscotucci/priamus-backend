@@ -412,7 +412,6 @@ public sealed class UpdateContractEndpointTests : RegistryIntegrationTestBase
         (await db.AuditLog.CountAsync(a => a.EventType == AuditEventTypes.ContractUpdated, Ct)).ShouldBe(1);
     }
 
-    // AC-25
     [Fact]
     public async Task SuccessfulEdit_WritesOneUpdatedRowWithTheFullStateAndTheActor()
     {
@@ -469,7 +468,6 @@ public sealed class UpdateContractEndpointTests : RegistryIntegrationTestBase
         (await AuditCountAsync()).ShouldBe(before);
     }
 
-    // AC-20
     [Fact]
     public async Task ContractOfADeactivatedCustomer_Returns409CustomerDeactivatedReadOnly_AndChangesNothing()
     {
@@ -493,7 +491,6 @@ public sealed class UpdateContractEndpointTests : RegistryIntegrationTestBase
         (await AuditCountAsync()).ShouldBe(before);
     }
 
-    // AC-20
     [Fact]
     public async Task ContractOfADeactivatedCustomer_IsRefusedBeforeItIsLoaded()
     {
@@ -505,7 +502,6 @@ public sealed class UpdateContractEndpointTests : RegistryIntegrationTestBase
         await response.ShouldBeProblemAsync(HttpStatusCode.Conflict, ContractErrors.CustomerDeactivatedReadOnly, Ct);
     }
 
-    // AC-1, AC-10, AC-11, AC-15
     [Theory]
     [MemberData(nameof(ValidRates), MemberType = typeof(ContractTestSupport))]
     public async Task ValidRate_Returns204AndStoresTheRateWithTheContract(
@@ -538,7 +534,6 @@ public sealed class UpdateContractEndpointTests : RegistryIntegrationTestBase
         stored.Rate?.Minimum.OveragePrice.ShouldBe(Member("minimumOveragePrice"));
     }
 
-    // AC-10, AC-11, AC-15
     [Theory]
     [MemberData(nameof(InvalidRates), MemberType = typeof(ContractTestSupport))]
     public async Task InvalidRate_Returns400UnderTheMembersKeys_AndChangesNothing(
@@ -564,7 +559,6 @@ public sealed class UpdateContractEndpointTests : RegistryIntegrationTestBase
         (await AuditCountAsync()).ShouldBe(before);
     }
 
-    // AC-10, AC-11
     [Fact]
     public async Task RateErrors_AreInItalian()
     {
@@ -600,7 +594,6 @@ public sealed class UpdateContractEndpointTests : RegistryIntegrationTestBase
         (await ErrorKeysAsync(response)).ShouldBe(["PricingMode"]);
     }
 
-    // AC-15
     [Fact]
     public async Task FlatRateContractStoredWithoutARate_IsRefusedWithoutOne_AndSavedWithOne()
     {
@@ -629,7 +622,6 @@ public sealed class UpdateContractEndpointTests : RegistryIntegrationTestBase
         (await StoredOneAsync(legacy.Id)).Rate.ShouldNotBeNull().DayPrice.ShouldBe(45.5m);
     }
 
-    // AC-1, AC-25
     [Fact]
     public async Task SuccessfulEditWithARate_WritesTheRateInTheAuditRow()
     {
@@ -697,7 +689,6 @@ public sealed class UpdateContractEndpointTests : RegistryIntegrationTestBase
         (await StoredOneAsync(seeded.Id)).Version.ShouldBe(seeded.Version);
     }
 
-    // AC-24
     [Theory]
     [InlineData("BackOffice", HttpStatusCode.NoContent)]
     [InlineData("Admin", HttpStatusCode.NoContent)]

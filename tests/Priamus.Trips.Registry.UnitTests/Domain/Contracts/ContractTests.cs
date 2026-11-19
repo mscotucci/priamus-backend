@@ -161,7 +161,6 @@ public sealed class ContractTests
         Contract.Create(ContractId.New(), CustomerId.New(), V("2026-04-01", null), billingLevel, pricingMode,
             [], nightSurcharge, rate, NewClock(), Actor);
 
-    // AC-1, AC-2
     [Fact]
     public void Create_WithRate_HoldsItAndCarriesItInTheEvent()
     {
@@ -174,7 +173,6 @@ public sealed class ContractTests
         created.Rate.ShouldBe(rate);
     }
 
-    // AC-1
     [Fact]
     public void Update_WithRate_ReplacesItAndCarriesItInTheEvent()
     {
@@ -191,7 +189,6 @@ public sealed class ContractTests
         contract.DomainEvents.ShouldHaveSingleItem().ShouldBeOfType<ContractUpdated>().Rate.ShouldBe(newRate);
     }
 
-    // AC-15
     [Fact]
     public void Create_FlatRateWithoutRate_Fails()
     {
@@ -200,7 +197,6 @@ public sealed class ContractTests
         result.Error.ShouldBe(ContractErrors.RateRequired);
     }
 
-    // AC-15
     [Theory]
     [InlineData(BillingLevel.PerPickupLocation)]
     [InlineData(BillingLevel.PerDeliveryLocation)]
@@ -210,7 +206,6 @@ public sealed class ContractTests
         CreateWith(level, PricingMode.ByHour, false, null).IsSuccess.ShouldBeTrue();
     }
 
-    // AC-15
     [Fact]
     public void Update_FlatRateWithoutRate_FailsAndLeavesTheContractUnchanged()
     {
@@ -239,7 +234,6 @@ public sealed class ContractTests
         result.Error.ShouldBe(ContractErrors.RateNotApplicable);
     }
 
-    // AC-10
     [Theory]
     [InlineData(true, null, 5)]
     [InlineData(true, 55, null)]
@@ -251,7 +245,6 @@ public sealed class ContractTests
         result.Error.ShouldBe(ContractErrors.NightRateMissing);
     }
 
-    // AC-10
     [Theory]
     [InlineData(55, 5)]
     [InlineData(55, null)]
@@ -263,14 +256,12 @@ public sealed class ContractTests
         result.Error.ShouldBe(ContractErrors.NightRateNotApplicable);
     }
 
-    // AC-10
     [Fact]
     public void Create_WithNightSurchargeAndBothNightValues_Succeeds()
     {
         CreateWith(BillingLevel.FlatRate, PricingMode.ByHour, true, NewRate(55m, 0m)).IsSuccess.ShouldBeTrue();
     }
 
-    // AC-11
     [Fact]
     public void Create_ByTripWithAMinimum_Fails()
     {
@@ -280,14 +271,12 @@ public sealed class ContractTests
         result.Error.ShouldBe(ContractErrors.MinimumNotApplicableByTrip);
     }
 
-    // AC-11
     [Fact]
     public void Create_ByTripWithNoMinimum_Succeeds()
     {
         CreateWith(BillingLevel.FlatRate, PricingMode.ByTrip, false, NewRate()).IsSuccess.ShouldBeTrue();
     }
 
-    // AC-10, AC-11
     [Fact]
     public void Update_WithARateThatDoesNotFit_FailsAndLeavesTheContractUnchanged()
     {
@@ -306,7 +295,6 @@ public sealed class ContractTests
         contract.DomainEvents.ShouldBeEmpty();
     }
 
-    // AC-2
     [Fact]
     public void CloseOn_KeepsTheRate()
     {

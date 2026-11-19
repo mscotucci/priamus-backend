@@ -304,7 +304,6 @@ public sealed class ContractPersistenceTests : RegistryIntegrationTestBase
         { "tiered overage", false, null, null, new MinimumRule.TieredOverage(100m, 4.5m, 22.25m) },
     };
 
-    // AC-2
     [Theory]
     [MemberData(nameof(RatesOfEveryKind))]
     public async Task Rate_RoundTripsOnTheContractRow(
@@ -324,7 +323,6 @@ public sealed class ContractPersistenceTests : RegistryIntegrationTestBase
         loaded.Rate.ShouldBe(rate);
     }
 
-    // AC-2
     [Fact]
     public async Task ContractStoredWithoutARate_LoadsWithNoRate()
     {
@@ -345,7 +343,6 @@ public sealed class ContractPersistenceTests : RegistryIntegrationTestBase
         loaded.Rate.ShouldBeNull();
     }
 
-    // AC-2
     [Fact]
     public async Task Rate_AddedToALoadedContract_IsSaved()
     {
@@ -374,7 +371,6 @@ public sealed class ContractPersistenceTests : RegistryIntegrationTestBase
         (await read.Contracts.SingleAsync(c => c.Id == contract.Id, Ct)).Rate.ShouldBe(rate);
     }
 
-    // AC-25
     [Fact]
     public async Task CreatedContractWithARate_WritesTheRateAndTheMinimumInTheAuditRow()
     {
@@ -399,7 +395,6 @@ public sealed class ContractPersistenceTests : RegistryIntegrationTestBase
         root.GetProperty("minimumOveragePrice").GetDecimal().ShouldBe(22.25m);
     }
 
-    // AC-25
     [Fact]
     public async Task UpdatedContractWithoutARate_OmitsTheRateMembersFromTheAuditRow()
     {

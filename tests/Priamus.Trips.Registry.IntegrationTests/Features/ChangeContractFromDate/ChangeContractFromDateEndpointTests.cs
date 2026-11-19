@@ -93,7 +93,6 @@ public sealed class ChangeContractFromDateEndpointTests : RegistryIntegrationTes
         return await db.AuditLog.CountAsync(Ct);
     }
 
-    // AC-3, AC-16
     [Fact]
     public async Task OpenContract_Returns201WithTheNewContract_AndTheSourceKeepsItsTermsUntilTheDayBefore()
     {
@@ -132,7 +131,6 @@ public sealed class ChangeContractFromDateEndpointTests : RegistryIntegrationTes
         created.Rate.ShouldNotBeNull().DayPrice.ShouldBe(55m);
     }
 
-    // AC-16
     [Fact]
     public async Task ClosedContract_IsCutInTwo_TheNewPieceKeepsTheWrittenEnd()
     {
@@ -156,7 +154,6 @@ public sealed class ChangeContractFromDateEndpointTests : RegistryIntegrationTes
         stored.Validity.ValidTo.ShouldBe(new DateOnly(2026, 6, 30));
     }
 
-    // AC-16
     [Fact]
     public async Task WrittenStartMovedTogetherWithTheChange_TheFirstPieceTakesIt()
     {
@@ -177,7 +174,6 @@ public sealed class ChangeContractFromDateEndpointTests : RegistryIntegrationTes
         stored.Validity.ValidTo.ShouldBe(new DateOnly(2026, 5, 31));
     }
 
-    // AC-17
     [Fact]
     public async Task DateInThePast_IsAccepted()
     {
@@ -193,7 +189,6 @@ public sealed class ChangeContractFromDateEndpointTests : RegistryIntegrationTes
         (await StoredOneAsync(source.Id)).Validity.ValidTo.ShouldBe(new DateOnly(2020, 5, 31));
     }
 
-    // AC-17
     [Fact]
     public async Task DateOnTheWrittenEnd_IsAccepted_TheNewPieceLastsOneDay()
     {
@@ -209,7 +204,6 @@ public sealed class ChangeContractFromDateEndpointTests : RegistryIntegrationTes
         (await StoredOneAsync(source.Id)).Validity.ValidTo.ShouldBe(new DateOnly(2026, 12, 30));
     }
 
-    // AC-17
     [Theory]
     [InlineData(null, null, "Valore obbligatorio.")]
     [InlineData("2026-01-01", null, "La data deve essere successiva all'inizio e dentro la validità del contratto.")]
@@ -239,7 +233,6 @@ public sealed class ChangeContractFromDateEndpointTests : RegistryIntegrationTes
         (await AuditCountAsync()).ShouldBe(before);
     }
 
-    // AC-17
     [Fact]
     public async Task InvalidRateOfTheNewTerms_Returns400OnTheMember_AndChangesNothing()
     {
@@ -256,7 +249,6 @@ public sealed class ChangeContractFromDateEndpointTests : RegistryIntegrationTes
         (await StoredAsync(customer.Id)).Count.ShouldBe(1);
     }
 
-    // AC-17
     [Fact]
     public async Task StaleVersion_Returns409ConcurrentUpdate_AndChangesNothing()
     {
@@ -277,7 +269,6 @@ public sealed class ChangeContractFromDateEndpointTests : RegistryIntegrationTes
         (await AuditCountAsync()).ShouldBe(before);
     }
 
-    // AC-17
     [Fact]
     public async Task ContractChangedBetweenTheLoadAndTheSave_Returns409ConcurrentUpdate_AndSavesNothing()
     {
@@ -300,7 +291,6 @@ public sealed class ChangeContractFromDateEndpointTests : RegistryIntegrationTes
         (await StoredAsync(customer.Id)).Count.ShouldBe(1);
     }
 
-    // AC-17
     [Fact]
     public async Task NewPieceOverlappingALaterContract_Returns409NamingIt_AndSavesNothing()
     {
@@ -327,7 +317,6 @@ public sealed class ChangeContractFromDateEndpointTests : RegistryIntegrationTes
         (await AuditCountAsync()).ShouldBe(before);
     }
 
-    // AC-17
     [Fact]
     public async Task OverlapTakenBetweenTheCheckAndTheSave_Returns409OverlapWithAnother_AndSavesNothing()
     {
@@ -352,7 +341,6 @@ public sealed class ChangeContractFromDateEndpointTests : RegistryIntegrationTes
         (await StoredAsync(customer.Id)).Count.ShouldBe(2);
     }
 
-    // AC-20
     [Fact]
     public async Task ContractOfADeactivatedCustomer_Returns409CustomerDeactivatedReadOnly_AndSavesNothing()
     {
@@ -377,7 +365,6 @@ public sealed class ChangeContractFromDateEndpointTests : RegistryIntegrationTes
         (await AuditCountAsync()).ShouldBe(before);
     }
 
-    // AC-20
     [Fact]
     public async Task ContractOfADeactivatedCustomer_IsRefusedBeforeItIsLoaded()
     {
@@ -389,7 +376,6 @@ public sealed class ChangeContractFromDateEndpointTests : RegistryIntegrationTes
         await response.ShouldBeProblemAsync(HttpStatusCode.Conflict, ContractErrors.CustomerDeactivatedReadOnly, Ct);
     }
 
-    // AC-25
     [Fact]
     public async Task SuccessfulChange_WritesAnUpdatedRowForTheSourceAndACreatedRowForTheNewContract_WithRateAndMinimum()
     {
@@ -461,7 +447,6 @@ public sealed class ChangeContractFromDateEndpointTests : RegistryIntegrationTes
         (await StoredOneAsync(source.Id)).Version.ShouldBe(source.Version);
     }
 
-    // AC-24
     [Theory]
     [InlineData("BackOffice", HttpStatusCode.Created)]
     [InlineData("Admin", HttpStatusCode.Created)]

@@ -114,7 +114,6 @@ public sealed class ListContractsEndpointTests : RegistryIntegrationTestBase
         expired.GetProperty("nightSurcharge").GetBoolean().ShouldBeFalse();
     }
 
-    // AC-2
     [Fact]
     public async Task ReturnsTheRateOfEachContractAndNullsForOneWithout()
     {
@@ -211,7 +210,6 @@ public sealed class ListContractsEndpointTests : RegistryIntegrationTestBase
         await response.ShouldBeProblemAsync(HttpStatusCode.NotFound, CustomerErrors.NotFound, Ct);
     }
 
-    // AC-24
     [Theory]
     [InlineData("BackOffice", HttpStatusCode.OK)]
     [InlineData("Admin", HttpStatusCode.OK)]

@@ -21,7 +21,6 @@ public sealed class RateTests
         result.Value.Minimum.ShouldBe(new MinimumRule.None());
     }
 
-    // AC-1
     [Fact]
     public void Create_WithNightValuesAndTieredOverage_HoldsEveryValue()
     {
@@ -36,7 +35,6 @@ public sealed class RateTests
         result.Value.Minimum.Kind.ShouldBe(MinimumRuleKind.TieredOverage);
     }
 
-    // AC-1
     [Fact]
     public void Create_WithFixedMinimum_HoldsTheAmount()
     {
@@ -46,7 +44,6 @@ public sealed class RateTests
         result.Value.Minimum.Kind.ShouldBe(MinimumRuleKind.FixedMinimum);
     }
 
-    // AC-2
     [Fact]
     public void Rate_HasNoValidityOfItsOwn()
     {
@@ -54,7 +51,6 @@ public sealed class RateTests
             ["DayPrice", "NightPrice", "NightCallFee", "Minimum"], ignoreOrder: true);
     }
 
-    // AC-10
     [Theory]
     [InlineData("0")]
     [InlineData("-1")]
@@ -65,7 +61,6 @@ public sealed class RateTests
         result.Error.ShouldBe(ContractErrors.DayPriceNotPositive);
     }
 
-    // AC-10
     [Theory]
     [InlineData("0")]
     [InlineData("-5")]
@@ -76,7 +71,6 @@ public sealed class RateTests
         result.Error.ShouldBe(ContractErrors.NightPriceNotPositive);
     }
 
-    // AC-10
     [Fact]
     public void Create_WithNegativeNightCallFee_Fails()
     {
@@ -85,14 +79,12 @@ public sealed class RateTests
         result.Error.ShouldBe(ContractErrors.NightCallFeeNegative);
     }
 
-    // AC-10
     [Fact]
     public void Create_WithZeroNightCallFee_Succeeds()
     {
         Rate.Create(45m, 55m, 0m, new MinimumRule.None()).IsSuccess.ShouldBeTrue();
     }
 
-    // AC-10, AC-11
     [Theory]
     [InlineData("45.123", null, null, null)]
     [InlineData("45", "55.001", "1", null)]
@@ -113,7 +105,6 @@ public sealed class RateTests
         result.Error.ShouldBe(ContractErrors.AmountTooPrecise);
     }
 
-    // AC-10, AC-11
     [Theory]
     [InlineData("10000000000", null, null, null, null, null)]
     [InlineData("45", "10000000000", "1", null, null, null)]
@@ -134,7 +125,6 @@ public sealed class RateTests
         result.Error.ShouldBe(ContractErrors.AmountTooLarge);
     }
 
-    // AC-10, AC-11
     [Fact]
     public void Create_WithEveryAmountAtTheBound_Succeeds()
     {
@@ -145,7 +135,6 @@ public sealed class RateTests
         result.IsSuccess.ShouldBeTrue();
     }
 
-    // AC-11
     [Fact]
     public void Create_WithFixedMinimumNotPositive_Fails()
     {
@@ -154,7 +143,6 @@ public sealed class RateTests
         result.Error.ShouldBe(ContractErrors.MinimumAmountNotPositive);
     }
 
-    // AC-11
     [Fact]
     public void Create_WithTieredAmountNotPositive_Fails()
     {
@@ -163,7 +151,6 @@ public sealed class RateTests
         result.Error.ShouldBe(ContractErrors.MinimumAmountNotPositive);
     }
 
-    // AC-11
     [Fact]
     public void Create_WithTieredThresholdNotPositive_Fails()
     {
@@ -172,7 +159,6 @@ public sealed class RateTests
         result.Error.ShouldBe(ContractErrors.MinimumThresholdNotPositive);
     }
 
-    // AC-11
     [Fact]
     public void Create_WithTieredOveragePriceNotPositive_Fails()
     {
@@ -181,7 +167,6 @@ public sealed class RateTests
         result.Error.ShouldBe(ContractErrors.MinimumOveragePriceNotPositive);
     }
 
-    // AC-11
     [Fact]
     public void Create_WithTieredValueWithMoreThanTwoDecimals_Fails()
     {
