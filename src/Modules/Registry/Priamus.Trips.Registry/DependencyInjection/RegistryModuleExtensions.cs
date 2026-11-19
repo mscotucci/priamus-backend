@@ -4,6 +4,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Localization;
 using Microsoft.Extensions.Validation;
 using Priamus.Trips.Registry.Application.Services;
+using Priamus.Trips.Registry.Contracts;
 using Priamus.Trips.Registry.Persistence.DependencyInjection;
 using Priamus.Trips.Registry.Resources;
 
@@ -42,6 +43,7 @@ public static class RegistryModuleExtensions
         }
 
         services.AddRegistryPersistence(connectionString);
+        services.AddScoped<IDriverLookup, DriverLookup>();
 
         services.Scan(scan => scan
             .FromAssemblyOf<RegistryModuleMarker>()

@@ -8,6 +8,8 @@ using Priamus.Trips.Registry.Domain.Contracts.ValueObjects;
 using Priamus.Trips.Registry.Domain.Customers;
 using Priamus.Trips.Registry.Domain.Customers.Events;
 using Priamus.Trips.Registry.Domain.Customers.ValueObjects;
+using Priamus.Trips.Registry.Domain.Drivers;
+using Priamus.Trips.Registry.Domain.Drivers.Events;
 using Priamus.Trips.Registry.Domain.Vehicles;
 using Priamus.Trips.Registry.Domain.Vehicles.Events;
 using Priamus.Trips.SharedKernel.Domain;
@@ -23,7 +25,7 @@ namespace Priamus.Trips.Registry.Persistence.Interceptors;
 /// <remarks>
 /// Registered as <b>scoped</b> in DI (because it depends on <see cref="ICurrentUser"/>, which is
 /// scoped) and added to the DbContext options in the DI registration extension. The event → entry
-/// mapping is a switch expression: the module has ten event types. Created and updated rows carry
+/// mapping is a switch expression: the module has fourteen event types. Created and updated rows carry
 /// the full state after the change, with the plate, VAT number and tax code as plain strings, dates as <c>yyyy-MM-dd</c> and enums by name; the
 /// payload is built explicitly instead of serializing the event, whose value objects would
 /// otherwise appear as nested objects. <c>OccurredAt</c> is taken from the domain event, not
@@ -92,7 +94,7 @@ public sealed class AuditInterceptor : ISaveChangesInterceptor
 
     /// <summary>
     /// Maps a domain event to an <see cref="AuditLogEntry"/>. The <c>subject_id</c> is always
-    /// the affected <c>VehicleId</c>, <c>CustomerId</c> or <c>ContractId</c>.
+    /// the affected <c>VehicleId</c>, <c>CustomerId</c>, <c>DriverId</c> or <c>ContractId</c>.
     /// </summary>
     internal static AuditLogEntry MapToAuditLogEntry(IDomainEvent domainEvent, Guid? actorId)
     {
@@ -129,6 +131,22 @@ public sealed class AuditInterceptor : ISaveChangesInterceptor
             CustomerReactivated e => Create(
                 e.EventId, e.OccurredAt, actorId, e.CustomerId.Value, AuditEventTypes.CustomerReactivated,
                 new { CustomerId = e.CustomerId.Value }),
+
+            DriverCreated e => Create(
+                e.EventId, e.OccurredAt, actorId, e.DriverId.Value, AuditEventTypes.DriverCreated,
+                DriverState(e.DriverId, e.FirstName, e.LastName, e.Phone, e.UserId, e.Status)),
+
+            DriverUpdated e => Create(
+                e.EventId, e.OccurredAt, actorId, e.DriverId.Value, AuditEventTypes.DriverUpdated,
+                DriverState(e.DriverId, e.FirstName, e.LastName, e.Phone, e.UserId, e.Status)),
+
+            DriverDeactivated e => Create(
+                e.EventId, e.OccurredAt, actorId, e.DriverId.Value, AuditEventTypes.DriverDeactivated,
+                new { DriverId = e.DriverId.Value }),
+
+            DriverReactivated e => Create(
+                e.EventId, e.OccurredAt, actorId, e.DriverId.Value, AuditEventTypes.DriverReactivated,
+                new { DriverId = e.DriverId.Value }),
 
             ContractCreated e => Create(
                 e.EventId, e.OccurredAt, actorId, e.ContractId.Value, AuditEventTypes.ContractCreated,
@@ -175,6 +193,23 @@ public sealed class AuditInterceptor : ISaveChangesInterceptor
             VatNumber = vatNumber?.Value,
             TaxCode = taxCode?.Value,
             Address = address,
+            Status = status,
+        };
+
+    private static object DriverState(
+        DriverId driverId,
+        string firstName,
+        string lastName,
+        string? phone,
+        UserId? userId,
+        DriverStatus status) =>
+        new
+        {
+            DriverId = driverId.Value,
+            FirstName = firstName,
+            LastName = lastName,
+            Phone = phone,
+            UserId = userId?.Value,
             Status = status,
         };
 

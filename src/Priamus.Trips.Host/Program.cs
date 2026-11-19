@@ -1,9 +1,7 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using Microsoft.OpenApi;
-using Priamus.Trips.Host.Infrastructure.Stubs;
 using Priamus.Trips.Identity.DependencyInjection;
-using Priamus.Trips.Registry.Contracts;
 using Priamus.Trips.Registry.DependencyInjection;
 using Priamus.Trips.SharedKernel.Http;
 using Serilog;
@@ -49,10 +47,6 @@ builder.Services.AddProblemDetails();
 // Microsoft.Extensions.Validation source generator only sees [ValidatableType]
 // declarations in the assembly that hosts the AddValidation() call site,
 // so each module owns its own call to keep its DTOs discoverable.
-
-// ── Temporary stubs (replaced when respective modules land) ──────────────────
-// TODO: replace when Registry module lands (ADR 0008)
-builder.Services.AddSingleton<IDriverLookup, NullDriverLookup>();
 
 // ── Identity module ───────────────────────────────────────────────────────────
 builder.Services.AddIdentityModule(builder.Configuration);

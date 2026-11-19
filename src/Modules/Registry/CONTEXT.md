@@ -118,6 +118,20 @@ _Avoid_: price list, tariff, rate validity
 The documents a contract asks for: on every trip a delivery note (DDT), a delivery slip (bolla) or a waste form (FIR), and at the end of the driver's day a daily summary. Any of them, or none.
 _Avoid_: attachments (an attachment is the file a driver uploads)
 
+### Drivers
+
+**Driver** (Autista):
+A person who drives the company's vehicles and records trips, known to people by first and last name. A record of the registry, distinct from the user account it signs in with; a driver may have no account.
+_Avoid_: employee, operator, user (that is the account)
+
+**Driver account** (Account dell'autista):
+The user account, with the role Autista, linked to a driver: the one through which that driver signs in. A driver has at most one, and an account belongs to at most one driver.
+_Avoid_: driver user, login (alone)
+
+**Driver status** (Stato):
+Whether a driver can work in the system: `Active` (Attivo) or `Deactivated` (Disattivato). A deactivated driver stays in the registry for the trips that name them.
+_Avoid_: dismissed, fired, disabled (that is an account's)
+
 ## Relationships
 
 - A trip records its own vehicle composition when it is registered (Operations); changing a vehicle's type or its requires-trailer property later does not change it.

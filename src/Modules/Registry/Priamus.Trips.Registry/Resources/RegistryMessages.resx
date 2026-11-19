@@ -67,6 +67,9 @@
   <data name="Validation.TaxCode" xml:space="preserve">
     <value>Il codice fiscale deve avere 16 tra lettere e cifre oppure 11 cifre; gli spazi sono ignorati.</value>
   </data>
+  <data name="Validation.Phone" xml:space="preserve">
+    <value>Il telefono può avere al massimo 20 caratteri: cifre e spazi, con un + iniziale facoltativo.</value>
+  </data>
   <data name="Registry.Customer.CompanyNameInvalid" xml:space="preserve">
     <value>La ragione sociale è obbligatoria e può avere al massimo 150 caratteri.</value>
   </data>
@@ -93,6 +96,30 @@
   </data>
   <data name="Registry.Customer.ConcurrentUpdate" xml:space="preserve">
     <value>Il cliente è stato modificato da un altro utente nel frattempo. Controlla i dati aggiornati e riprova.</value>
+  </data>
+  <data name="Registry.Driver.FirstNameInvalid" xml:space="preserve">
+    <value>Il nome è obbligatorio e può avere al massimo 60 caratteri.</value>
+  </data>
+  <data name="Registry.Driver.LastNameInvalid" xml:space="preserve">
+    <value>Il cognome è obbligatorio e può avere al massimo 60 caratteri.</value>
+  </data>
+  <data name="Registry.Driver.PhoneInvalid" xml:space="preserve">
+    <value>Il telefono può avere al massimo 20 caratteri: cifre e spazi, con un + iniziale facoltativo.</value>
+  </data>
+  <data name="Registry.Driver.NotFound" xml:space="preserve">
+    <value>Autista non trovato.</value>
+  </data>
+  <data name="Registry.Driver.AccountTaken" xml:space="preserve">
+    <value>L'account {0} è già collegato all'autista {1}.</value>
+  </data>
+  <data name="Registry.Driver.AccountTakenByDeactivated" xml:space="preserve">
+    <value>L'account {0} è già collegato all'autista {1} (disattivato).</value>
+  </data>
+  <data name="Registry.Driver.AccountUnavailable" xml:space="preserve">
+    <value>L'account scelto non è un account autista abilitato: scegline un altro.</value>
+  </data>
+  <data name="Registry.Driver.ConcurrentUpdate" xml:space="preserve">
+    <value>L'autista è stato modificato da un altro utente. Ricarica la lista e riprova.</value>
   </data>
   <data name="Registry.Contract.ValidityEndBeforeStart" xml:space="preserve">
     <value>La data di fine validità non può essere precedente alla data di inizio.</value>

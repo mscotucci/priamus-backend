@@ -68,6 +68,7 @@ public static class IdentityModuleExtensions
             .AddOptions<BootstrapAdminOptions>()
             .BindConfiguration("Identity:BootstrapAdmin");
         services.AddScoped<AdminBootstrapService>();
+        services.AddScoped<IUserLookup, UserLookup>();
 
         // ── Infrastructure ───────────────────────────────────────────────────────
         services.AddSingleton<IJwtTokenIssuer, JwtTokenIssuer>();

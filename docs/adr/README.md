@@ -18,3 +18,4 @@ ADRs 0001–0011 predate the short format and keep their original long form (sta
 | [0010](0010-refresh-claim-enrichment-requery.md) | Refresh-token claim enrichment via re-query at refresh | Accepted |
 | [0011](0011-handler-is-commit-point.md) | Unit of work: the handler is the commit point | Accepted |
 | [0012](0012-slices-before-shared-persistence.md) | Slices come before shared persistence | Accepted |
+| [0013](0013-registry-reads-identity-users.md) | Registry reads Identity users through a lookup in Identity.Contracts | Accepted |

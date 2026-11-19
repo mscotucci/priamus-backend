@@ -6,6 +6,7 @@ using Microsoft.Extensions.Options;
 using Priamus.Trips.Registry.Application.Services;
 using Priamus.Trips.Registry.Domain.Contracts;
 using Priamus.Trips.Registry.Domain.Customers;
+using Priamus.Trips.Registry.Domain.Drivers;
 using Priamus.Trips.Registry.Domain.Vehicles;
 using Priamus.Trips.Registry.IntegrationTests.Infrastructure;
 using Priamus.Trips.Registry.Resources;
@@ -141,6 +142,60 @@ public sealed class RegistryMessagesTests : RegistryIntegrationTestBase
         {
             var detail = await DetailAsync(error, "01455280683", "Comune di Penne");
             detail.ShouldNotBe(error.Description, error.Code);
+        }
+    }
+
+    [Fact]
+    public async Task AccountTaken_AnswersInItalianWithAccountAndHolder()
+    {
+        var detail = await DetailAsync(DriverErrors.AccountTaken, "luca.difebo", "Luca Di Febo");
+
+        detail.ShouldBe("L'account luca.difebo è già collegato all'autista Luca Di Febo.");
+    }
+
+    [Fact]
+    public async Task AccountTakenByDeactivated_AnswersInItalianWithAccountAndHolder()
+    {
+        var detail = await DetailAsync(DriverErrors.AccountTakenByDeactivated, "luca.difebo", "Luca Di Febo");
+
+        detail.ShouldBe("L'account luca.difebo è già collegato all'autista Luca Di Febo (disattivato).");
+    }
+
+    [Fact]
+    public async Task AccountUnavailable_AnswersInItalian()
+    {
+        var detail = await DetailAsync(DriverErrors.AccountUnavailable);
+
+        detail.ShouldBe("L'account scelto non è un account autista abilitato: scegline un altro.");
+    }
+
+    [Fact]
+    public async Task DriverConcurrentUpdate_AnswersInItalian()
+    {
+        var detail = await DetailAsync(DriverErrors.ConcurrentUpdate);
+
+        detail.ShouldBe("L'autista è stato modificato da un altro utente. Ricarica la lista e riprova.");
+    }
+
+    [Fact]
+    public async Task EveryDriverError_HasAnItalianText()
+    {
+        var expected = new (Error Error, string Text)[]
+        {
+            (DriverErrors.FirstNameInvalid, "Il nome è obbligatorio e può avere al massimo 60 caratteri."),
+            (DriverErrors.LastNameInvalid, "Il cognome è obbligatorio e può avere al massimo 60 caratteri."),
+            (DriverErrors.PhoneInvalid, "Il telefono può avere al massimo 20 caratteri: cifre e spazi, con un + iniziale facoltativo."),
+            (DriverErrors.NotFound, "Autista non trovato."),
+            (DriverErrors.AccountTaken, "L'account luca.difebo è già collegato all'autista Luca Di Febo."),
+            (DriverErrors.AccountTakenByDeactivated, "L'account luca.difebo è già collegato all'autista Luca Di Febo (disattivato)."),
+            (DriverErrors.AccountUnavailable, "L'account scelto non è un account autista abilitato: scegline un altro."),
+            (DriverErrors.ConcurrentUpdate, "L'autista è stato modificato da un altro utente. Ricarica la lista e riprova."),
+        };
+
+        foreach (var (error, text) in expected)
+        {
+            var detail = await DetailAsync(error, "luca.difebo", "Luca Di Febo");
+            detail.ShouldBe(text, error.Code);
         }
     }
 

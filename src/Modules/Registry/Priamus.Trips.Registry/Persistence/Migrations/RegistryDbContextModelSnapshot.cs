@@ -188,6 +188,70 @@ namespace Priamus.Trips.Registry.Persistence.Migrations
                         });
                 });
 
+            modelBuilder.Entity("Priamus.Trips.Registry.Domain.Drivers.Driver", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamptz")
+                        .HasColumnName("created_at");
+
+                    b.Property<Guid>("CreatedBy")
+                        .HasColumnType("uuid")
+                        .HasColumnName("created_by");
+
+                    b.Property<string>("FirstName")
+                        .IsRequired()
+                        .HasColumnType("varchar(60)")
+                        .HasColumnName("first_name");
+
+                    b.Property<DateTime>("LastModifiedAt")
+                        .HasColumnType("timestamptz")
+                        .HasColumnName("last_modified_at");
+
+                    b.Property<Guid>("LastModifiedBy")
+                        .HasColumnType("uuid")
+                        .HasColumnName("last_modified_by");
+
+                    b.Property<string>("LastName")
+                        .IsRequired()
+                        .HasColumnType("varchar(60)")
+                        .HasColumnName("last_name");
+
+                    b.Property<string>("Phone")
+                        .HasColumnType("varchar(20)")
+                        .HasColumnName("phone");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("status");
+
+                    b.Property<Guid?>("UserId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("user_id");
+
+                    b.Property<int>("Version")
+                        .IsConcurrencyToken()
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer")
+                        .HasDefaultValue(0)
+                        .HasColumnName("version");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("UserId")
+                        .IsUnique()
+                        .HasDatabaseName("uq_drivers_user_id");
+
+                    b.ToTable("drivers", "registry", t =>
+                        {
+                            t.HasCheckConstraint("chk_drivers_status", "status IN ('Active', 'Deactivated')");
+                        });
+                });
+
             modelBuilder.Entity("Priamus.Trips.Registry.Domain.Vehicles.Vehicle", b =>
                 {
                     b.Property<Guid>("Id")

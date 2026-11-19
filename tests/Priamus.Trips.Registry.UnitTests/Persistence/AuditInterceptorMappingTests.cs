@@ -1,6 +1,7 @@
 using System.Text.Json;
 using Priamus.Trips.Registry.Domain.Customers;
 using Priamus.Trips.Registry.Domain.Customers.ValueObjects;
+using Priamus.Trips.Registry.Domain.Drivers;
 using Priamus.Trips.Registry.Domain.Vehicles;
 using Priamus.Trips.Registry.Domain.Vehicles.ValueObjects;
 using Priamus.Trips.Registry.Persistence;
@@ -198,6 +199,106 @@ public sealed class AuditInterceptorMappingTests
             entry.SubjectId.ShouldBe(customer.Id.Value);
             using var payload = JsonDocument.Parse(entry.Payload);
             payload.RootElement.GetProperty("customerId").GetGuid().ShouldBe(customer.Id.Value);
+        }
+    }
+
+    private static readonly UserId DriverAccount = new(new Guid("b0000000-0000-0000-0000-000000000001"));
+
+    private static Driver NewDriver() =>
+        Driver.Create(
+            DriverId.New(),
+            "  Luca ",
+            " Di Febo ",
+            " 333 418 2291 ",
+            DriverAccount,
+            new FakeClock(new DateTime(2026, 11, 19, 9, 0, 0, DateTimeKind.Utc)),
+            Actor);
+
+    private static AuditLogEntry MapSingleEvent(Driver driver) =>
+        AuditInterceptor.MapToAuditLogEntry(driver.DomainEvents.Single(), ActorGuid);
+
+    [Fact]
+    public void DriverCreated_WritesFullStateWithPlainAccountIdAndEnumsByName()
+    {
+        var driver = NewDriver();
+
+        var entry = MapSingleEvent(driver);
+
+        entry.EventType.ShouldBe(AuditEventTypes.DriverCreated);
+        entry.EventType.ShouldBe("registry.driver.created");
+        entry.SubjectId.ShouldBe(driver.Id.Value);
+        entry.ActorId.ShouldBe(ActorGuid);
+        entry.OccurredAt.ShouldBe(driver.CreatedAt);
+        using var payload = JsonDocument.Parse(entry.Payload);
+        var root = payload.RootElement;
+        root.GetProperty("driverId").GetGuid().ShouldBe(driver.Id.Value);
+        root.GetProperty("firstName").GetString().ShouldBe("Luca");
+        root.GetProperty("lastName").GetString().ShouldBe("Di Febo");
+        root.GetProperty("phone").GetString().ShouldBe("333 418 2291");
+        root.GetProperty("userId").ValueKind.ShouldBe(JsonValueKind.String);
+        root.GetProperty("userId").GetGuid().ShouldBe(DriverAccount.Value);
+        root.GetProperty("status").GetString().ShouldBe("Active");
+    }
+
+    [Fact]
+    public void DriverCreated_WithoutPhoneAndAccount_OmitsThem()
+    {
+        var driver = Driver.Create(
+            DriverId.New(), "Luca", "Di Febo", null, null,
+            new FakeClock(new DateTime(2026, 11, 19, 9, 0, 0, DateTimeKind.Utc)), Actor);
+
+        var entry = MapSingleEvent(driver);
+
+        using var payload = JsonDocument.Parse(entry.Payload);
+        var root = payload.RootElement;
+        root.TryGetProperty("phone", out _).ShouldBeFalse();
+        root.TryGetProperty("userId", out _).ShouldBeFalse();
+    }
+
+    [Fact]
+    public void DriverUpdated_WritesFullStateAfterTheChange()
+    {
+        var driver = NewDriver();
+        driver.ClearDomainEvents();
+        driver.Update(
+            "Marco", "Rossi", null, null,
+            new FakeClock(new DateTime(2026, 11, 20, 9, 0, 0, DateTimeKind.Utc)), Actor);
+
+        var entry = MapSingleEvent(driver);
+
+        entry.EventType.ShouldBe("registry.driver.updated");
+        entry.SubjectId.ShouldBe(driver.Id.Value);
+        entry.OccurredAt.ShouldBe(driver.LastModifiedAt);
+        using var payload = JsonDocument.Parse(entry.Payload);
+        var root = payload.RootElement;
+        root.GetProperty("driverId").GetGuid().ShouldBe(driver.Id.Value);
+        root.GetProperty("firstName").GetString().ShouldBe("Marco");
+        root.GetProperty("lastName").GetString().ShouldBe("Rossi");
+        root.TryGetProperty("phone", out _).ShouldBeFalse();
+        root.TryGetProperty("userId", out _).ShouldBeFalse();
+        root.GetProperty("status").GetString().ShouldBe("Active");
+    }
+
+    [Fact]
+    public void DriverDeactivatedAndReactivated_WriteTheDriverIdUnderTheirOwnEventType()
+    {
+        var driver = NewDriver();
+        var clock = new FakeClock(new DateTime(2026, 11, 20, 9, 0, 0, DateTimeKind.Utc));
+        driver.ClearDomainEvents();
+
+        driver.Deactivate(clock, Actor);
+        var deactivated = MapSingleEvent(driver);
+        driver.ClearDomainEvents();
+        driver.Reactivate(clock, Actor);
+        var reactivated = MapSingleEvent(driver);
+
+        deactivated.EventType.ShouldBe("registry.driver.deactivated");
+        reactivated.EventType.ShouldBe("registry.driver.reactivated");
+        foreach (var entry in new[] { deactivated, reactivated })
+        {
+            entry.SubjectId.ShouldBe(driver.Id.Value);
+            using var payload = JsonDocument.Parse(entry.Payload);
+            payload.RootElement.GetProperty("driverId").GetGuid().ShouldBe(driver.Id.Value);
         }
     }
 

@@ -12,7 +12,8 @@ Bounded contexts of the Priamus Trips backend, one per module. Each context owns
 ## Relationships
 
 - **Identity → all**: provides the current user (`ICurrentUser`) and the nominal authorization policies.
-- **Registry → Identity**: resolves the driver linked to a user (`IDriverLookup` in `Priamus.Trips.Registry.Contracts`, ADR 0008); the host registers a null implementation until Registry lands.
+- **Registry → Identity**: resolves the driver linked to a user (`IDriverLookup` in `Priamus.Trips.Registry.Contracts`, ADR 0008); the implementation lives in Registry.
+- **Identity → Registry**: Registry reads user accounts (user name, role, status, the `Driver` accounts) through `IUserLookup` in `Priamus.Trips.Identity.Contracts`, to link a driver to its account (ADR 0013).
 - **Registry → Operations**: exposes the data a trip registration needs (customer, contract, vehicles, rates) and the pricing engine (`IPricingEngine`, ADR 0003).
 - **Operations → BackOffice**: trips and daily summaries are the source of reports and exports.
 - **Data boundary**: drivers never see pricing, rates or totals; only back-office endpoints expose them.
