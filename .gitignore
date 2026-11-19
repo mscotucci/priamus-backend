@@ -484,5 +484,5 @@ $RECYCLE.BIN/
 /docs/plans
 /.plans
 
-# Claude Code per-machine local settings
-.claude/settings.local.json
+# Claude Code local files
+.claude/
