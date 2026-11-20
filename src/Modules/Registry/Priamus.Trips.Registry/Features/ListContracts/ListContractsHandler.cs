@@ -44,7 +44,8 @@ internal sealed class ListContractsHandler
             .ToListAsync(cancellationToken);
 
         var today = _clock.TodayInItaly();
-        IReadOnlyList<ContractDto> items = [.. contracts.Select(c => ContractDto.From(c, today))];
+        var vehicleRates = await ContractVehicleRateDto.LoadAsync(_db, contracts, cancellationToken);
+        IReadOnlyList<ContractDto> items = [.. contracts.Select(c => ContractDto.From(c, today, vehicleRates[c.Id]))];
 
         _logger.LogInformation("Listed {Count} contracts of customer {CustomerId}", items.Count, customerId);
 

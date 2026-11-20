@@ -5,6 +5,7 @@ using Priamus.Trips.Registry.Domain.Contracts;
 using Priamus.Trips.Registry.Domain.Contracts.ValueObjects;
 using Priamus.Trips.Registry.Domain.Customers;
 using Priamus.Trips.Registry.Features.ListContracts;
+using Priamus.Trips.Registry.Features.Validation;
 using Priamus.Trips.Registry.Persistence;
 using Priamus.Trips.SharedKernel.Results;
 using Priamus.Trips.SharedKernel.Security;
@@ -118,6 +119,18 @@ internal sealed class ChangeContractFromDateHandler
             return rate.Error;
         }
 
+        var vehicleRates = ContractVehicleRateRequest.ToVehicleRates(request.VehicleRates);
+        if (vehicleRates.IsFailure)
+        {
+            return vehicleRates.Error;
+        }
+
+        if (await ContractVehicleRateChecks.FindAsync(
+            _db, vehicleRates.Value, source.VehicleRates, _arguments, cancellationToken) is { } vehicleError)
+        {
+            return vehicleError;
+        }
+
         var actorId = _currentUser.UserId;
 
         var kept = source.Update(
@@ -127,6 +140,7 @@ internal sealed class ChangeContractFromDateHandler
             source.RequiredDocuments,
             source.NightSurcharge,
             source.Rate,
+            source.VehicleRates,
             _clock,
             actorId);
         if (kept.IsFailure)
@@ -143,6 +157,7 @@ internal sealed class ChangeContractFromDateHandler
             request.RequiredDocuments!,
             request.NightSurcharge!.Value,
             rate.Value,
+            vehicleRates.Value,
             _clock,
             actorId);
         if (created.IsFailure)
@@ -171,6 +186,7 @@ internal sealed class ChangeContractFromDateHandler
             "Contract {ContractId} of customer {CustomerId} changed from {ChangeFrom} by actor {ActorId}: new contract {NewContractId}",
             contractId, customerId, changeFrom, actorId.Value, contract.Id.Value);
 
-        return ContractDto.From(contract, _clock.TodayInItaly());
+        var vehicleRateDtos = await ContractVehicleRateDto.LoadAsync(_db, [contract], cancellationToken);
+        return ContractDto.From(contract, _clock.TodayInItaly(), vehicleRateDtos[contract.Id]);
     }
 }

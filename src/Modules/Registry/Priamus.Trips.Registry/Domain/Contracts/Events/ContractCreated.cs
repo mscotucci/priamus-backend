@@ -19,6 +19,7 @@ namespace Priamus.Trips.Registry.Domain.Contracts.Events;
 /// <param name="RequiredDocuments">Required documents in canonical order.</param>
 /// <param name="NightSurcharge">Whether night trips cost more.</param>
 /// <param name="Rate">The rate; <c>null</c> when the contract has none.</param>
+/// <param name="VehicleRates">The vehicle rates; empty when the contract has none.</param>
 public sealed record ContractCreated(
     Guid EventId,
     DateTime OccurredAt,
@@ -30,4 +31,5 @@ public sealed record ContractCreated(
     PricingMode PricingMode,
     IReadOnlyList<RequiredDocument> RequiredDocuments,
     bool NightSurcharge,
-    Rate? Rate) : IDomainEvent;
+    Rate? Rate,
+    IReadOnlyList<VehicleRate> VehicleRates) : IDomainEvent;

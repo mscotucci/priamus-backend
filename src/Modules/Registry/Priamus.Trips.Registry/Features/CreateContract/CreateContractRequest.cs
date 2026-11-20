@@ -9,10 +9,10 @@ namespace Priamus.Trips.Registry.Features.CreateContract;
 
 /// <summary>
 /// Request body for <c>POST /api/registry/customers/{customerId}/contracts</c> (PRD §5.4, RF-16).
-/// Every member but the end of the validity and the seven rate members is required; an empty set
+/// Every member but the end of the validity, the seven rate members and the vehicle rates is required; an empty set
 /// of documents is valid and duplicates collapse. The rate members are required for a flat-rate
 /// contract (the night ones with the night surcharge, the minimum ones as its rule asks) and must
-/// be absent for any other billing level.
+/// be absent for any other billing level, as must the vehicle rates, an absent list being an empty one.
 /// </summary>
 [ValidatableType]
 public sealed record CreateContractRequest(
@@ -33,12 +33,13 @@ public sealed record CreateContractRequest(
     MinimumRuleKind? MinimumRule,
     decimal? MinimumAmount,
     decimal? MinimumThreshold,
-    decimal? MinimumOveragePrice) : IValidatableObject
+    decimal? MinimumOveragePrice,
+    IReadOnlyList<ContractVehicleRateRequest>? VehicleRates) : IValidatableObject
 {
     /// <inheritdoc />
     public IEnumerable<ValidationResult> Validate(ValidationContext validationContext) =>
         ContractRequestValidation.Validate(
-            ValidFrom, ValidTo, BillingLevel, PricingMode, NightSurcharge, RateMembers());
+            ValidFrom, ValidTo, BillingLevel, PricingMode, NightSurcharge, RateMembers(), VehicleRates);
 
     /// <summary>The rate members, gathered for validation and for building the rate.</summary>
     internal ContractRateMembers RateMembers() =>

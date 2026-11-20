@@ -49,6 +49,9 @@
   <data name="Registry.Vehicle.RequiresTrailerNotAllowed" xml:space="preserve">
     <value>Solo una motrice può richiedere un rimorchio.</value>
   </data>
+  <data name="Registry.Vehicle.HasVehicleRates" xml:space="preserve">
+    <value>Il mezzo ha una tariffa propria nel contratto di {0}: toglila dal contratto prima di farlo diventare un rimorchio.</value>
+  </data>
   <data name="Registry.Vehicle.NotFound" xml:space="preserve">
     <value>Mezzo non trovato.</value>
   </data>
@@ -186,5 +189,20 @@
   </data>
   <data name="Registry.Contract.MinimumNotApplicableByTrip" xml:space="preserve">
     <value>Questo valore non si applica al contratto.</value>
+  </data>
+  <data name="Registry.Contract.VehicleRateNotApplicable" xml:space="preserve">
+    <value>Questo valore non si applica al contratto.</value>
+  </data>
+  <data name="Registry.Contract.VehicleRateDuplicate" xml:space="preserve">
+    <value>Il mezzo ha già una tariffa propria in questo contratto.</value>
+  </data>
+  <data name="Registry.Contract.VehicleRateUnknownVehicle" xml:space="preserve">
+    <value>Il mezzo {0} non esiste.</value>
+  </data>
+  <data name="Registry.Contract.VehicleRateOnTrailer" xml:space="preserve">
+    <value>Il mezzo {0} è un rimorchio: non può avere una tariffa propria.</value>
+  </data>
+  <data name="Registry.Contract.VehicleRateDecommissioned" xml:space="preserve">
+    <value>Il mezzo {0} è dismesso: non si può aggiungere una sua tariffa.</value>
   </data>
 </root>

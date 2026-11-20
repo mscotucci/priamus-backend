@@ -115,6 +115,34 @@ public static class ContractErrors
         "Registry.Contract.MinimumNotApplicableByTrip",
         "A contract priced by trip has no minimum rule.");
 
+    /// <summary>A contract of a billing level other than flat rate holds vehicle rates.</summary>
+    public static readonly Error VehicleRateNotApplicable = Error.Validation(
+        "Registry.Contract.VehicleRateNotApplicable",
+        "Only a flat-rate contract has vehicle rates.");
+
+    /// <summary>A vehicle has more than one vehicle rate in the contract.</summary>
+    public static readonly Error VehicleRateDuplicate = Error.Validation(
+        "Registry.Contract.VehicleRateDuplicate",
+        "A vehicle can have only one vehicle rate in a contract.");
+
+    /// <summary>A vehicle rate is for a vehicle that does not exist; the vehicle id is the message argument.</summary>
+    public static readonly Error VehicleRateUnknownVehicle = Error.Validation(
+        "Registry.Contract.VehicleRateUnknownVehicle",
+        "The vehicle of a vehicle rate does not exist.");
+
+    /// <summary>A vehicle rate is for a trailer; the plate is the message argument.</summary>
+    public static readonly Error VehicleRateOnTrailer = Error.Validation(
+        "Registry.Contract.VehicleRateOnTrailer",
+        "A trailer cannot have a vehicle rate.");
+
+    /// <summary>
+    /// A vehicle rate is for a decommissioned vehicle the contract did not already have; the plate is
+    /// the message argument.
+    /// </summary>
+    public static readonly Error VehicleRateDecommissioned = Error.Validation(
+        "Registry.Contract.VehicleRateDecommissioned",
+        "A vehicle rate cannot be added for a decommissioned vehicle.");
+
     /// <summary>
     /// The contract belongs to a deactivated customer, so its terms cannot be changed.
     /// </summary>

@@ -2,6 +2,15 @@
 
 Work deferred on purpose, with the decision that deferred it. Items leave this file when a slice picks them up or a decision drops them. Plan folders under `.plans/` are not committed, so anything a future slice must know lives here.
 
+## Trips — to analyse when the first trip slice is grilled (recorded 2026-11-19)
+
+- **Changes to master data after a trip used them.** Since the vehicle rates slice, a vehicle that has a vehicle rate in any contract cannot become a trailer: the rate must be removed from the contract first. With trips, decide how registered trips react to such changes (a vehicle's type, a vehicle rate removed or changed, a contract's terms): the trip's snapshot of the rate may be enough, but it must be analysed, not assumed (decided by Michele at the grilling of the vehicle rates).
+
+## Registry — vehicle rates (recorded 2026-11-20)
+
+- **The rule "a vehicle rate only on a tractor or a standalone vehicle" has an unguarded window.** It is enforced by two check-then-save handlers on different aggregates: the contract writes refuse a trailer (`ContractVehicleRateChecks`), the vehicle update refuses turning into a trailer a vehicle with a vehicle rate (`UpdateVehicleHandler`, `Registry.Vehicle.HasVehicleRates`). A contract save and a type change on the same vehicle at the same moment can both pass and leave a vehicle rate on a trailer. Accepted by Michele on 2026-11-20: in a small back office the case is practically impossible, and the pricing engine would never use such a rate (a trailer never leads a trip). Closing it would need a lock on the vehicle during contract writes or a database trigger.
+- **Idea: vehicle rates for hired vehicles.** A vehicle taken on hire could carry a rate of its own in a contract, through the same vehicle rates. Not analysed: whether hired vehicles live in the vehicle registry, and with what type and status, is open (idea from Michele on 2026-11-20, during the QA of the vehicle rates).
+
 ## Identity — code written before the current rules (recorded 2026-11-15)
 
 The Identity module was built in May 2026, before the rules in `docs/context.md` and the appendices took their current form. It was brought in line on 2026-11-15 (original error preserved by `DomainException`, internal handlers, nominal policies, error codes and routes prefixed by the module, enums by name, camelCase query names in OpenAPI, Italian messages, cross-slice sweeps). What is left:

@@ -33,6 +33,7 @@ public sealed record ChangeContractFromDateRequest(
     decimal? MinimumAmount,
     decimal? MinimumThreshold,
     decimal? MinimumOveragePrice,
+    IReadOnlyList<ContractVehicleRateRequest>? VehicleRates,
     [Required(ErrorMessageResourceType = typeof(RegistryMessages), ErrorMessageResourceName = nameof(RegistryMessages.Validation_Required))]
     int? Version,
     [Required(ErrorMessageResourceType = typeof(RegistryMessages), ErrorMessageResourceName = nameof(RegistryMessages.Validation_Required))]
@@ -42,7 +43,7 @@ public sealed record ChangeContractFromDateRequest(
     public IEnumerable<ValidationResult> Validate(ValidationContext validationContext)
     {
         foreach (var result in ContractRequestValidation.Validate(
-            ValidFrom, ValidTo, BillingLevel, PricingMode, NightSurcharge, RateMembers()))
+            ValidFrom, ValidTo, BillingLevel, PricingMode, NightSurcharge, RateMembers(), VehicleRates))
         {
             yield return result;
         }

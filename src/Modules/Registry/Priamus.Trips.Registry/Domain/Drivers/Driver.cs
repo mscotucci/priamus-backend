@@ -138,7 +138,8 @@ public sealed partial class Driver : AggregateRoot
     }
 
     /// <summary>
-    /// Replaces the editable data of the driver. Always counts as a change.
+    /// Replaces the editable data of the driver. A no-op when nothing changes: no event, no version
+    /// bump, so no audit row.
     /// </summary>
     /// <param name="firstName">First name; trimmed here.</param>
     /// <param name="lastName">Last name; trimmed here.</param>
@@ -163,6 +164,12 @@ public sealed partial class Driver : AggregateRoot
         var trimmedFirstName = ValidateName(firstName, FirstNameMaxLength, DriverErrors.FirstNameInvalid);
         var trimmedLastName = ValidateName(lastName, LastNameMaxLength, DriverErrors.LastNameInvalid);
         var trimmedPhone = ValidatePhone(phone);
+
+        if (FirstName == trimmedFirstName && LastName == trimmedLastName && Phone == trimmedPhone
+            && UserId == userId)
+        {
+            return;
+        }
 
         FirstName = trimmedFirstName;
         LastName = trimmedLastName;

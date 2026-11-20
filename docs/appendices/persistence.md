@@ -354,6 +354,7 @@ Conventions:
 - `subject_id` is the identity of the entity the event is about. For events on a child aggregate, prefer the parent's id when there is a natural "owner" (e.g. for refresh-token events, `subject_id` is the `UserId`, not the `RefreshTokenId`).
 - `actor_id` is resolved from `ICurrentUser`. It is nullable: some events (e.g. failed login attempts) have no authenticated actor.
 - `payload` is the full event serialized as JSON via `System.Text.Json`. Never truncate — audit value depends on completeness.
+- An audit row records a change, not a request (decided 2026-11-20). A modification method that would leave the aggregate as it is — the same data, or the status it already has — is a no-op: no event, no version bump, so no row. The handler still sets the version it received as the token's original value, so a stale version is refused with 409 even when nothing would change.
 
 Implementation: an `ISaveChangesInterceptor` registered on the module's `DbContext`. In `SavingChangesAsync`, the interceptor iterates `ChangeTracker.Entries<AggregateRoot>()`, dequeues their domain events, transforms them into `AuditLogEntry` instances, and adds them to the ChangeTracker. The base flush writes everything in one transaction.
 

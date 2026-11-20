@@ -150,11 +150,11 @@ public sealed class AuditInterceptor : ISaveChangesInterceptor
 
             ContractCreated e => Create(
                 e.EventId, e.OccurredAt, actorId, e.ContractId.Value, AuditEventTypes.ContractCreated,
-                ContractState(e.ContractId, e.CustomerId, e.ValidFrom, e.ValidTo, e.BillingLevel, e.PricingMode, e.RequiredDocuments, e.NightSurcharge, e.Rate)),
+                ContractState(e.ContractId, e.CustomerId, e.ValidFrom, e.ValidTo, e.BillingLevel, e.PricingMode, e.RequiredDocuments, e.NightSurcharge, e.Rate, e.VehicleRates)),
 
             ContractUpdated e => Create(
                 e.EventId, e.OccurredAt, actorId, e.ContractId.Value, AuditEventTypes.ContractUpdated,
-                ContractState(e.ContractId, e.CustomerId, e.ValidFrom, e.ValidTo, e.BillingLevel, e.PricingMode, e.RequiredDocuments, e.NightSurcharge, e.Rate)),
+                ContractState(e.ContractId, e.CustomerId, e.ValidFrom, e.ValidTo, e.BillingLevel, e.PricingMode, e.RequiredDocuments, e.NightSurcharge, e.Rate, e.VehicleRates)),
 
             _ => throw new UnreachableException(
                 $"Unknown domain event type '{domainEvent.GetType().FullName}' reached the AuditInterceptor. " +
@@ -222,7 +222,8 @@ public sealed class AuditInterceptor : ISaveChangesInterceptor
         PricingMode pricingMode,
         IReadOnlyList<RequiredDocument> requiredDocuments,
         bool nightSurcharge,
-        Rate? rate) =>
+        Rate? rate,
+        IReadOnlyList<VehicleRate> vehicleRates) =>
         new
         {
             ContractId = contractId.Value,
@@ -240,6 +241,19 @@ public sealed class AuditInterceptor : ISaveChangesInterceptor
             MinimumAmount = rate?.Minimum.Amount,
             MinimumThreshold = rate?.Minimum.Threshold,
             MinimumOveragePrice = rate?.Minimum.OveragePrice,
+            VehicleRates = vehicleRates.Count == 0
+                ? null
+                : vehicleRates.Select(v => new
+                {
+                    VehicleId = v.VehicleId.Value,
+                    DayPrice = v.Rate.DayPrice,
+                    NightPrice = v.Rate.NightPrice,
+                    NightCallFee = v.Rate.NightCallFee,
+                    MinimumRule = v.Rate.Minimum.Kind,
+                    MinimumAmount = v.Rate.Minimum.Amount,
+                    MinimumThreshold = v.Rate.Minimum.Threshold,
+                    MinimumOveragePrice = v.Rate.Minimum.OveragePrice,
+                }).ToArray(),
         };
 
     private static AuditLogEntry Create<TPayload>(

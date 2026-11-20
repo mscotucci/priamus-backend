@@ -114,6 +114,10 @@ _Avoid_: payment method (it is not how the customer pays), rate type
 The prices a contract charges a trip, in the unit of its pricing mode: a day price and, when the contract has the night surcharge, a night price and a night call fee, with its minimum rule. A flat-rate contract has one rate; the other billing levels have one per location or pair of locations. A rate applies for the whole validity of its contract and has no validity of its own: prices that change from a date make a new contract from that date.
 _Avoid_: price list, tariff, rate validity
 
+**Vehicle rate** (Tariffa del mezzo):
+A complete rate of its own that a contract gives one vehicle (a tractor or a standalone vehicle): day price, night price and night call fee when the contract has the night surcharge, and its own minimum rule. A trip led by that vehicle is priced with it instead of the contract's rate. Like the contract's rate, it lives as long as its contract and has no validity of its own.
+_Avoid_: override (the PRD's word, not used by the business), special rate
+
 **Required documents** (Documenti obbligatori):
 The documents a contract asks for: on every trip a delivery note (DDT), a delivery slip (bolla) or a waste form (FIR), and at the end of the driver's day a daily summary. Any of them, or none.
 _Avoid_: attachments (an attachment is the file a driver uploads)

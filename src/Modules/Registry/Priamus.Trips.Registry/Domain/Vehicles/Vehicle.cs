@@ -111,7 +111,8 @@ public sealed class Vehicle : AggregateRoot
     }
 
     /// <summary>
-    /// Replaces the editable data of the vehicle. Always counts as a change.
+    /// Replaces the editable data of the vehicle. A no-op when nothing changes: no event, no version
+    /// bump, so no audit row.
     /// </summary>
     /// <param name="licensePlate">License plate in normal form.</param>
     /// <param name="description">Description; trimmed here.</param>
@@ -136,6 +137,12 @@ public sealed class Vehicle : AggregateRoot
 
         var trimmed = ValidateDescription(description);
         EnsureRequiresTrailerAllowed(type, requiresTrailer);
+
+        if (LicensePlate == licensePlate && Description == trimmed && Type == type
+            && RequiresTrailer == requiresTrailer)
+        {
+            return;
+        }
 
         LicensePlate = licensePlate;
         Description = trimmed;

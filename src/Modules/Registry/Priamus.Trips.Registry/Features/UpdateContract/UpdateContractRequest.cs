@@ -33,13 +33,14 @@ public sealed record UpdateContractRequest(
     decimal? MinimumAmount,
     decimal? MinimumThreshold,
     decimal? MinimumOveragePrice,
+    IReadOnlyList<ContractVehicleRateRequest>? VehicleRates,
     [Required(ErrorMessageResourceType = typeof(RegistryMessages), ErrorMessageResourceName = nameof(RegistryMessages.Validation_Required))]
     int? Version) : IValidatableObject
 {
     /// <inheritdoc />
     public IEnumerable<ValidationResult> Validate(ValidationContext validationContext) =>
         ContractRequestValidation.Validate(
-            ValidFrom, ValidTo, BillingLevel, PricingMode, NightSurcharge, RateMembers());
+            ValidFrom, ValidTo, BillingLevel, PricingMode, NightSurcharge, RateMembers(), VehicleRates);
 
     /// <summary>The rate members, gathered for validation and for building the rate.</summary>
     internal ContractRateMembers RateMembers() =>

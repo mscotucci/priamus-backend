@@ -164,6 +164,25 @@ public sealed class CustomerTests
     }
 
     [Fact]
+    public void Update_WithTheSameData_ChangesNothing()
+    {
+        var clock = NewClock();
+        var customer = NewCustomer(clock);
+        customer.ClearDomainEvents();
+        var modifiedAt = customer.LastModifiedAt;
+        clock.Advance(TimeSpan.FromMinutes(5));
+
+        customer.Update(
+            " Comune di Penne ", VatNumber.Create("01455280683"), TaxCode.Create("01455280683"),
+            "Corso Alessandrini 1, Penne  ", clock, OtherActor);
+
+        customer.Version.ShouldBe(0);
+        customer.LastModifiedAt.ShouldBe(modifiedAt);
+        customer.LastModifiedBy.ShouldBe(Actor);
+        customer.DomainEvents.ShouldBeEmpty();
+    }
+
+    [Fact]
     public void Update_OnADeactivatedCustomer_KeepsItDeactivated()
     {
         var clock = NewClock();

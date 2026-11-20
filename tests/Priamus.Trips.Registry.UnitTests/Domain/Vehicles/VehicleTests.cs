@@ -141,6 +141,23 @@ public sealed class VehicleTests
     }
 
     [Fact]
+    public void Update_WithTheSameData_ChangesNothing()
+    {
+        var clock = NewClock();
+        var vehicle = NewVehicle(clock, requiresTrailer: true);
+        vehicle.ClearDomainEvents();
+        var modifiedAt = vehicle.LastModifiedAt;
+        clock.Advance(TimeSpan.FromMinutes(5));
+
+        vehicle.Update(LicensePlate.Create("ab 456-cd"), "  Iveco Stralis 480 ", VehicleType.Tractor, true, clock, OtherActor);
+
+        vehicle.Version.ShouldBe(0);
+        vehicle.LastModifiedAt.ShouldBe(modifiedAt);
+        vehicle.LastModifiedBy.ShouldBe(Actor);
+        vehicle.DomainEvents.ShouldBeEmpty();
+    }
+
+    [Fact]
     public void Update_OnADecommissionedVehicle_KeepsItDecommissioned()
     {
         var clock = NewClock();

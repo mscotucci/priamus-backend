@@ -215,6 +215,23 @@ public sealed class DriverTests
     }
 
     [Fact]
+    public void Update_WithTheSameData_ChangesNothing()
+    {
+        var clock = NewClock();
+        var driver = NewDriver(clock, userId: Account);
+        driver.ClearDomainEvents();
+        var modifiedAt = driver.LastModifiedAt;
+        clock.Advance(TimeSpan.FromMinutes(5));
+
+        driver.Update(" Luca", "Di Febo ", "333 418 2291", Account, clock, OtherActor);
+
+        driver.Version.ShouldBe(0);
+        driver.LastModifiedAt.ShouldBe(modifiedAt);
+        driver.LastModifiedBy.ShouldBe(Actor);
+        driver.DomainEvents.ShouldBeEmpty();
+    }
+
+    [Fact]
     public void Update_OnADeactivatedDriver_KeepsItDeactivated()
     {
         var clock = NewClock();

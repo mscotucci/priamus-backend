@@ -3,6 +3,7 @@ using Microsoft.EntityFrameworkCore.Metadata.Builders;
 using Priamus.Trips.Registry.Domain.Contracts;
 using Priamus.Trips.Registry.Domain.Contracts.ValueObjects;
 using Priamus.Trips.Registry.Domain.Customers;
+using Priamus.Trips.Registry.Domain.Vehicles;
 using Priamus.Trips.Registry.Persistence.Converters;
 
 namespace Priamus.Trips.Registry.Persistence.Configurations;
@@ -80,6 +81,9 @@ internal sealed class ContractConfiguration : IEntityTypeConfiguration<Contract>
         // The rate is rebuilt from seven nullable columns held in private fields of the aggregate.
         builder.Ignore(c => c.Rate);
 
+        // The vehicle rates are rebuilt from the rows of their own table, held in a private field.
+        builder.Ignore(c => c.VehicleRates);
+
         builder.Property<decimal?>("_dayPrice")
             .HasColumnName("day_price")
             .HasColumnType("numeric(12,2)");
@@ -108,6 +112,62 @@ internal sealed class ContractConfiguration : IEntityTypeConfiguration<Contract>
         builder.Property<decimal?>("_minimumOveragePrice")
             .HasColumnName("minimum_overage_price")
             .HasColumnType("numeric(12,2)");
+
+        builder.OwnsMany<StoredVehicleRate>("_storedVehicleRates", rates =>
+        {
+            rates.ToTable("contract_vehicle_rates", "registry");
+
+            rates.WithOwner().HasForeignKey("ContractId");
+
+            rates.Property<ContractId>("ContractId")
+                .HasConversion(new ContractIdConverter())
+                .HasColumnName("contract_id")
+                .HasColumnType("uuid");
+
+            rates.Property(r => r.VehicleId)
+                .HasConversion(new VehicleIdConverter())
+                .HasColumnName("vehicle_id")
+                .HasColumnType("uuid");
+
+            rates.HasKey("ContractId", nameof(StoredVehicleRate.VehicleId));
+
+            rates.HasOne<Vehicle>()
+                .WithMany()
+                .HasForeignKey(r => r.VehicleId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            rates.HasIndex(r => r.VehicleId)
+                .HasDatabaseName("ix_contract_vehicle_rates_vehicle_id");
+
+            rates.Property(r => r.DayPrice)
+                .HasColumnName("day_price")
+                .HasColumnType("numeric(12,2)");
+
+            rates.Property(r => r.NightPrice)
+                .HasColumnName("night_price")
+                .HasColumnType("numeric(12,2)");
+
+            rates.Property(r => r.NightCallFee)
+                .HasColumnName("night_call_fee")
+                .HasColumnType("numeric(12,2)");
+
+            rates.Property(r => r.MinimumRule)
+                .HasConversion<string>()
+                .HasColumnName("minimum_rule")
+                .HasColumnType("text");
+
+            rates.Property(r => r.MinimumAmount)
+                .HasColumnName("minimum_amount")
+                .HasColumnType("numeric(12,2)");
+
+            rates.Property(r => r.MinimumThreshold)
+                .HasColumnName("minimum_threshold")
+                .HasColumnType("numeric(12,2)");
+
+            rates.Property(r => r.MinimumOveragePrice)
+                .HasColumnName("minimum_overage_price")
+                .HasColumnType("numeric(12,2)");
+        });
 
         builder.Property(c => c.CreatedAt)
             .HasColumnName("created_at")

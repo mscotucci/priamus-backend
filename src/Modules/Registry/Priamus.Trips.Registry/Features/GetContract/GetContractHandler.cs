@@ -47,6 +47,7 @@ internal sealed class GetContractHandler
             return ContractErrors.NotFound;
         }
 
-        return ContractDto.From(contract, _clock.TodayInItaly());
+        var vehicleRates = await ContractVehicleRateDto.LoadAsync(_db, [contract], cancellationToken);
+        return ContractDto.From(contract, _clock.TodayInItaly(), vehicleRates[contract.Id]);
     }
 }

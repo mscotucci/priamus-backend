@@ -4,12 +4,17 @@ using System.Text.Json;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
+using Priamus.Trips.IntegrationTesting;
+using Priamus.Trips.Registry.Domain.Contracts;
+using Priamus.Trips.Registry.Domain.Contracts.ValueObjects;
 using Priamus.Trips.Registry.Domain.Vehicles;
 using Priamus.Trips.Registry.IntegrationTests.Infrastructure;
 using Priamus.Trips.Registry.Persistence;
 using Priamus.Trips.SharedKernel.Time;
 using Shouldly;
 using Xunit;
+using static Priamus.Trips.Registry.IntegrationTests.Infrastructure.ContractTestSupport;
+using static Priamus.Trips.Registry.IntegrationTests.Infrastructure.CustomerTestSupport;
 using static Priamus.Trips.Registry.IntegrationTests.Infrastructure.VehicleTestSupport;
 
 namespace Priamus.Trips.Registry.IntegrationTests.Features.UpdateVehicle;
@@ -118,6 +123,116 @@ public sealed class UpdateVehicleEndpointTests : RegistryIntegrationTestBase
             BackOfficeClient(factory), seeded.Id.Value, UpdateBody(seeded.Version, licensePlate: "ab-456 cd", description: "Nuova descrizione"));
 
         response.StatusCode.ShouldBe(HttpStatusCode.NoContent);
+    }
+
+    private async Task<Vehicle> SeedWithVehicleRateAsync(
+        string companyName, DateOnly validFrom, DateOnly? validTo, VehicleType type = VehicleType.Tractor)
+    {
+        await using var db = CreateDbContext();
+        var vehicle = await SeedVehicleAsync(db, "AB456CD", type);
+        var customer = await SeedCustomerAsync(db, companyName);
+        await SeedContractAsync(
+            db, customer.Id, validFrom, validTo, BillingLevel.FlatRate, PricingMode.ByHour,
+            nightSurcharge: false, rate: Rate.Create(45m, null, null, new MinimumRule.None()).Value,
+            vehicleRates: [new VehicleRate(vehicle.Id, Rate.Create(50m, null, null, new MinimumRule.None()).Value)]);
+        return vehicle;
+    }
+
+    [Theory]
+    [InlineData("current contract", 2026, null)]
+    [InlineData("expired contract", 2020, 2020)]
+    [InlineData("upcoming contract", 2099, null)]
+    public async Task TurningAVehicleWithAVehicleRateIntoATrailer_Returns422NamingTheCustomer_AndSavesNothing(
+        string scenario, int fromYear, int? toYear)
+    {
+        // Arrange
+        var seeded = await SeedWithVehicleRateAsync(
+            "Ecoservizi Adriatica S.r.l.",
+            new DateOnly(fromYear, 1, 1),
+            toYear is { } year ? new DateOnly(year, 12, 31) : null);
+        var auditBefore = await AuditCountAsync();
+        await using var factory = CreateFactory();
+
+        // Act
+        var response = await PutAsync(
+            BackOfficeClient(factory), seeded.Id.Value, UpdateBody(seeded.Version, type: "Trailer"));
+
+        // Assert
+        (await DetailAsync(response)).ShouldBe(
+            "Il mezzo ha una tariffa propria nel contratto di Ecoservizi Adriatica S.r.l.: toglila dal contratto prima di farlo diventare un rimorchio.",
+            scenario);
+        await response.ShouldBeProblemAsync(HttpStatusCode.UnprocessableEntity, VehicleErrors.HasVehicleRates, Ct);
+        var stored = await LoadAsync(seeded.Id.Value);
+        stored.Type.ShouldBe(VehicleType.Tractor);
+        stored.Version.ShouldBe(seeded.Version);
+        (await AuditCountAsync()).ShouldBe(auditBefore);
+    }
+
+    [Fact]
+    public async Task TurningAVehicleWithVehicleRatesInSeveralContractsIntoATrailer_NamesTheFirstCustomerByCompanyName()
+    {
+        // Arrange
+        var seeded = await SeedWithVehicleRateAsync("Zeta S.r.l.", new DateOnly(2026, 1, 1), null);
+        await using (var db = CreateDbContext())
+        {
+            var customer = await SeedCustomerAsync(db, "Alfa S.r.l.", vatNumber: null, taxCode: "RSSMRA80A01H501U");
+            await SeedContractAsync(
+                db, customer.Id, new DateOnly(2020, 1, 1), new DateOnly(2020, 12, 31), BillingLevel.FlatRate, PricingMode.ByHour,
+                nightSurcharge: false, rate: Rate.Create(45m, null, null, new MinimumRule.None()).Value,
+                vehicleRates: [new VehicleRate(seeded.Id, Rate.Create(50m, null, null, new MinimumRule.None()).Value)]);
+        }
+
+        await using var factory = CreateFactory();
+
+        // Act
+        var response = await PutAsync(
+            BackOfficeClient(factory), seeded.Id.Value, UpdateBody(seeded.Version, type: "Trailer"));
+
+        // Assert
+        (await DetailAsync(response)).ShouldNotBeNull().ShouldContain("contratto di Alfa S.r.l.:");
+        await response.ShouldBeProblemAsync(HttpStatusCode.UnprocessableEntity, VehicleErrors.HasVehicleRates, Ct);
+    }
+
+    [Theory]
+    [InlineData(VehicleType.Tractor, "StandaloneVehicle")]
+    [InlineData(VehicleType.StandaloneVehicle, "Tractor")]
+    public async Task ChangingBetweenTractorAndStandaloneVehicle_WithAVehicleRate_IsSaved(VehicleType from, string to)
+    {
+        // Arrange
+        var seeded = await SeedWithVehicleRateAsync("Ecoservizi Adriatica S.r.l.", new DateOnly(2026, 1, 1), null, from);
+        await using var factory = CreateFactory();
+
+        // Act
+        var response = await PutAsync(
+            BackOfficeClient(factory), seeded.Id.Value, UpdateBody(seeded.Version, type: to));
+
+        // Assert
+        response.StatusCode.ShouldBe(HttpStatusCode.NoContent);
+        (await LoadAsync(seeded.Id.Value)).Type.ShouldBe(Enum.Parse<VehicleType>(to));
+    }
+
+    [Fact]
+    public async Task TurningAVehicleWithoutVehicleRatesIntoATrailer_IsSaved()
+    {
+        // Arrange
+        var seeded = await SeedAsync();
+        await using (var db = CreateDbContext())
+        {
+            var customer = await SeedCustomerAsync(db);
+            await SeedContractAsync(
+                db, customer.Id, new DateOnly(2026, 1, 1), null, BillingLevel.FlatRate, PricingMode.ByHour,
+                nightSurcharge: false, rate: Rate.Create(45m, null, null, new MinimumRule.None()).Value);
+        }
+
+        await using var factory = CreateFactory();
+
+        // Act
+        var response = await PutAsync(
+            BackOfficeClient(factory), seeded.Id.Value, UpdateBody(seeded.Version, type: "Trailer"));
+
+        // Assert
+        response.StatusCode.ShouldBe(HttpStatusCode.NoContent);
+        (await LoadAsync(seeded.Id.Value)).Type.ShouldBe(VehicleType.Trailer);
     }
 
     [Theory]
@@ -281,6 +396,25 @@ public sealed class UpdateVehicleEndpointTests : RegistryIntegrationTestBase
         first.StatusCode.ShouldBe(HttpStatusCode.NoContent);
         await second.ShouldBeProblemAsync(HttpStatusCode.Conflict, VehicleErrors.ConcurrentUpdate, Ct);
         (await LoadAsync(id)).Description.ShouldBe("Prima modifica");
+    }
+
+    [Fact]
+    public async Task UnchangedData_Returns204WithoutAuditOrVersionBump()
+    {
+        // Arrange: a first save changes the data, so the second one sends exactly what is stored.
+        var seeded = await SeedAsync();
+        await using var factory = CreateFactory();
+        var client = BackOfficeClient(factory);
+        (await PutAsync(client, seeded.Id.Value, UpdateBody(version: seeded.Version))).StatusCode.ShouldBe(HttpStatusCode.NoContent);
+        var auditBefore = await AuditCountAsync();
+
+        // Act
+        var response = await PutAsync(client, seeded.Id.Value, UpdateBody(version: seeded.Version + 1));
+
+        // Assert
+        response.StatusCode.ShouldBe(HttpStatusCode.NoContent);
+        (await LoadAsync(seeded.Id.Value)).Version.ShouldBe(seeded.Version + 1);
+        (await AuditCountAsync()).ShouldBe(auditBefore);
     }
 
     [Fact]

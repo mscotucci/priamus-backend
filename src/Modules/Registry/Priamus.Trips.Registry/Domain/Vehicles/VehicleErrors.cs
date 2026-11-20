@@ -36,6 +36,14 @@ public static class VehicleErrors
         "Registry.Vehicle.RequiresTrailerNotAllowed",
         "Only a tractor can require a trailer.");
 
+    /// <summary>
+    /// The type was changed to trailer on a vehicle that has a vehicle rate in a contract of any
+    /// status; the company name of one such customer is the message argument.
+    /// </summary>
+    public static readonly Error HasVehicleRates = Error.Domain(
+        "Registry.Vehicle.HasVehicleRates",
+        "A vehicle with a vehicle rate in a contract cannot become a trailer.");
+
     // ─── Application-layer lookups ────────────────────────────────────────
 
     /// <summary>The requested vehicle was not found.</summary>

@@ -8,6 +8,7 @@ using Priamus.Trips.IntegrationTesting;
 using Priamus.Trips.Registry.Domain.Contracts;
 using Priamus.Trips.Registry.Domain.Contracts.ValueObjects;
 using Priamus.Trips.Registry.Domain.Customers;
+using Priamus.Trips.Registry.Domain.Vehicles;
 using Priamus.Trips.Registry.IntegrationTests.Infrastructure;
 using Priamus.Trips.Registry.Persistence;
 using Shouldly;
@@ -465,6 +466,254 @@ public sealed class ChangeContractFromDateEndpointTests : RegistryIntegrationTes
         // Assert
         response.StatusCode.ShouldBe(expected);
         (await StoredAsync(customer.Id)).Count.ShouldBe(expected == HttpStatusCode.Created ? 2 : 1);
+    }
+
+    private async Task<Vehicle> SeedVehicleRowAsync(
+        string plate, VehicleType type = VehicleType.Tractor, bool decommissioned = false)
+    {
+        await using var db = CreateDbContext();
+        return await SeedVehicleAsync(db, plate, type, decommissioned: decommissioned);
+    }
+
+    private static VehicleRate DayRate(VehicleId vehicleId, decimal dayPrice = 70m) =>
+        new(vehicleId, Rate.Create(dayPrice, null, null, new MinimumRule.None()).Value);
+
+    // A flat-rate contract at 40 per hour with no minimum, holding the given vehicle rates.
+    private async Task<Contract> SeedWithVehicleRatesAsync(CustomerId customerId, params VehicleRate[] vehicleRates)
+    {
+        await using var db = CreateDbContext();
+        return await SeedContractAsync(
+            db, customerId, new DateOnly(2026, 1, 1), null, BillingLevel.FlatRate, PricingMode.ByHour,
+            [RequiredDocument.DailySummary], nightSurcharge: false,
+            rate: Rate.Create(40m, null, null, new MinimumRule.None()).Value, vehicleRates: vehicleRates);
+    }
+
+    [Fact]
+    public async Task TheSourceKeepsItsVehicleRates_AndTheNewContractGetsTheWrittenOnes()
+    {
+        // Arrange
+        var customer = await SeedCustomerAsync();
+        var kept = await SeedVehicleRowAsync("AB456CD");
+        var written = await SeedVehicleRowAsync("CD123EF", VehicleType.StandaloneVehicle);
+        var source = await SeedWithVehicleRatesAsync(customer.Id, DayRate(kept.Id, 66m));
+        await using var factory = CreateFactory();
+        var body = ChangeBody(source.Version);
+        body["vehicleRates"] = new[] { VehicleRateItem(written.Id.Value, """{"dayPrice":82.5,"minimumRule":"FixedMinimum","minimumAmount":200}""") };
+
+        // Act
+        var response = await PostAsync(BackOfficeClient(factory), customer.Id.Value, source.Id.Value, body);
+
+        // Assert
+        response.StatusCode.ShouldBe(HttpStatusCode.Created);
+        var dto = await response.Content.ReadFromJsonAsync<JsonElement>(Ct);
+        var returned = dto.GetProperty("vehicleRates").EnumerateArray().ShouldHaveSingleItem();
+        returned.GetProperty("licensePlate").GetString().ShouldBe("CD123EF");
+        returned.GetProperty("dayPrice").GetDecimal().ShouldBe(82.5m);
+        (await StoredOneAsync(source.Id)).VehicleRates.ShouldBe([DayRate(kept.Id, 66m)]);
+        var created = (await StoredOneAsync(new ContractId(dto.GetProperty("id").GetGuid()))).VehicleRates.ShouldHaveSingleItem();
+        created.VehicleId.ShouldBe(written.Id);
+        created.Rate.DayPrice.ShouldBe(82.5m);
+        created.Rate.Minimum.ShouldBeOfType<MinimumRule.FixedMinimum>().Amount.ShouldBe(200m);
+    }
+
+    [Fact]
+    public async Task WritingNoVehicleRates_GivesTheNewContractNone_AndTheSourceKeepsItsOwn()
+    {
+        // Arrange
+        var customer = await SeedCustomerAsync();
+        var vehicle = await SeedVehicleRowAsync("AB456CD");
+        var source = await SeedWithVehicleRatesAsync(customer.Id, DayRate(vehicle.Id));
+        await using var factory = CreateFactory();
+
+        // Act
+        var response = await PostAsync(
+            BackOfficeClient(factory), customer.Id.Value, source.Id.Value, ChangeBody(source.Version));
+
+        // Assert
+        response.StatusCode.ShouldBe(HttpStatusCode.Created);
+        var dto = await response.Content.ReadFromJsonAsync<JsonElement>(Ct);
+        dto.GetProperty("vehicleRates").GetArrayLength().ShouldBe(0);
+        (await StoredOneAsync(source.Id)).VehicleRates.ShouldBe([DayRate(vehicle.Id)]);
+        (await StoredOneAsync(new ContractId(dto.GetProperty("id").GetGuid()))).VehicleRates.ShouldBeEmpty();
+    }
+
+    [Fact]
+    public async Task DecommissionedVehicleOfTheSource_IsAcceptedInTheNewContract()
+    {
+        // Arrange
+        var customer = await SeedCustomerAsync();
+        var vehicle = await SeedVehicleRowAsync("AB456CD", decommissioned: true);
+        var source = await SeedWithVehicleRatesAsync(customer.Id, DayRate(vehicle.Id, 60m));
+        await using var factory = CreateFactory();
+        var body = ChangeBody(source.Version);
+        body["vehicleRates"] = new[] { VehicleRateItem(vehicle.Id.Value) };
+
+        // Act
+        var response = await PostAsync(BackOfficeClient(factory), customer.Id.Value, source.Id.Value, body);
+
+        // Assert
+        response.StatusCode.ShouldBe(HttpStatusCode.Created);
+        var dto = await response.Content.ReadFromJsonAsync<JsonElement>(Ct);
+        dto.GetProperty("vehicleRates").EnumerateArray().ShouldHaveSingleItem()
+            .GetProperty("vehicleStatus").GetString().ShouldBe("Decommissioned");
+        (await StoredOneAsync(new ContractId(dto.GetProperty("id").GetGuid()))).VehicleRates
+            .ShouldBe([DayRate(vehicle.Id, 70m)]);
+        (await StoredOneAsync(source.Id)).VehicleRates.ShouldBe([DayRate(vehicle.Id, 60m)]);
+    }
+
+    [Fact]
+    public async Task SuccessfulChange_WritesTheVehicleRatesOfEachContractInItsOwnAuditRow()
+    {
+        // Arrange
+        var customer = await SeedCustomerAsync();
+        var kept = await SeedVehicleRowAsync("AB456CD");
+        var written = await SeedVehicleRowAsync("CD123EF");
+        var source = await SeedWithVehicleRatesAsync(customer.Id, DayRate(kept.Id, 66m));
+        await using var factory = CreateFactory();
+        var body = ChangeBody(source.Version);
+        body["vehicleRates"] = new[] { VehicleRateItem(written.Id.Value) };
+
+        // Act
+        var response = await PostAsync(BackOfficeClient(factory), customer.Id.Value, source.Id.Value, body);
+
+        // Assert
+        var newId = (await response.Content.ReadFromJsonAsync<JsonElement>(Ct)).GetProperty("id").GetGuid();
+        await using var db = CreateDbContext();
+        var updated = await db.AuditLog.SingleAsync(
+            a => a.EventType == AuditEventTypes.ContractUpdated && a.SubjectId == source.Id.Value, Ct);
+        using var updatedPayload = JsonDocument.Parse(updated.Payload);
+        var keptRate = updatedPayload.RootElement.GetProperty("vehicleRates").EnumerateArray().ShouldHaveSingleItem();
+        keptRate.GetProperty("vehicleId").GetGuid().ShouldBe(kept.Id.Value);
+        keptRate.GetProperty("dayPrice").GetDecimal().ShouldBe(66m);
+        var createdRow = await db.AuditLog.SingleAsync(
+            a => a.EventType == AuditEventTypes.ContractCreated && a.SubjectId == newId, Ct);
+        using var createdPayload = JsonDocument.Parse(createdRow.Payload);
+        var writtenRate = createdPayload.RootElement.GetProperty("vehicleRates").EnumerateArray().ShouldHaveSingleItem();
+        writtenRate.GetProperty("vehicleId").GetGuid().ShouldBe(written.Id.Value);
+        writtenRate.GetProperty("dayPrice").GetDecimal().ShouldBe(70m);
+    }
+
+    [Theory]
+    [InlineData("unknown")]
+    [InlineData("trailer")]
+    [InlineData("decommissioned")]
+    public async Task VehicleThatCannotHaveAVehicleRate_Returns400WithTheCodeAndTheNameInTheText_AndChangesNothing(string kind)
+    {
+        // Arrange
+        var customer = await SeedCustomerAsync();
+        var seeded = await SeedWithVehicleRatesAsync(customer.Id);
+        var unknown = Guid.NewGuid();
+        var vehicleId = kind switch
+        {
+            "trailer" => (await SeedVehicleRowAsync("AB456CD", VehicleType.Trailer)).Id.Value,
+            "decommissioned" => (await SeedVehicleRowAsync("AB456CD", decommissioned: true)).Id.Value,
+            _ => unknown,
+        };
+        var (error, text) = kind switch
+        {
+            "trailer" => (ContractErrors.VehicleRateOnTrailer, "Il mezzo AB456CD è un rimorchio: non può avere una tariffa propria."),
+            "decommissioned" => (ContractErrors.VehicleRateDecommissioned, "Il mezzo AB456CD è dismesso: non si può aggiungere una sua tariffa."),
+            _ => (ContractErrors.VehicleRateUnknownVehicle, $"Il mezzo {unknown} non esiste."),
+        };
+        var before = await AuditCountAsync();
+        await using var factory = CreateFactory();
+        var body = ChangeBody(seeded.Version);
+        body["vehicleRates"] = new[] { VehicleRateItem(vehicleId) };
+
+        // Act
+        var response = await PostAsync(BackOfficeClient(factory), customer.Id.Value, seeded.Id.Value, body);
+
+        // Assert
+        await response.ShouldBeProblemAsync(HttpStatusCode.BadRequest, error, Ct);
+        (await DetailAsync(response)).ShouldBe(text);
+        (await StoredAsync(customer.Id)).ShouldHaveSingleItem().VehicleRates.ShouldBeEmpty();
+        (await AuditCountAsync()).ShouldBe(before);
+    }
+
+    [Theory]
+    [MemberData(nameof(InvalidRates), MemberType = typeof(ContractTestSupport))]
+    public async Task InvalidVehicleRate_Returns400UnderTheItemKeys_AndChangesNothing(
+        string billingLevel, string pricingMode, bool nightSurcharge, string rate, string keys)
+    {
+        // Arrange
+        var customer = await SeedCustomerAsync();
+        var seeded = await SeedWithVehicleRatesAsync(customer.Id);
+        var before = await AuditCountAsync();
+        await using var factory = CreateFactory();
+        var body = ChangeBody(seeded.Version);
+        SetRateWithVehicleRate(body, billingLevel, pricingMode, nightSurcharge, rate);
+
+        // Act
+        var response = await PostAsync(BackOfficeClient(factory), customer.Id.Value, seeded.Id.Value, body);
+
+        // Assert
+        response.StatusCode.ShouldBe(HttpStatusCode.BadRequest);
+        (await ErrorKeysAsync(response)).ShouldBe(VehicleRateKeys(billingLevel, keys));
+        (await StoredOneAsync(seeded.Id)).Version.ShouldBe(seeded.Version);
+        (await AuditCountAsync()).ShouldBe(before);
+    }
+
+    [Fact]
+    public async Task DuplicateAndMissingVehicle_Return400OnTheLaterItemsVehicleId()
+    {
+        // Arrange
+        var customer = await SeedCustomerAsync();
+        var seeded = await SeedWithVehicleRatesAsync(customer.Id);
+        var vehicle = await SeedVehicleRowAsync("AB456CD");
+        await using var factory = CreateFactory();
+        var body = ChangeBody(seeded.Version);
+        body["vehicleRates"] = new[]
+        {
+            VehicleRateItem(vehicle.Id.Value), VehicleRateItem(vehicle.Id.Value), VehicleRateItem(null),
+        };
+
+        // Act
+        var response = await PostAsync(BackOfficeClient(factory), customer.Id.Value, seeded.Id.Value, body);
+
+        // Assert
+        response.StatusCode.ShouldBe(HttpStatusCode.BadRequest);
+        (await ErrorKeysAsync(response)).ShouldBe(["VehicleRates[1].VehicleId", "VehicleRates[2].VehicleId"]);
+        (await StoredOneAsync(seeded.Id)).Version.ShouldBe(seeded.Version);
+    }
+
+    [Fact]
+    public async Task Driver_Gets403WhenWritingVehicleRates_AndNothingIsSaved()
+    {
+        // Arrange
+        var customer = await SeedCustomerAsync();
+        var seeded = await SeedWithVehicleRatesAsync(customer.Id);
+        var vehicle = await SeedVehicleRowAsync("AB456CD");
+        await using var factory = CreateFactory();
+        var client = TestCaller.WithRole("Driver").ApplyTo(factory.CreateClient());
+        var body = ChangeBody(seeded.Version);
+        body["vehicleRates"] = new[] { VehicleRateItem(vehicle.Id.Value) };
+
+        // Act
+        var response = await PostAsync(client, customer.Id.Value, seeded.Id.Value, body);
+
+        // Assert
+        response.StatusCode.ShouldBe(HttpStatusCode.Forbidden);
+        (await StoredOneAsync(seeded.Id)).VehicleRates.ShouldBeEmpty();
+    }
+
+    [Fact]
+    public async Task DeactivatedCustomer_RefusesVehicleRateChanges_AndKeepsTheStoredOnes()
+    {
+        // Arrange
+        var customer = await SeedCustomerAsync(deactivated: true);
+        var vehicle = await SeedVehicleRowAsync("AB456CD");
+        var other = await SeedVehicleRowAsync("CD123EF");
+        var seeded = await SeedWithVehicleRatesAsync(customer.Id, DayRate(vehicle.Id));
+        await using var factory = CreateFactory();
+        var body = ChangeBody(seeded.Version);
+        body["vehicleRates"] = new[] { VehicleRateItem(other.Id.Value) };
+
+        // Act
+        var response = await PostAsync(BackOfficeClient(factory), customer.Id.Value, seeded.Id.Value, body);
+
+        // Assert
+        await response.ShouldBeProblemAsync(HttpStatusCode.Conflict, ContractErrors.CustomerDeactivatedReadOnly, Ct);
+        (await StoredOneAsync(seeded.Id)).VehicleRates.ShouldBe([DayRate(vehicle.Id)]);
     }
 
     [Fact]

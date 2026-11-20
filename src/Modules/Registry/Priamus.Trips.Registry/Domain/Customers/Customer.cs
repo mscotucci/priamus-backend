@@ -112,7 +112,8 @@ public sealed class Customer : AggregateRoot
     }
 
     /// <summary>
-    /// Replaces the editable data of the customer. Always counts as a change.
+    /// Replaces the editable data of the customer. A no-op when nothing changes: no event, no version
+    /// bump, so no audit row.
     /// </summary>
     /// <param name="companyName">Company name; trimmed here.</param>
     /// <param name="vatNumber">VAT number in normal form, or <c>null</c>.</param>
@@ -136,6 +137,12 @@ public sealed class Customer : AggregateRoot
 
         var trimmedName = ValidateCompanyName(companyName);
         var trimmedAddress = ValidateAddress(address);
+
+        if (CompanyName == trimmedName && VatNumber == vatNumber && TaxCode == taxCode
+            && Address == trimmedAddress)
+        {
+            return;
+        }
 
         CompanyName = trimmedName;
         VatNumber = vatNumber;

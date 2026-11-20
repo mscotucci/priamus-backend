@@ -39,7 +39,7 @@ This file lives in the backend repository and is the source of truth for the pro
 | Regola minimo | MinimumRule |
 | Snapshot tariffa | RateSnapshot |
 | Matrice tariffaria | RateMatrix |
-| Override mezzo | VehicleOverride |
+| Tariffa del mezzo | VehicleRate |
 | Importo calcolato | CalculatedAmount |
 | Motore di calcolo | PricingEngine |
 | Configurazione fasce | TimeBandConfiguration |

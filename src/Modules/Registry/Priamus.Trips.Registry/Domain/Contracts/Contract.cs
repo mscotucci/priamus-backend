@@ -1,6 +1,7 @@
 using Priamus.Trips.Registry.Domain.Contracts.Events;
 using Priamus.Trips.Registry.Domain.Contracts.ValueObjects;
 using Priamus.Trips.Registry.Domain.Customers;
+using Priamus.Trips.Registry.Domain.Vehicles;
 using Priamus.Trips.SharedKernel.Domain;
 using Priamus.Trips.SharedKernel.Results;
 using Priamus.Trips.SharedKernel.Security;
@@ -24,6 +25,9 @@ public sealed class Contract : AggregateRoot
     private decimal? _minimumThreshold;
     private decimal? _minimumOveragePrice;
 
+    // The vehicle rates are stored as rows owned by the contract; VehicleRates rebuilds from them.
+    private List<StoredVehicleRate> _storedVehicleRates = [];
+
     private Contract()
     {
         // EF only. Members are populated by EF Core via property setters/backing fields.
@@ -40,6 +44,7 @@ public sealed class Contract : AggregateRoot
         IReadOnlyList<RequiredDocument> requiredDocuments,
         bool nightSurcharge,
         Rate? rate,
+        IReadOnlyList<VehicleRate> vehicleRates,
         DateTime createdAt,
         UserId createdBy)
     {
@@ -51,6 +56,7 @@ public sealed class Contract : AggregateRoot
         RequiredDocuments = requiredDocuments;
         NightSurcharge = nightSurcharge;
         Rate = rate;
+        VehicleRates = vehicleRates;
         CreatedAt = createdAt;
         CreatedBy = createdBy;
         LastModifiedAt = createdAt;
@@ -96,6 +102,16 @@ public sealed class Contract : AggregateRoot
         }
     }
 
+    /// <summary>
+    /// The rates some vehicles have of their own, at most one per vehicle; empty when there are none.
+    /// They apply for the whole validity of the contract and have none of their own.
+    /// </summary>
+    public IReadOnlyList<VehicleRate> VehicleRates
+    {
+        get => [.. _storedVehicleRates.Select(r => r.ToVehicleRate())];
+        private set => _storedVehicleRates = [.. value.Select(r => new StoredVehicleRate(r))];
+    }
+
     /// <summary>UTC instant at which the contract was created.</summary>
     public DateTime CreatedAt { get; private set; }
 
@@ -117,9 +133,10 @@ public sealed class Contract : AggregateRoot
     /// <param name="requiredDocuments">Required documents; duplicates collapse, order is canonicalised.</param>
     /// <param name="nightSurcharge">Whether night trips cost more.</param>
     /// <param name="rate">The rate; required for flat rate, <c>null</c> for any other billing level.</param>
+    /// <param name="vehicleRates">The vehicle rates; only a flat-rate contract has them, each vehicle at most once.</param>
     /// <param name="clock">Time source.</param>
     /// <param name="createdBy">Actor performing the creation.</param>
-    /// <returns>The contract, or a validation failure when the rate does not fit the terms.</returns>
+    /// <returns>The contract, or a validation failure when the rate or a vehicle rate does not fit the terms.</returns>
     public static Result<Contract> Create(
         ContractId id,
         CustomerId customerId,
@@ -129,14 +146,17 @@ public sealed class Contract : AggregateRoot
         IEnumerable<RequiredDocument> requiredDocuments,
         bool nightSurcharge,
         Rate? rate,
+        IReadOnlyList<VehicleRate> vehicleRates,
         IClock clock,
         UserId createdBy)
     {
         ArgumentNullException.ThrowIfNull(validity);
         ArgumentNullException.ThrowIfNull(requiredDocuments);
+        ArgumentNullException.ThrowIfNull(vehicleRates);
         ArgumentNullException.ThrowIfNull(clock);
 
-        if (CheckRate(billingLevel, pricingMode, nightSurcharge, rate) is { } invalid)
+        if ((CheckRate(billingLevel, pricingMode, nightSurcharge, rate)
+            ?? CheckVehicleRates(billingLevel, pricingMode, nightSurcharge, vehicleRates)) is { } invalid)
         {
             return invalid;
         }
@@ -144,23 +164,27 @@ public sealed class Contract : AggregateRoot
         var now = clock.UtcNow;
         var contract = new Contract(
             id, customerId, validity, billingLevel, pricingMode, Canonical(requiredDocuments),
-            nightSurcharge, rate, now, createdBy);
+            nightSurcharge, rate, [.. vehicleRates], now, createdBy);
         contract.RaiseEvent(new ContractCreated(
             Guid.NewGuid(), now, id, customerId, validity.ValidFrom, validity.ValidTo, billingLevel,
-            pricingMode, contract.RequiredDocuments, nightSurcharge, rate));
+            pricingMode, contract.RequiredDocuments, nightSurcharge, rate, contract.VehicleRates));
         return contract;
     }
 
-    /// <summary>Replaces the editable terms of the contract. A successful call always counts as a change.</summary>
+    /// <summary>
+    /// Replaces the editable terms of the contract. A no-op when the terms are the same: no event, no
+    /// version bump, so no audit row.
+    /// </summary>
     /// <param name="validity">The days the contract applies to.</param>
     /// <param name="billingLevel">Billing level.</param>
     /// <param name="pricingMode">Pricing mode.</param>
     /// <param name="requiredDocuments">Required documents; duplicates collapse, order is canonicalised.</param>
     /// <param name="nightSurcharge">Whether night trips cost more.</param>
     /// <param name="rate">The rate; required for flat rate, <c>null</c> for any other billing level.</param>
+    /// <param name="vehicleRates">The vehicle rates; only a flat-rate contract has them, each vehicle at most once.</param>
     /// <param name="clock">Time source.</param>
     /// <param name="modifiedBy">Actor performing the change.</param>
-    /// <returns>A validation failure when the rate does not fit the terms; the contract is then unchanged.</returns>
+    /// <returns>A validation failure when the rate or a vehicle rate does not fit the terms; the contract is then unchanged.</returns>
     public Result Update(
         Validity validity,
         BillingLevel billingLevel,
@@ -168,24 +192,34 @@ public sealed class Contract : AggregateRoot
         IEnumerable<RequiredDocument> requiredDocuments,
         bool nightSurcharge,
         Rate? rate,
+        IReadOnlyList<VehicleRate> vehicleRates,
         IClock clock,
         UserId modifiedBy)
     {
         ArgumentNullException.ThrowIfNull(validity);
         ArgumentNullException.ThrowIfNull(requiredDocuments);
+        ArgumentNullException.ThrowIfNull(vehicleRates);
         ArgumentNullException.ThrowIfNull(clock);
 
-        if (CheckRate(billingLevel, pricingMode, nightSurcharge, rate) is { } invalid)
+        if ((CheckRate(billingLevel, pricingMode, nightSurcharge, rate)
+            ?? CheckVehicleRates(billingLevel, pricingMode, nightSurcharge, vehicleRates)) is { } invalid)
         {
             return invalid;
+        }
+
+        var documents = Canonical(requiredDocuments);
+        if (SameTerms(validity, billingLevel, pricingMode, documents, nightSurcharge, rate, vehicleRates))
+        {
+            return Result.Success();
         }
 
         Validity = validity;
         BillingLevel = billingLevel;
         PricingMode = pricingMode;
-        RequiredDocuments = Canonical(requiredDocuments);
+        RequiredDocuments = documents;
         NightSurcharge = nightSurcharge;
         Rate = rate;
+        VehicleRates = [.. vehicleRates];
 
         Touch(clock.UtcNow, modifiedBy);
         return Result.Success();
@@ -230,6 +264,44 @@ public sealed class Contract : AggregateRoot
             return ContractErrors.RateNotApplicable;
         }
 
+        return CheckRateTerms(pricingMode, nightSurcharge, rate);
+    }
+
+    private static Error? CheckVehicleRates(
+        BillingLevel billingLevel,
+        PricingMode pricingMode,
+        bool nightSurcharge,
+        IReadOnlyList<VehicleRate> vehicleRates)
+    {
+        if (vehicleRates.Count == 0)
+        {
+            return null;
+        }
+
+        if (billingLevel != BillingLevel.FlatRate)
+        {
+            return ContractErrors.VehicleRateNotApplicable;
+        }
+
+        var seen = new HashSet<VehicleId>();
+        foreach (var vehicleRate in vehicleRates)
+        {
+            if (CheckRateTerms(pricingMode, nightSurcharge, vehicleRate.Rate) is { } invalid)
+            {
+                return invalid;
+            }
+
+            if (!seen.Add(vehicleRate.VehicleId))
+            {
+                return ContractErrors.VehicleRateDuplicate;
+            }
+        }
+
+        return null;
+    }
+
+    private static Error? CheckRateTerms(PricingMode pricingMode, bool nightSurcharge, Rate rate)
+    {
         var hasBothNightValues = rate.NightPrice is not null && rate.NightCallFee is not null;
         var hasAnyNightValue = rate.NightPrice is not null || rate.NightCallFee is not null;
         if (nightSurcharge && !hasBothNightValues)
@@ -250,6 +322,27 @@ public sealed class Contract : AggregateRoot
     private MinimumRule StoredMinimum() =>
         MinimumRule.From(_minimumRule, _minimumAmount, _minimumThreshold, _minimumOveragePrice);
 
+    // The vehicle rates compare as a set: each vehicle appears at most once, and their order carries no meaning.
+    private bool SameTerms(
+        Validity validity,
+        BillingLevel billingLevel,
+        PricingMode pricingMode,
+        RequiredDocument[] requiredDocuments,
+        bool nightSurcharge,
+        Rate? rate,
+        IReadOnlyList<VehicleRate> vehicleRates)
+    {
+        var current = VehicleRates;
+        return Validity == validity
+            && BillingLevel == billingLevel
+            && PricingMode == pricingMode
+            && RequiredDocuments.SequenceEqual(requiredDocuments)
+            && NightSurcharge == nightSurcharge
+            && Rate == rate
+            && current.Count == vehicleRates.Count
+            && vehicleRates.All(current.Contains);
+    }
+
     private static RequiredDocument[] Canonical(IEnumerable<RequiredDocument> documents) =>
         [.. documents.Distinct().Order()];
 
@@ -260,6 +353,6 @@ public sealed class Contract : AggregateRoot
         IncrementVersion();
         RaiseEvent(new ContractUpdated(
             Guid.NewGuid(), now, Id, CustomerId, Validity.ValidFrom, Validity.ValidTo, BillingLevel,
-            PricingMode, RequiredDocuments, NightSurcharge, Rate));
+            PricingMode, RequiredDocuments, NightSurcharge, Rate, VehicleRates));
     }
 }

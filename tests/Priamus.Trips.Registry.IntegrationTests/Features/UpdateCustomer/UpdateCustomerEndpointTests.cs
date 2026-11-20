@@ -348,6 +348,25 @@ public sealed class UpdateCustomerEndpointTests : RegistryIntegrationTestBase
     }
 
     [Fact]
+    public async Task UnchangedData_Returns204WithoutAuditOrVersionBump()
+    {
+        // Arrange: a first save changes the data, so the second one sends exactly what is stored.
+        var seeded = await SeedAsync();
+        await using var factory = CreateFactory();
+        var client = BackOfficeClient(factory);
+        (await PutAsync(client, seeded.Id.Value, UpdateBody(version: seeded.Version))).StatusCode.ShouldBe(HttpStatusCode.NoContent);
+        var auditBefore = await AuditCountAsync();
+
+        // Act
+        var response = await PutAsync(client, seeded.Id.Value, UpdateBody(version: seeded.Version + 1));
+
+        // Assert
+        response.StatusCode.ShouldBe(HttpStatusCode.NoContent);
+        (await LoadAsync(seeded.Id.Value)).Version.ShouldBe(seeded.Version + 1);
+        (await AuditCountAsync()).ShouldBe(auditBefore);
+    }
+
+    [Fact]
     public async Task StaleVersion_IsRefusedEvenWhenTheDataIsUnchanged()
     {
         var seeded = await SeedAsync();

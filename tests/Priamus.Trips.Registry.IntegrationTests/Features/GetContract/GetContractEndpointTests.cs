@@ -182,4 +182,66 @@ public sealed class GetContractEndpointTests : RegistryIntegrationTestBase
         // Assert
         response.StatusCode.ShouldBe(expected);
     }
+
+    [Fact]
+    public async Task ReturnsTheVehicleRatesByPlateWithTheStatusOfEachVehicle()
+    {
+        // Arrange
+        var customer = await SeedCustomerAsync();
+        Contract contract;
+        await using (var db = CreateDbContext())
+        {
+            var last = await SeedVehicleAsync(db, "EF789GH");
+            var decommissioned = await SeedVehicleAsync(db, "CD123EF", decommissioned: true);
+            var first = await SeedVehicleAsync(db, "AB456CD");
+            contract = await SeedContractAsync(
+                db, customer.Id, new DateOnly(2026, 4, 1), null, BillingLevel.FlatRate, PricingMode.ByHour,
+                nightSurcharge: true, rate: Rate.Create(45m, 60m, 10m, new MinimumRule.None()).Value,
+                vehicleRates:
+                [
+                    new VehicleRate(last.Id, Rate.Create(48m, 62m, 0m, new MinimumRule.FixedMinimum(120m)).Value),
+                    new VehicleRate(decommissioned.Id, Rate.Create(52.5m, 70.25m, 12m, new MinimumRule.TieredOverage(100m, 4.5m, 22.25m)).Value),
+                    new VehicleRate(first.Id, Rate.Create(50m, 65m, 5m, new MinimumRule.None()).Value),
+                ]);
+        }
+
+        await using var factory = CreateFactory(ConnectionString, Midday);
+
+        // Act
+        var response = await BackOfficeClient(factory).GetAsync(Url(customer.Id.Value, contract.Id.Value), Ct);
+
+        // Assert
+        response.StatusCode.ShouldBe(HttpStatusCode.OK);
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>(Ct);
+        var rates = body.GetProperty("vehicleRates").EnumerateArray().ToList();
+        rates.Select(r => r.GetProperty("licensePlate").GetString()).ShouldBe(["AB456CD", "CD123EF", "EF789GH"]);
+        rates.Select(r => r.GetProperty("vehicleStatus").GetString()).ShouldBe(["Active", "Decommissioned", "Active"]);
+        rates[0].GetProperty("description").GetString().ShouldBe("Iveco Stralis 480");
+        rates[0].GetProperty("minimumRule").GetString().ShouldBe("None");
+        rates[1].GetProperty("dayPrice").GetDecimal().ShouldBe(52.5m);
+        rates[1].GetProperty("nightPrice").GetDecimal().ShouldBe(70.25m);
+        rates[1].GetProperty("nightCallFee").GetDecimal().ShouldBe(12m);
+        rates[1].GetProperty("minimumRule").GetString().ShouldBe("TieredOverage");
+        rates[1].GetProperty("minimumAmount").GetDecimal().ShouldBe(100m);
+        rates[1].GetProperty("minimumThreshold").GetDecimal().ShouldBe(4.5m);
+        rates[1].GetProperty("minimumOveragePrice").GetDecimal().ShouldBe(22.25m);
+        rates[2].GetProperty("minimumAmount").GetDecimal().ShouldBe(120m);
+    }
+
+    [Fact]
+    public async Task ContractWithoutVehicleRates_ReturnsAnEmptyList()
+    {
+        // Arrange
+        var customer = await SeedCustomerAsync();
+        var contract = await SeedAsync(customer.Id);
+        await using var factory = CreateFactory(ConnectionString, Midday);
+
+        // Act
+        var response = await BackOfficeClient(factory).GetAsync(Url(customer.Id.Value, contract.Id.Value), Ct);
+
+        // Assert
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>(Ct);
+        body.GetProperty("vehicleRates").ValueKind.ShouldBe(JsonValueKind.Array);
+        body.GetProperty("vehicleRates").GetArrayLength().ShouldBe(0);
+    }
 }

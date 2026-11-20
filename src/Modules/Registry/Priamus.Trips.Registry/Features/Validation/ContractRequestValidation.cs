@@ -8,7 +8,8 @@ namespace Priamus.Trips.Registry.Features.Validation;
 /// <summary>
 /// The cross-field rules shared by the create and edit requests (PRD §5.4, RF-16): the end of the
 /// validity is not before its start, and the rate and the minimum fit the billing level, the
-/// pricing mode and the night surcharge.
+/// pricing mode and the night surcharge; the vehicle rates are judged like the rate, each under its
+/// own <c>VehicleRates[i]</c> key.
 /// </summary>
 internal static class ContractRequestValidation
 {
@@ -19,7 +20,8 @@ internal static class ContractRequestValidation
         BillingLevel? billingLevel,
         PricingMode? pricingMode,
         bool? nightSurcharge,
-        ContractRateMembers rate)
+        ContractRateMembers rate,
+        IReadOnlyList<ContractVehicleRateRequest>? vehicleRates)
     {
         if (validFrom is { } from && validTo is { } to && to < from)
         {
@@ -31,6 +33,56 @@ internal static class ContractRequestValidation
         foreach (var result in ValidateRate(billingLevel, pricingMode, nightSurcharge, rate))
         {
             yield return result;
+        }
+
+        foreach (var result in ValidateVehicleRates(billingLevel, pricingMode, nightSurcharge, vehicleRates))
+        {
+            yield return result;
+        }
+    }
+
+    private static IEnumerable<ValidationResult> ValidateVehicleRates(
+        BillingLevel? billingLevel,
+        PricingMode? pricingMode,
+        bool? nightSurcharge,
+        IReadOnlyList<ContractVehicleRateRequest>? vehicleRates)
+    {
+        // A missing BillingLevel is not judged here: it is required and reports its own error.
+        if (vehicleRates is not { Count: > 0 } || billingLevel is null)
+        {
+            yield break;
+        }
+
+        if (billingLevel != BillingLevel.FlatRate)
+        {
+            yield return Error(RegistryMessages.Registry_Contract_ValueNotApplicable, "VehicleRates");
+            yield break;
+        }
+
+        var seen = new HashSet<Guid>();
+        for (var i = 0; i < vehicleRates.Count; i++)
+        {
+            var key = $"VehicleRates[{i}]";
+            if (vehicleRates[i] is not { } item)
+            {
+                yield return Error(RegistryMessages.Validation_Required, key);
+                continue;
+            }
+
+            if (item.VehicleId is not { } vehicleId)
+            {
+                yield return Error(RegistryMessages.Validation_Required, $"{key}.VehicleId");
+            }
+            else if (!seen.Add(vehicleId))
+            {
+                yield return Error(RegistryMessages.Registry_Contract_VehicleRateDuplicate, $"{key}.VehicleId");
+            }
+
+            foreach (var result in ValidateRate(billingLevel, pricingMode, nightSurcharge, item.RateMembers()))
+            {
+                yield return new ValidationResult(
+                    result.ErrorMessage, [.. result.MemberNames.Select(member => $"{key}.{member}")]);
+            }
         }
     }
 

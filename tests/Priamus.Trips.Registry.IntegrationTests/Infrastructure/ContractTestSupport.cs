@@ -50,7 +50,8 @@ public static class ContractTestSupport
         PricingMode pricingMode = PricingMode.ByTrip,
         RequiredDocument[]? requiredDocuments = null,
         bool nightSurcharge = true,
-        Rate? rate = null)
+        Rate? rate = null,
+        IReadOnlyList<VehicleRate>? vehicleRates = null)
     {
         var contract = Contract.Create(
             ContractId.New(),
@@ -61,6 +62,7 @@ public static class ContractTestSupport
             requiredDocuments ?? [RequiredDocument.DailySummary, RequiredDocument.DeliveryNote],
             nightSurcharge,
             rate,
+            vehicleRates ?? [],
             new SystemClock(),
             FakeCurrentUser.ActorId).Value;
 
@@ -133,6 +135,60 @@ public static class ContractTestSupport
         { "FlatRate", "ByHour", true, """{"dayPrice":9999999999.99,"nightPrice":9999999999.99,"nightCallFee":9999999999.99,"minimumRule":"TieredOverage","minimumAmount":9999999999.99,"minimumThreshold":9999999999.99,"minimumOveragePrice":9999999999.99}""" },
         { "PerLocationPair", "ByHour", true, "{}" },
     };
+
+    /// <summary>The members of a vehicle rate that is only a day price and no minimum.</summary>
+    public const string DayOnlyRate = """{"dayPrice":70,"minimumRule":"None"}""";
+
+    /// <summary>Vehicle rate members each accepted on a flat-rate contract: pricing mode, night surcharge, members.</summary>
+    public static TheoryData<string, bool, string> ValidVehicleRates => new()
+    {
+        { "ByHour", false, """{"dayPrice":70.5,"minimumRule":"None"}""" },
+        { "ByDistance", true, """{"dayPrice":70,"nightPrice":85.25,"nightCallFee":0,"minimumRule":"FixedMinimum","minimumAmount":150}""" },
+        { "ByWeight", true, """{"dayPrice":70,"nightPrice":85,"nightCallFee":6,"minimumRule":"TieredOverage","minimumAmount":300,"minimumThreshold":4.5,"minimumOveragePrice":60}""" },
+        { "ByTrip", false, """{"dayPrice":150}""" },
+    };
+
+    /// <summary>One item of the <c>vehicleRates</c> member of a contract request body.</summary>
+    public static Dictionary<string, object?> VehicleRateItem(Guid? vehicleId, string rate = DayOnlyRate)
+    {
+        var item = new Dictionary<string, object?> { ["vehicleId"] = vehicleId };
+        foreach (var member in JsonSerializer.Deserialize<Dictionary<string, JsonElement>>(rate)!)
+        {
+            item[member.Key] = member.Value;
+        }
+
+        return item;
+    }
+
+    /// <summary>
+    /// Writes a contract request body whose own rate is valid for the billing terms and whose single
+    /// vehicle rate has <paramref name="vehicleRate"/> as members, so that only the vehicle rate can
+    /// be wrong.
+    /// </summary>
+    public static void SetRateWithVehicleRate(
+        Dictionary<string, object?> body, string billingLevel, string pricingMode, bool nightSurcharge, string vehicleRate)
+    {
+        foreach (var member in new[]
+        {
+            "dayPrice", "nightPrice", "nightCallFee", "minimumRule", "minimumAmount", "minimumThreshold", "minimumOveragePrice",
+        })
+        {
+            body.Remove(member);
+        }
+
+        var contractRate = billingLevel != "FlatRate" ? "{}"
+            : nightSurcharge ? """{"dayPrice":45,"nightPrice":55,"nightCallFee":5,"minimumRule":"None"}"""
+            : """{"dayPrice":45,"minimumRule":"None"}""";
+        SetRate(body, billingLevel, pricingMode, nightSurcharge, contractRate);
+        body["vehicleRates"] = new[] { VehicleRateItem(Guid.NewGuid(), vehicleRate) };
+    }
+
+    /// <summary>
+    /// The 400 keys a broken vehicle rate of <see cref="InvalidRates"/> is reported under: its member
+    /// keys under the first item, or the list as a whole when the contract is not flat rate.
+    /// </summary>
+    public static string[] VehicleRateKeys(string billingLevel, string keys) =>
+        billingLevel == "FlatRate" ? [.. keys.Split(',').Select(k => $"VehicleRates[0].{k}")] : ["VehicleRates"];
 
     /// <summary>
     /// Saves a flat-rate contract that has no rate, as one stored before rates existed: the domain

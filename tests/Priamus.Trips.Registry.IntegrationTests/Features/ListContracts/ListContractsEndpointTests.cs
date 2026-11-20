@@ -228,4 +228,45 @@ public sealed class ListContractsEndpointTests : RegistryIntegrationTestBase
         // Assert
         response.StatusCode.ShouldBe(expected);
     }
+
+    [Fact]
+    public async Task ReturnsEachContractsVehicleRatesWithTheStatusOfTheVehicle()
+    {
+        // Arrange
+        var customer = await SeedCustomerAsync();
+        await using (var db = CreateDbContext())
+        {
+            var decommissioned = await SeedVehicleAsync(db, "CD123EF", decommissioned: true);
+            var active = await SeedVehicleAsync(db, "AB456CD");
+            var rate = Rate.Create(45m, 60m, 10m, new MinimumRule.None()).Value;
+            await SeedContractAsync(
+                db, customer.Id, D(2025, 1, 1), D(2025, 12, 31), BillingLevel.FlatRate, PricingMode.ByHour,
+                nightSurcharge: true, rate: rate,
+                vehicleRates:
+                [
+                    new VehicleRate(decommissioned.Id, Rate.Create(52.5m, 70.25m, 12m, new MinimumRule.None()).Value),
+                    new VehicleRate(active.Id, Rate.Create(50m, 65m, 5m, new MinimumRule.FixedMinimum(120m)).Value),
+                ]);
+            await SeedContractAsync(
+                db, customer.Id, D(2026, 1, 1), null, BillingLevel.FlatRate, PricingMode.ByHour,
+                nightSurcharge: true, rate: rate,
+                vehicleRates: [new VehicleRate(active.Id, Rate.Create(51m, 66m, 6m, new MinimumRule.None()).Value)]);
+            await SeedContractAsync(db, customer.Id, D(2024, 1, 1), D(2024, 12, 31));
+        }
+
+        // Act
+        var list = await GetListAsync(customer.Id.Value, Midday);
+
+        // Assert
+        var contracts = list.EnumerateArray().ToList();
+        contracts.Count.ShouldBe(3);
+        var current = contracts[0].GetProperty("vehicleRates").EnumerateArray().Single();
+        current.GetProperty("licensePlate").GetString().ShouldBe("AB456CD");
+        current.GetProperty("dayPrice").GetDecimal().ShouldBe(51m);
+        var earlier = contracts[1].GetProperty("vehicleRates").EnumerateArray().ToList();
+        earlier.Select(r => r.GetProperty("licensePlate").GetString()).ShouldBe(["AB456CD", "CD123EF"]);
+        earlier.Select(r => r.GetProperty("vehicleStatus").GetString()).ShouldBe(["Active", "Decommissioned"]);
+        earlier[0].GetProperty("minimumAmount").GetDecimal().ShouldBe(120m);
+        contracts[2].GetProperty("vehicleRates").GetArrayLength().ShouldBe(0);
+    }
 }

@@ -367,6 +367,64 @@ namespace Priamus.Trips.Registry.Persistence.Migrations
                         .HasForeignKey("CustomerId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
+
+                    b.OwnsMany("Priamus.Trips.Registry.Domain.Contracts.ValueObjects.StoredVehicleRate", "_storedVehicleRates", b1 =>
+                        {
+                            b1.Property<Guid>("ContractId")
+                                .HasColumnType("uuid")
+                                .HasColumnName("contract_id");
+
+                            b1.Property<Guid>("VehicleId")
+                                .HasColumnType("uuid")
+                                .HasColumnName("vehicle_id");
+
+                            b1.Property<decimal>("DayPrice")
+                                .HasColumnType("numeric(12,2)")
+                                .HasColumnName("day_price");
+
+                            b1.Property<decimal?>("MinimumAmount")
+                                .HasColumnType("numeric(12,2)")
+                                .HasColumnName("minimum_amount");
+
+                            b1.Property<decimal?>("MinimumOveragePrice")
+                                .HasColumnType("numeric(12,2)")
+                                .HasColumnName("minimum_overage_price");
+
+                            b1.Property<string>("MinimumRule")
+                                .IsRequired()
+                                .HasColumnType("text")
+                                .HasColumnName("minimum_rule");
+
+                            b1.Property<decimal?>("MinimumThreshold")
+                                .HasColumnType("numeric(12,2)")
+                                .HasColumnName("minimum_threshold");
+
+                            b1.Property<decimal?>("NightCallFee")
+                                .HasColumnType("numeric(12,2)")
+                                .HasColumnName("night_call_fee");
+
+                            b1.Property<decimal?>("NightPrice")
+                                .HasColumnType("numeric(12,2)")
+                                .HasColumnName("night_price");
+
+                            b1.HasKey("ContractId", "VehicleId");
+
+                            b1.HasIndex("VehicleId")
+                                .HasDatabaseName("ix_contract_vehicle_rates_vehicle_id");
+
+                            b1.ToTable("contract_vehicle_rates", "registry");
+
+                            b1.WithOwner()
+                                .HasForeignKey("ContractId");
+
+                            b1.HasOne("Priamus.Trips.Registry.Domain.Vehicles.Vehicle", null)
+                                .WithMany()
+                                .HasForeignKey("VehicleId")
+                                .OnDelete(DeleteBehavior.Restrict)
+                                .IsRequired();
+                        });
+
+                    b.Navigation("_storedVehicleRates");
                 });
 #pragma warning restore 612, 618
         }

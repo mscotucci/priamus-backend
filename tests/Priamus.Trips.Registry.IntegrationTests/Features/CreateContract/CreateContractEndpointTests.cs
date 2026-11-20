@@ -9,6 +9,7 @@ using Npgsql;
 using Priamus.Trips.IntegrationTesting;
 using Priamus.Trips.Registry.Domain.Contracts;
 using Priamus.Trips.Registry.Domain.Customers;
+using Priamus.Trips.Registry.Domain.Vehicles;
 using Priamus.Trips.Registry.IntegrationTests.Infrastructure;
 using Priamus.Trips.Registry.Persistence;
 using Shouldly;
@@ -617,6 +618,221 @@ public sealed class CreateContractEndpointTests : RegistryIntegrationTestBase
         // Assert
         response.StatusCode.ShouldBe(expected);
         (await StoredAsync(customer.Id)).Count.ShouldBe(expected == HttpStatusCode.Created ? 1 : 0);
+    }
+
+    private async Task<Vehicle> SeedVehicleRowAsync(
+        string plate, VehicleType type = VehicleType.Tractor, bool decommissioned = false)
+    {
+        await using var db = CreateDbContext();
+        return await SeedVehicleAsync(db, plate, type, decommissioned: decommissioned);
+    }
+
+    private static Dictionary<string, object?> FlatBody(params Dictionary<string, object?>[] vehicleRates)
+    {
+        var body = ContractBody();
+        SetRate(body, "FlatRate", "ByHour", false, """{"dayPrice":45,"minimumRule":"None"}""");
+        body["vehicleRates"] = vehicleRates;
+        return body;
+    }
+
+    [Theory]
+    [MemberData(nameof(ValidVehicleRates), MemberType = typeof(ContractTestSupport))]
+    public async Task ValidVehicleRate_Returns201AndStoresAndReturnsItWithTheContract(
+        string pricingMode, bool nightSurcharge, string rate)
+    {
+        // Arrange
+        var customer = await SeedCustomerAsync();
+        var vehicle = await SeedVehicleRowAsync("AB456CD");
+        await using var factory = CreateFactory();
+        var body = ContractBody();
+        SetRate(body, "FlatRate", pricingMode, nightSurcharge,
+            nightSurcharge
+                ? """{"dayPrice":45,"nightPrice":55,"nightCallFee":5,"minimumRule":"None"}"""
+                : """{"dayPrice":45,"minimumRule":"None"}""");
+        body["vehicleRates"] = new[] { VehicleRateItem(vehicle.Id.Value, rate) };
+
+        // Act
+        var response = await PostAsync(BackOfficeClient(factory), customer.Id.Value, body);
+
+        // Assert
+        response.StatusCode.ShouldBe(HttpStatusCode.Created);
+        var returned = (await response.Content.ReadFromJsonAsync<JsonElement>(Ct))
+            .GetProperty("vehicleRates").EnumerateArray().ShouldHaveSingleItem();
+        var stored = (await StoredAsync(customer.Id)).ShouldHaveSingleItem().VehicleRates.ShouldHaveSingleItem();
+        using var members = JsonDocument.Parse(rate);
+        decimal? Sent(string name) =>
+            members.RootElement.TryGetProperty(name, out var value) ? value.GetDecimal() : null;
+        decimal? Returned(string name) =>
+            returned.GetProperty(name) is { ValueKind: JsonValueKind.Number } value ? value.GetDecimal() : null;
+
+        returned.GetProperty("vehicleId").GetGuid().ShouldBe(vehicle.Id.Value);
+        returned.GetProperty("licensePlate").GetString().ShouldBe("AB456CD");
+        stored.VehicleId.ShouldBe(vehicle.Id);
+        stored.Rate.DayPrice.ShouldBe(Sent("dayPrice")!.Value);
+        stored.Rate.NightPrice.ShouldBe(Sent("nightPrice"));
+        stored.Rate.NightCallFee.ShouldBe(Sent("nightCallFee"));
+        stored.Rate.Minimum.Amount.ShouldBe(Sent("minimumAmount"));
+        stored.Rate.Minimum.Threshold.ShouldBe(Sent("minimumThreshold"));
+        stored.Rate.Minimum.OveragePrice.ShouldBe(Sent("minimumOveragePrice"));
+        foreach (var member in new[] { "dayPrice", "nightPrice", "nightCallFee", "minimumAmount", "minimumThreshold", "minimumOveragePrice" })
+        {
+            Returned(member).ShouldBe(Sent(member), member);
+        }
+    }
+
+    [Theory]
+    [InlineData("absent")]
+    [InlineData("null")]
+    [InlineData("empty")]
+    public async Task ContractWithoutVehicleRates_IsValidWhetherTheMemberIsAbsentNullOrEmpty(string form)
+    {
+        // Arrange
+        var customer = await SeedCustomerAsync();
+        await using var factory = CreateFactory();
+        var body = FlatBody();
+        if (form == "absent")
+        {
+            body.Remove("vehicleRates");
+        }
+        else if (form == "null")
+        {
+            body["vehicleRates"] = null;
+        }
+
+        // Act
+        var response = await PostAsync(BackOfficeClient(factory), customer.Id.Value, body);
+
+        // Assert
+        response.StatusCode.ShouldBe(HttpStatusCode.Created);
+        (await response.Content.ReadFromJsonAsync<JsonElement>(Ct)).GetProperty("vehicleRates").GetArrayLength().ShouldBe(0);
+        (await StoredAsync(customer.Id)).ShouldHaveSingleItem().VehicleRates.ShouldBeEmpty();
+    }
+
+    [Theory]
+    [MemberData(nameof(InvalidRates), MemberType = typeof(ContractTestSupport))]
+    public async Task InvalidVehicleRate_Returns400UnderTheItemKeys_AndSavesNothing(
+        string billingLevel, string pricingMode, bool nightSurcharge, string rate, string keys)
+    {
+        // Arrange
+        var customer = await SeedCustomerAsync();
+        var before = await AuditCountAsync();
+        await using var factory = CreateFactory();
+        var body = ContractBody();
+        SetRateWithVehicleRate(body, billingLevel, pricingMode, nightSurcharge, rate);
+
+        // Act
+        var response = await PostAsync(BackOfficeClient(factory), customer.Id.Value, body);
+
+        // Assert
+        response.StatusCode.ShouldBe(HttpStatusCode.BadRequest);
+        (await ErrorKeysAsync(response)).ShouldBe(VehicleRateKeys(billingLevel, keys));
+        (await StoredAsync(customer.Id)).ShouldBeEmpty();
+        (await AuditCountAsync()).ShouldBe(before);
+    }
+
+    [Fact]
+    public async Task DuplicateAndMissingVehicle_Return400OnTheLaterItemsVehicleId_InItalian()
+    {
+        // Arrange
+        var customer = await SeedCustomerAsync();
+        var vehicle = await SeedVehicleRowAsync("AB456CD");
+        await using var factory = CreateFactory();
+        var body = FlatBody(
+            VehicleRateItem(vehicle.Id.Value), VehicleRateItem(vehicle.Id.Value), VehicleRateItem(null));
+
+        // Act
+        var response = await PostAsync(BackOfficeClient(factory), customer.Id.Value, body);
+
+        // Assert
+        response.StatusCode.ShouldBe(HttpStatusCode.BadRequest);
+        (await ErrorKeysAsync(response)).ShouldBe(["VehicleRates[1].VehicleId", "VehicleRates[2].VehicleId"]);
+        var errors = (await response.Content.ReadFromJsonAsync<JsonElement>(Ct)).GetProperty("errors");
+        errors.GetProperty("VehicleRates[1].VehicleId")[0].GetString()
+            .ShouldBe("Il mezzo ha già una tariffa propria in questo contratto.");
+        errors.GetProperty("VehicleRates[2].VehicleId")[0].GetString().ShouldBe("Valore obbligatorio.");
+        (await StoredAsync(customer.Id)).ShouldBeEmpty();
+    }
+
+    [Theory]
+    [InlineData("unknown")]
+    [InlineData("trailer")]
+    [InlineData("decommissioned")]
+    public async Task VehicleThatCannotHaveAVehicleRate_Returns400WithTheCodeAndTheNameInTheText_AndSavesNothing(string kind)
+    {
+        // Arrange
+        var customer = await SeedCustomerAsync();
+        var unknown = Guid.NewGuid();
+        var vehicleId = kind switch
+        {
+            "trailer" => (await SeedVehicleRowAsync("AB456CD", VehicleType.Trailer)).Id.Value,
+            "decommissioned" => (await SeedVehicleRowAsync("AB456CD", decommissioned: true)).Id.Value,
+            _ => unknown,
+        };
+        var before = await AuditCountAsync();
+        var (error, text) = kind switch
+        {
+            "trailer" => (ContractErrors.VehicleRateOnTrailer, "Il mezzo AB456CD è un rimorchio: non può avere una tariffa propria."),
+            "decommissioned" => (ContractErrors.VehicleRateDecommissioned, "Il mezzo AB456CD è dismesso: non si può aggiungere una sua tariffa."),
+            _ => (ContractErrors.VehicleRateUnknownVehicle, $"Il mezzo {unknown} non esiste."),
+        };
+        await using var factory = CreateFactory();
+
+        // Act
+        var response = await PostAsync(
+            BackOfficeClient(factory), customer.Id.Value, FlatBody(VehicleRateItem(vehicleId)));
+
+        // Assert
+        await response.ShouldBeProblemAsync(HttpStatusCode.BadRequest, error, Ct);
+        (await DetailAsync(response)).ShouldBe(text);
+        (await StoredAsync(customer.Id)).ShouldBeEmpty();
+        (await AuditCountAsync()).ShouldBe(before);
+    }
+
+    [Fact]
+    public async Task SuccessfulCreationWithVehicleRates_WritesThemInTheAuditRow()
+    {
+        // Arrange
+        var customer = await SeedCustomerAsync();
+        var first = await SeedVehicleRowAsync("AB456CD");
+        var second = await SeedVehicleRowAsync("CD123EF", VehicleType.StandaloneVehicle);
+        await using var factory = CreateFactory();
+        var body = FlatBody(
+            VehicleRateItem(first.Id.Value),
+            VehicleRateItem(second.Id.Value, """{"dayPrice":80.5,"minimumRule":"FixedMinimum","minimumAmount":200}"""));
+
+        // Act
+        var response = await PostAsync(BackOfficeClient(factory), customer.Id.Value, body);
+
+        // Assert
+        var id = (await response.Content.ReadFromJsonAsync<JsonElement>(Ct)).GetProperty("id").GetGuid();
+        await using var db = CreateDbContext();
+        var row = await db.AuditLog.SingleAsync(a => a.SubjectId == id, Ct);
+        using var payload = JsonDocument.Parse(row.Payload);
+        var rates = payload.RootElement.GetProperty("vehicleRates").EnumerateArray().ToList();
+        rates.Count.ShouldBe(2);
+        var priced = rates.Single(r => r.GetProperty("vehicleId").GetGuid() == second.Id.Value);
+        priced.GetProperty("dayPrice").GetDecimal().ShouldBe(80.5m);
+        priced.GetProperty("minimumRule").GetString().ShouldBe("FixedMinimum");
+        priced.GetProperty("minimumAmount").GetDecimal().ShouldBe(200m);
+        rates.Single(r => r.GetProperty("vehicleId").GetGuid() == first.Id.Value)
+            .GetProperty("dayPrice").GetDecimal().ShouldBe(70m);
+    }
+
+    [Fact]
+    public async Task Driver_Gets403WhenCreatingAContractWithVehicleRates_AndNothingIsSaved()
+    {
+        // Arrange
+        var customer = await SeedCustomerAsync();
+        var vehicle = await SeedVehicleRowAsync("AB456CD");
+        await using var factory = CreateFactory();
+        var client = TestCaller.WithRole("Driver").ApplyTo(factory.CreateClient());
+
+        // Act
+        var response = await PostAsync(client, customer.Id.Value, FlatBody(VehicleRateItem(vehicle.Id.Value)));
+
+        // Assert
+        response.StatusCode.ShouldBe(HttpStatusCode.Forbidden);
+        (await StoredAsync(customer.Id)).ShouldBeEmpty();
     }
 
     [Fact]

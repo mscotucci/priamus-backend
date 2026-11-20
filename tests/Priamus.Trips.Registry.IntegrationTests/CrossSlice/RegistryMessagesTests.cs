@@ -232,6 +232,11 @@ public sealed class RegistryMessagesTests : RegistryIntegrationTestBase
             ContractErrors.NightRateMissing,
             ContractErrors.NightRateNotApplicable,
             ContractErrors.MinimumNotApplicableByTrip,
+            ContractErrors.VehicleRateNotApplicable,
+            ContractErrors.VehicleRateDuplicate,
+            ContractErrors.VehicleRateUnknownVehicle,
+            ContractErrors.VehicleRateOnTrailer,
+            ContractErrors.VehicleRateDecommissioned,
         };
 
         foreach (var error in errors)
@@ -239,6 +244,38 @@ public sealed class RegistryMessagesTests : RegistryIntegrationTestBase
             var detail = await DetailAsync(error, "dal 01/04/2026 al 31/12/2026");
             detail.ShouldNotBe(error.Description, error.Code);
         }
+    }
+
+    [Fact]
+    public async Task VehicleRateErrors_AnswerInItalianWithTheNameAndNeverUseTheInternalTerm()
+    {
+        var expected = new (Error Error, string[] Arguments, string Text)[]
+        {
+            (ContractErrors.VehicleRateNotApplicable, [], "Questo valore non si applica al contratto."),
+            (ContractErrors.VehicleRateDuplicate, [], "Il mezzo ha già una tariffa propria in questo contratto."),
+            (ContractErrors.VehicleRateUnknownVehicle, ["0b6f1c1e"], "Il mezzo 0b6f1c1e non esiste."),
+            (ContractErrors.VehicleRateOnTrailer, ["AB456CD"], "Il mezzo AB456CD è un rimorchio: non può avere una tariffa propria."),
+            (ContractErrors.VehicleRateDecommissioned, ["AB456CD"], "Il mezzo AB456CD è dismesso: non si può aggiungere una sua tariffa."),
+        };
+
+        foreach (var (error, arguments, text) in expected)
+        {
+            var detail = await DetailAsync(error, arguments);
+            detail.ShouldBe(text, error.Code);
+            detail!.ShouldNotContain("override", Case.Insensitive, error.Code);
+            error.Description.ShouldNotContain("override", Case.Insensitive, error.Code);
+        }
+    }
+
+    [Fact]
+    public async Task HasVehicleRates_AnswersInItalianWithTheCustomerAndNeverUsesTheInternalTerm()
+    {
+        var detail = await DetailAsync(VehicleErrors.HasVehicleRates, "Ecoservizi Adriatica S.r.l.");
+
+        detail.ShouldBe(
+            "Il mezzo ha una tariffa propria nel contratto di Ecoservizi Adriatica S.r.l.: toglila dal contratto prima di farlo diventare un rimorchio.");
+        detail!.ShouldNotContain("override", Case.Insensitive);
+        VehicleErrors.HasVehicleRates.Description.ShouldNotContain("override", Case.Insensitive);
     }
 
     [Fact]

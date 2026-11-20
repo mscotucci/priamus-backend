@@ -4,6 +4,7 @@ using Npgsql;
 using Priamus.Trips.Registry.Domain.Contracts;
 using Priamus.Trips.Registry.Domain.Contracts.ValueObjects;
 using Priamus.Trips.Registry.Domain.Customers;
+using Priamus.Trips.Registry.Domain.Vehicles;
 using Priamus.Trips.Registry.IntegrationTests.Infrastructure;
 using Priamus.Trips.Registry.Persistence;
 using Priamus.Trips.SharedKernel.Time;
@@ -42,6 +43,7 @@ public sealed class ContractPersistenceTests : RegistryIntegrationTestBase
             documents ?? [RequiredDocument.DailySummary, RequiredDocument.DeliveryNote],
             nightSurcharge: true,
             rate: null,
+            [],
             new SystemClock(),
             FakeCurrentUser.ActorId).Value;
 
@@ -112,15 +114,17 @@ public sealed class ContractPersistenceTests : RegistryIntegrationTestBase
             var loaded = await db.Contracts.SingleAsync(c => c.Id == contract.Id, Ct);
             loaded.Update(
                 loaded.Validity, loaded.BillingLevel, loaded.PricingMode,
-                [RequiredDocument.DeliveryNote, RequiredDocument.DailySummary], loaded.NightSurcharge, loaded.Rate,
-                new SystemClock(), FakeCurrentUser.ActorId).IsSuccess.ShouldBeTrue();
+                [RequiredDocument.DailySummary, RequiredDocument.WasteForm, RequiredDocument.DeliveryNote],
+                loaded.NightSurcharge, loaded.Rate,
+                loaded.VehicleRates, new SystemClock(), FakeCurrentUser.ActorId).IsSuccess.ShouldBeTrue();
             await db.SaveChangesAsync(Ct);
         }
 
         // Assert
         await using var read = CreateDbContext();
         var reloaded = await read.Contracts.SingleAsync(c => c.Id == contract.Id, Ct);
-        reloaded.RequiredDocuments.ShouldBe([RequiredDocument.DeliveryNote, RequiredDocument.DailySummary]);
+        reloaded.RequiredDocuments.ShouldBe(
+            [RequiredDocument.DeliveryNote, RequiredDocument.WasteForm, RequiredDocument.DailySummary]);
         reloaded.Version.ShouldBe(1);
     }
 
@@ -255,7 +259,7 @@ public sealed class ContractPersistenceTests : RegistryIntegrationTestBase
             loaded.Update(
                 Validity.Create(D(2026, 4, 1), D(2026, 9, 30)).Value, BillingLevel.FlatRate, PricingMode.ByHour,
                 [], nightSurcharge: false, Rate.Create(45m, null, null, new MinimumRule.None()).Value,
-                new SystemClock(), FakeCurrentUser.ActorId)
+                [], new SystemClock(), FakeCurrentUser.ActorId)
                 .IsSuccess.ShouldBeTrue();
             await db.SaveChangesAsync(Ct);
         }
@@ -286,6 +290,7 @@ public sealed class ContractPersistenceTests : RegistryIntegrationTestBase
             [],
             nightSurcharge,
             rate,
+            [],
             new SystemClock(),
             FakeCurrentUser.ActorId).Value;
 
@@ -362,7 +367,7 @@ public sealed class ContractPersistenceTests : RegistryIntegrationTestBase
             var loaded = await db.Contracts.SingleAsync(c => c.Id == contract.Id, Ct);
             loaded.Update(
                 loaded.Validity, loaded.BillingLevel, loaded.PricingMode, [], nightSurcharge: false, rate,
-                new SystemClock(), FakeCurrentUser.ActorId).IsSuccess.ShouldBeTrue();
+                [], new SystemClock(), FakeCurrentUser.ActorId).IsSuccess.ShouldBeTrue();
             await db.SaveChangesAsync(Ct);
         }
 
@@ -409,7 +414,7 @@ public sealed class ContractPersistenceTests : RegistryIntegrationTestBase
             var loaded = await db.Contracts.SingleAsync(c => c.Id == contract.Id, Ct);
             loaded.Update(
                 loaded.Validity, BillingLevel.PerLocationPair, PricingMode.ByTrip, [], nightSurcharge: false,
-                rate: null, new SystemClock(), FakeCurrentUser.ActorId).IsSuccess.ShouldBeTrue();
+                rate: null, [], new SystemClock(), FakeCurrentUser.ActorId).IsSuccess.ShouldBeTrue();
             await db.SaveChangesAsync(Ct);
         }
 
@@ -427,5 +432,241 @@ public sealed class ContractPersistenceTests : RegistryIntegrationTestBase
         {
             root.TryGetProperty(member, out _).ShouldBeFalse(member);
         }
+    }
+
+    private async Task<Vehicle> SeedVehicleAsync(string licensePlate, bool decommissioned = false)
+    {
+        await using var db = CreateDbContext();
+        return await VehicleTestSupport.SeedVehicleAsync(db, licensePlate, decommissioned: decommissioned);
+    }
+
+    private static VehicleRate NightRateWithTieredMinimum(Vehicle vehicle) =>
+        new(vehicle.Id, Rate.Create(52.5m, 70.25m, 12m, new MinimumRule.TieredOverage(100m, 4.5m, 22.25m)).Value);
+
+    private static VehicleRate RateWithoutMinimum(Vehicle vehicle) =>
+        new(vehicle.Id, Rate.Create(48m, 58m, 4m, new MinimumRule.None()).Value);
+
+    private static Contract NewContractWithVehicleRates(CustomerId customerId, params VehicleRate[] vehicleRates) =>
+        Contract.Create(
+            ContractId.New(),
+            customerId,
+            Validity.Create(D(2026, 4, 1), null).Value,
+            BillingLevel.FlatRate,
+            PricingMode.ByHour,
+            [],
+            nightSurcharge: true,
+            Rate.Create(45m, 60m, 10m, new MinimumRule.None()).Value,
+            vehicleRates,
+            new SystemClock(),
+            FakeCurrentUser.ActorId).Value;
+
+    private async Task<int> CountVehicleRateRowsAsync()
+    {
+        await using var read = CreateDbContext();
+        return await read.Database
+            .SqlQuery<int>($"SELECT count(*)::int AS \"Value\" FROM registry.contract_vehicle_rates")
+            .SingleAsync(Ct);
+    }
+
+    [Fact]
+    public async Task VehicleRates_RoundTripThroughTheirOwnTable()
+    {
+        // Arrange
+        var customer = await SeedCustomerAsync();
+        var first = await SeedVehicleAsync("AB456CD");
+        var second = await SeedVehicleAsync("CD123EF");
+        var withNight = NightRateWithTieredMinimum(first);
+        var dayOnly = RateWithoutMinimum(second);
+        var contract = await SaveAsync(NewContractWithVehicleRates(customer.Id, withNight, dayOnly));
+        var otherCustomer = await SeedCustomerAsync(VatNumberB);
+        var withoutVehicleRates = await SaveAsync(NewContractWithVehicleRates(otherCustomer.Id));
+
+        // Act
+        await using var read = CreateDbContext();
+        var loaded = await read.Contracts.SingleAsync(c => c.Id == contract.Id, Ct);
+        var loadedWithout = await read.Contracts.SingleAsync(c => c.Id == withoutVehicleRates.Id, Ct);
+
+        // Assert
+        loaded.VehicleRates.ShouldBe([withNight, dayOnly], ignoreOrder: true);
+        loadedWithout.VehicleRates.ShouldBeEmpty();
+        (await CountVehicleRateRowsAsync()).ShouldBe(2);
+    }
+
+    [Fact]
+    public async Task VehicleRates_ChangedOnUpdate_ReplaceTheWholeList()
+    {
+        // Arrange
+        var customer = await SeedCustomerAsync();
+        var kept = await SeedVehicleAsync("AB456CD");
+        var removed = await SeedVehicleAsync("CD123EF");
+        var added = await SeedVehicleAsync("EF789GH");
+        var contract = await SaveAsync(NewContractWithVehicleRates(
+            customer.Id, RateWithoutMinimum(kept), RateWithoutMinimum(removed)));
+        var repriced = new VehicleRate(kept.Id, Rate.Create(55m, 66m, 0m, new MinimumRule.FixedMinimum(120m)).Value);
+        var addedRate = RateWithoutMinimum(added);
+
+        // Act
+        await using (var db = CreateDbContext())
+        {
+            var loaded = await db.Contracts.SingleAsync(c => c.Id == contract.Id, Ct);
+            loaded.Update(
+                loaded.Validity, loaded.BillingLevel, loaded.PricingMode, loaded.RequiredDocuments,
+                loaded.NightSurcharge, loaded.Rate, [repriced, addedRate], new SystemClock(), FakeCurrentUser.ActorId)
+                .IsSuccess.ShouldBeTrue();
+            await db.SaveChangesAsync(Ct);
+        }
+
+        // Assert
+        await using var read = CreateDbContext();
+        var reloaded = await read.Contracts.SingleAsync(c => c.Id == contract.Id, Ct);
+        reloaded.VehicleRates.ShouldBe([repriced, addedRate], ignoreOrder: true);
+        (await CountVehicleRateRowsAsync()).ShouldBe(2);
+    }
+
+    [Fact]
+    public async Task VehicleRates_EmptiedOnUpdate_LeaveNoRows()
+    {
+        // Arrange
+        var customer = await SeedCustomerAsync();
+        var vehicle = await SeedVehicleAsync("AB456CD");
+        var contract = await SaveAsync(NewContractWithVehicleRates(customer.Id, RateWithoutMinimum(vehicle)));
+
+        // Act
+        await using (var db = CreateDbContext())
+        {
+            var loaded = await db.Contracts.SingleAsync(c => c.Id == contract.Id, Ct);
+            loaded.Update(
+                loaded.Validity, loaded.BillingLevel, loaded.PricingMode, loaded.RequiredDocuments,
+                loaded.NightSurcharge, loaded.Rate, [], new SystemClock(), FakeCurrentUser.ActorId)
+                .IsSuccess.ShouldBeTrue();
+            await db.SaveChangesAsync(Ct);
+        }
+
+        // Assert
+        await using var read = CreateDbContext();
+        (await read.Contracts.SingleAsync(c => c.Id == contract.Id, Ct)).VehicleRates.ShouldBeEmpty();
+        (await CountVehicleRateRowsAsync()).ShouldBe(0);
+    }
+
+    [Fact]
+    public async Task VehicleRate_OnAnUnknownVehicleId_IsRefusedByTheForeignKey()
+    {
+        // Arrange
+        var customer = await SeedCustomerAsync();
+        var unknown = new VehicleRate(VehicleId.New(), Rate.Create(48m, 60m, 5m, new MinimumRule.None()).Value);
+        await using var db = CreateDbContext();
+        db.Contracts.Add(NewContractWithVehicleRates(customer.Id, unknown));
+
+        // Act
+        var exception = await Should.ThrowAsync<DbUpdateException>(() => db.SaveChangesAsync(Ct));
+
+        // Assert
+        exception.InnerException.ShouldBeOfType<PostgresException>().SqlState
+            .ShouldBe(PostgresErrorCodes.ForeignKeyViolation);
+    }
+
+    [Fact]
+    public async Task DeletingAContract_RemovesItsVehicleRatesAndNoOthers()
+    {
+        // Arrange
+        var customer = await SeedCustomerAsync();
+        var vehicle = await SeedVehicleAsync("AB456CD");
+        var doomed = await SaveAsync(NewContractWithVehicleRates(customer.Id, RateWithoutMinimum(vehicle)));
+        var other = Contract.Create(
+            ContractId.New(), customer.Id, Validity.Create(D(2025, 1, 1), D(2025, 12, 31)).Value, BillingLevel.FlatRate,
+            PricingMode.ByHour, [], true, Rate.Create(45m, 60m, 10m, new MinimumRule.None()).Value,
+            [NightRateWithTieredMinimum(vehicle)], new SystemClock(), FakeCurrentUser.ActorId).Value;
+        await SaveAsync(other);
+
+        // Act
+        await using (var db = CreateDbContext())
+        {
+            db.Contracts.Remove(await db.Contracts.SingleAsync(c => c.Id == doomed.Id, Ct));
+            await db.SaveChangesAsync(Ct);
+        }
+
+        // Assert
+        await using var read = CreateDbContext();
+        (await read.Contracts.SingleAsync(c => c.Id == other.Id, Ct)).VehicleRates.Count.ShouldBe(1);
+        (await CountVehicleRateRowsAsync()).ShouldBe(1);
+    }
+
+    [Fact]
+    public async Task CreatedContractWithVehicleRates_WritesThemInTheAuditRow()
+    {
+        // Arrange
+        var customer = await SeedCustomerAsync();
+        var first = await SeedVehicleAsync("AB456CD");
+        var second = await SeedVehicleAsync("CD123EF");
+
+        // Act
+        var contract = await SaveAsync(NewContractWithVehicleRates(
+            customer.Id, NightRateWithTieredMinimum(first), RateWithoutMinimum(second)));
+
+        // Assert
+        await using var read = CreateDbContext();
+        var row = await read.AuditLog.SingleAsync(
+            a => a.SubjectId == contract.Id.Value && a.EventType == AuditEventTypes.ContractCreated, Ct);
+        using var payload = JsonDocument.Parse(row.Payload);
+        var items = payload.RootElement.GetProperty("vehicleRates").EnumerateArray().ToList();
+        items.Count.ShouldBe(2);
+        var tiered = items.Single(i => i.GetProperty("vehicleId").GetGuid() == first.Id.Value);
+        tiered.GetProperty("dayPrice").GetDecimal().ShouldBe(52.5m);
+        tiered.GetProperty("nightPrice").GetDecimal().ShouldBe(70.25m);
+        tiered.GetProperty("nightCallFee").GetDecimal().ShouldBe(12m);
+        tiered.GetProperty("minimumRule").GetString().ShouldBe("TieredOverage");
+        tiered.GetProperty("minimumAmount").GetDecimal().ShouldBe(100m);
+        tiered.GetProperty("minimumThreshold").GetDecimal().ShouldBe(4.5m);
+        tiered.GetProperty("minimumOveragePrice").GetDecimal().ShouldBe(22.25m);
+        var plain = items.Single(i => i.GetProperty("vehicleId").GetGuid() == second.Id.Value);
+        plain.GetProperty("dayPrice").GetDecimal().ShouldBe(48m);
+        plain.GetProperty("minimumRule").GetString().ShouldBe("None");
+        plain.GetProperty("nightPrice").GetDecimal().ShouldBe(58m);
+    }
+
+    [Fact]
+    public async Task UpdatedContract_WritesTheVehicleRatesAfterTheChangeInTheAuditRow()
+    {
+        // Arrange
+        var customer = await SeedCustomerAsync();
+        var first = await SeedVehicleAsync("AB456CD");
+        var second = await SeedVehicleAsync("CD123EF");
+        var contract = await SaveAsync(NewContractWithVehicleRates(customer.Id, RateWithoutMinimum(first)));
+
+        // Act
+        await using (var db = CreateDbContext())
+        {
+            var loaded = await db.Contracts.SingleAsync(c => c.Id == contract.Id, Ct);
+            loaded.Update(
+                loaded.Validity, loaded.BillingLevel, loaded.PricingMode, loaded.RequiredDocuments,
+                loaded.NightSurcharge, loaded.Rate, [NightRateWithTieredMinimum(second)], new SystemClock(),
+                FakeCurrentUser.ActorId).IsSuccess.ShouldBeTrue();
+            await db.SaveChangesAsync(Ct);
+        }
+
+        // Assert
+        await using var read = CreateDbContext();
+        var row = await read.AuditLog.SingleAsync(
+            a => a.SubjectId == contract.Id.Value && a.EventType == AuditEventTypes.ContractUpdated, Ct);
+        using var payload = JsonDocument.Parse(row.Payload);
+        var item = payload.RootElement.GetProperty("vehicleRates").EnumerateArray().Single();
+        item.GetProperty("vehicleId").GetGuid().ShouldBe(second.Id.Value);
+        item.GetProperty("dayPrice").GetDecimal().ShouldBe(52.5m);
+    }
+
+    [Fact]
+    public async Task ContractWithoutVehicleRates_OmitsTheVehicleRatesFromTheAuditRow()
+    {
+        // Arrange
+        var customer = await SeedCustomerAsync();
+
+        // Act
+        var contract = await SaveAsync(NewContractWithVehicleRates(customer.Id));
+
+        // Assert
+        await using var read = CreateDbContext();
+        var row = await read.AuditLog.SingleAsync(a => a.SubjectId == contract.Id.Value, Ct);
+        using var payload = JsonDocument.Parse(row.Payload);
+        payload.RootElement.TryGetProperty("vehicleRates", out _).ShouldBeFalse();
     }
 }

@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using Priamus.Trips.Registry.Application.Services;
+using Priamus.Trips.Registry.Domain.Contracts.ValueObjects;
 using Priamus.Trips.Registry.Domain.Vehicles;
 using Priamus.Trips.Registry.Domain.Vehicles.ValueObjects;
 using Priamus.Trips.Registry.Persistence;
@@ -56,6 +57,22 @@ internal sealed class UpdateVehicleHandler
         if (vehicle is null)
         {
             return VehicleErrors.NotFound;
+        }
+
+        if (request.Type is VehicleType.Trailer && vehicle.Type is not VehicleType.Trailer)
+        {
+            var customerName = await _db.Contracts
+                .AsNoTracking()
+                .Where(c => EF.Property<List<StoredVehicleRate>>(c, "_storedVehicleRates")
+                    .Any(r => r.VehicleId == vehicleId))
+                .Join(_db.Customers, c => c.CustomerId, cu => cu.Id, (c, cu) => cu.CompanyName)
+                .OrderBy(name => name)
+                .FirstOrDefaultAsync(cancellationToken);
+            if (customerName is not null)
+            {
+                _arguments.Set(customerName);
+                return VehicleErrors.HasVehicleRates;
+            }
         }
 
         LicensePlate plate;

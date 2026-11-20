@@ -4,6 +4,7 @@ using Priamus.Trips.Registry.Application.Services;
 using Priamus.Trips.Registry.Domain.Contracts;
 using Priamus.Trips.Registry.Domain.Contracts.ValueObjects;
 using Priamus.Trips.Registry.Domain.Customers;
+using Priamus.Trips.Registry.Features.Validation;
 using Priamus.Trips.Registry.Persistence;
 using Priamus.Trips.SharedKernel.Results;
 using Priamus.Trips.SharedKernel.Security;
@@ -106,6 +107,18 @@ internal sealed class UpdateContractHandler
             return rate.Error;
         }
 
+        var vehicleRates = ContractVehicleRateRequest.ToVehicleRates(request.VehicleRates);
+        if (vehicleRates.IsFailure)
+        {
+            return vehicleRates.Error;
+        }
+
+        if (await ContractVehicleRateChecks.FindAsync(
+            _db, vehicleRates.Value, contract.VehicleRates, _arguments, cancellationToken) is { } vehicleError)
+        {
+            return vehicleError;
+        }
+
         var actorId = _currentUser.UserId;
 
         var updated = contract.Update(
@@ -115,6 +128,7 @@ internal sealed class UpdateContractHandler
             request.RequiredDocuments!,
             request.NightSurcharge!.Value,
             rate.Value,
+            vehicleRates.Value,
             _clock,
             actorId);
         if (updated.IsFailure)
