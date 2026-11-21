@@ -7,6 +7,8 @@ using Priamus.Trips.Registry.Application.Services;
 using Priamus.Trips.Registry.Domain.Contracts;
 using Priamus.Trips.Registry.Domain.Customers;
 using Priamus.Trips.Registry.Domain.Drivers;
+using Priamus.Trips.Registry.Domain.NightBands;
+using Priamus.Trips.Registry.Domain.Pricing;
 using Priamus.Trips.Registry.Domain.Vehicles;
 using Priamus.Trips.Registry.IntegrationTests.Infrastructure;
 using Priamus.Trips.Registry.Resources;
@@ -87,6 +89,24 @@ public sealed class RegistryMessagesTests : RegistryIntegrationTestBase
             var detail = await DetailAsync(error, "AB456CD");
             detail.ShouldNotBe(error.Description, error.Code);
         }
+    }
+
+    [Fact]
+    public async Task NightBandErrors_AnswerInItalian()
+    {
+        (await DetailAsync(PricingErrors.NightBandEndEqualsStart)).ShouldBe("La fine deve essere diversa dall'inizio.");
+        (await DetailAsync(NightBandErrors.ConcurrentUpdate)).ShouldBe(
+            "La fascia notturna è stata modificata da un altro utente nel frattempo. Controlla i dati aggiornati e riprova.");
+    }
+
+    [Fact]
+    public async Task PricingErrors_AnswerInItalian()
+    {
+        (await DetailAsync(PricingErrors.TripEndEqualsStart)).ShouldBe("La fine deve essere diversa dall'inizio.");
+        (await DetailAsync(PricingErrors.QuantityNotPositive)).ShouldBe("Inserisci un numero intero maggiore di zero.");
+        (await DetailAsync(PricingErrors.KilogramsTooLarge)).ShouldBe("Al massimo 99.999 kg.");
+        (await DetailAsync(PricingErrors.KilometresTooLarge)).ShouldBe("Al massimo 9.999 km.");
+        (await DetailAsync(PricingErrors.AmountTooLarge)).ShouldBe("Importo troppo alto.");
     }
 
     [Fact]
@@ -221,6 +241,7 @@ public sealed class RegistryMessagesTests : RegistryIntegrationTestBase
             ContractErrors.CustomerDeactivatedReadOnly,
             ContractErrors.DayPriceNotPositive,
             ContractErrors.NightPriceNotPositive,
+            ContractErrors.NightPriceBelowDayPrice,
             ContractErrors.NightCallFeeNegative,
             ContractErrors.MinimumAmountNotPositive,
             ContractErrors.MinimumThresholdNotPositive,

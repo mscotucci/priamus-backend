@@ -45,9 +45,9 @@ internal sealed class StoredVehicleRate
     /// <summary>Rebuilds the vehicle rate from the stored columns.</summary>
     internal VehicleRate ToVehicleRate() => new(
         VehicleId,
-        Rate.Create(
+        Rate.Restore(
             DayPrice,
             NightPrice,
             NightCallFee,
-            ValueObjects.MinimumRule.From(MinimumRule, MinimumAmount, MinimumThreshold, MinimumOveragePrice)).Value);
+            ValueObjects.MinimumRule.From(MinimumRule, MinimumAmount, MinimumThreshold, MinimumOveragePrice)));
 }

@@ -10,6 +10,8 @@ using Priamus.Trips.Registry.Domain.Customers.Events;
 using Priamus.Trips.Registry.Domain.Customers.ValueObjects;
 using Priamus.Trips.Registry.Domain.Drivers;
 using Priamus.Trips.Registry.Domain.Drivers.Events;
+using Priamus.Trips.Registry.Domain.NightBands.Events;
+using Priamus.Trips.Registry.Domain.Pricing;
 using Priamus.Trips.Registry.Domain.Vehicles;
 using Priamus.Trips.Registry.Domain.Vehicles.Events;
 using Priamus.Trips.SharedKernel.Domain;
@@ -25,7 +27,7 @@ namespace Priamus.Trips.Registry.Persistence.Interceptors;
 /// <remarks>
 /// Registered as <b>scoped</b> in DI (because it depends on <see cref="ICurrentUser"/>, which is
 /// scoped) and added to the DbContext options in the DI registration extension. The event → entry
-/// mapping is a switch expression: the module has fourteen event types. Created and updated rows carry
+/// mapping is a switch expression: the module has fifteen event types. Created and updated rows carry
 /// the full state after the change, with the plate, VAT number and tax code as plain strings, dates as <c>yyyy-MM-dd</c> and enums by name; the
 /// payload is built explicitly instead of serializing the event, whose value objects would
 /// otherwise appear as nested objects. <c>OccurredAt</c> is taken from the domain event, not
@@ -94,7 +96,7 @@ public sealed class AuditInterceptor : ISaveChangesInterceptor
 
     /// <summary>
     /// Maps a domain event to an <see cref="AuditLogEntry"/>. The <c>subject_id</c> is always
-    /// the affected <c>VehicleId</c>, <c>CustomerId</c>, <c>DriverId</c> or <c>ContractId</c>.
+    /// the affected <c>VehicleId</c>, <c>CustomerId</c>, <c>DriverId</c> or <c>ContractId</c>, or the id of the single night band row.
     /// </summary>
     internal static AuditLogEntry MapToAuditLogEntry(IDomainEvent domainEvent, Guid? actorId)
     {
@@ -155,6 +157,15 @@ public sealed class AuditInterceptor : ISaveChangesInterceptor
             ContractUpdated e => Create(
                 e.EventId, e.OccurredAt, actorId, e.ContractId.Value, AuditEventTypes.ContractUpdated,
                 ContractState(e.ContractId, e.CustomerId, e.ValidFrom, e.ValidTo, e.BillingLevel, e.PricingMode, e.RequiredDocuments, e.NightSurcharge, e.Rate, e.VehicleRates)),
+
+            NightBandUpdated e => Create(
+                e.EventId, e.OccurredAt, actorId, e.SettingId, AuditEventTypes.NightBandUpdated,
+                new
+                {
+                    SettingId = e.SettingId,
+                    Start = TimeOfDayText.ToText(e.Band.Start),
+                    End = TimeOfDayText.ToText(e.Band.End),
+                }),
 
             _ => throw new UnreachableException(
                 $"Unknown domain event type '{domainEvent.GetType().FullName}' reached the AuditInterceptor. " +

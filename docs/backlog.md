@@ -5,6 +5,7 @@ Work deferred on purpose, with the decision that deferred it. Items leave this f
 ## Trips — to analyse when the first trip slice is grilled (recorded 2026-11-19)
 
 - **Changes to master data after a trip used them.** Since the vehicle rates slice, a vehicle that has a vehicle rate in any contract cannot become a trailer: the rate must be removed from the contract first. With trips, decide how registered trips react to such changes (a vehicle's type, a vehicle rate removed or changed, a contract's terms): the trip's snapshot of the rate may be enough, but it must be analysed, not assumed (decided by Michele at the grilling of the vehicle rates).
+- **Show when the contract in force differs from a trip's snapshot.** A trip keeps the rate and the night band it was priced with; the back office must see on the trip when the contract in force today for that day says something different (a correction, a vehicle rate changed or removed, the night band changed). Asked by Michele at the grilling of the pricing engine on 2026-11-20; what is compared and how it is shown is decided with the trip slice.
 
 ## Registry — vehicle rates (recorded 2026-11-20)
 

@@ -85,6 +85,29 @@ public sealed class RateTests
         Rate.Create(45m, 55m, 0m, new MinimumRule.None()).IsSuccess.ShouldBeTrue();
     }
 
+    [Fact]
+    public void Create_WithNightPriceBelowDayPrice_Fails()
+    {
+        var result = Rate.Create(45m, 44.99m, 5m, new MinimumRule.None());
+
+        result.Error.ShouldBe(ContractErrors.NightPriceBelowDayPrice);
+    }
+
+    [Fact]
+    public void Create_WithNightPriceEqualToDayPrice_Succeeds()
+    {
+        var result = Rate.Create(45m, 45m, 5m, new MinimumRule.None());
+
+        result.IsSuccess.ShouldBeTrue();
+        result.Value.NightPrice.ShouldBe(45m);
+    }
+
+    [Fact]
+    public void Create_WithDayPriceOnlyAndNoNightPrice_IsNotJudgedByTheNightRule()
+    {
+        Rate.Create(45m, null, null, new MinimumRule.None()).IsSuccess.ShouldBeTrue();
+    }
+
     [Theory]
     [InlineData("45.123", null, null, null)]
     [InlineData("45", "55.001", "1", null)]

@@ -5,6 +5,7 @@ using Priamus.Trips.Registry.Domain.Contracts;
 using Priamus.Trips.Registry.Domain.Customers;
 using Priamus.Trips.Registry.Domain.Customers.ValueObjects;
 using Priamus.Trips.Registry.Domain.Drivers;
+using Priamus.Trips.Registry.Domain.NightBands;
 using Priamus.Trips.Registry.Domain.Vehicles;
 using Priamus.Trips.Registry.Domain.Vehicles.ValueObjects;
 
@@ -41,6 +42,9 @@ public sealed class RegistryDbContext : DbContext
 
     /// <summary>The customers' contracts.</summary>
     public DbSet<Contract> Contracts => Set<Contract>();
+
+    /// <summary>The system night band: a single row.</summary>
+    public DbSet<NightBandSetting> NightBandSettings => Set<NightBandSetting>();
 
     /// <summary>Audit log entries written synchronously by the <see cref="Interceptors.AuditInterceptor"/>.</summary>
     public DbSet<AuditLogEntry> AuditLog => Set<AuditLogEntry>();

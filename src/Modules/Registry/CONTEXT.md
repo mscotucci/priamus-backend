@@ -118,6 +118,18 @@ _Avoid_: price list, tariff, rate validity
 A complete rate of its own that a contract gives one vehicle (a tractor or a standalone vehicle): day price, night price and night call fee when the contract has the night surcharge, and its own minimum rule. A trip led by that vehicle is priced with it instead of the contract's rate. Like the contract's rate, it lives as long as its contract and has no validity of its own.
 _Avoid_: override (the PRD's word, not used by the business), special rate
 
+**Night band** (Fascia notturna):
+The hours of the day in which a trip that starts is a night trip, one for the whole system (22:00–06:00 unless the administrator changes it). A change holds for every amount computed from then on, never for amounts already computed.
+_Avoid_: night shift, night time, night surcharge (that is a contract's choice to charge night trips more)
+
+**Night trip** / **Day trip** (Viaggio notturno / diurno):
+A trip whose start time falls inside / outside the night band. Its end time and duration never count. A night trip on a contract without the night surcharge is still a night trip; it just costs the day price.
+_Avoid_: night service, overnight trip
+
+**Simulation** (Prova della configurazione):
+Computing the amount of a sample trip on a contract as written, before or without saving it, with the same calculation that prices real trips.
+_Avoid_: estimate, preview, test calculation
+
 **Required documents** (Documenti obbligatori):
 The documents a contract asks for: on every trip a delivery note (DDT), a delivery slip (bolla) or a waste form (FIR), and at the end of the driver's day a daily summary. Any of them, or none.
 _Avoid_: attachments (an attachment is the file a driver uploads)

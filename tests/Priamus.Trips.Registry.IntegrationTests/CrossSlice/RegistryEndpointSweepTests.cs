@@ -13,15 +13,27 @@ namespace Priamus.Trips.Registry.IntegrationTests.CrossSlice;
 
 /// <summary>
 /// Rules that hold for every Registry endpoint, proved as a sweep over the endpoints the host
-/// actually routes: each one declares exactly the <c>BackOfficeOrAdmin</c> policy and none is
-/// anonymous, the OpenAPI document describes exactly the routed set with camelCase query names,
-/// an anonymous caller gets 401 and a <c>Driver</c> gets 403. Each vertical slice that adds an
-/// endpoint is covered from then on.
+/// actually routes: each one declares exactly the <c>BackOfficeOrAdmin</c> policy (the night band
+/// routes, exactly <c>Admin</c>) and none is anonymous, the OpenAPI document describes exactly the
+/// routed set with camelCase query names, an anonymous caller gets 401 and a <c>Driver</c> gets 403.
+/// Each vertical slice that adds an endpoint is covered from then on.
 /// </summary>
 public sealed class RegistryEndpointSweepTests : RegistryIntegrationTestBase
 {
     private const string Prefix = "/api/registry/";
     private static readonly string[] HttpMethods = ["GET", "POST", "PUT", "PATCH", "DELETE"];
+
+    /// <summary>The routes only an administrator may use; every other Registry route is open to the back office too.</summary>
+    private static readonly string[] AdminOnlyOperations =
+    [
+        "GET /api/registry/night-band",
+        "PUT /api/registry/night-band",
+    ];
+
+    private static string ExpectedPolicy(string method, string route) =>
+        AdminOnlyOperations.Contains($"{method} {route}")
+            ? AuthorizationPolicies.Admin
+            : AuthorizationPolicies.BackOfficeOrAdmin;
 
     public RegistryEndpointSweepTests(PostgresFixture fixture) : base(fixture) { }
 
@@ -56,7 +68,7 @@ public sealed class RegistryEndpointSweepTests : RegistryIntegrationTestBase
     }
 
     [Fact]
-    public async Task EveryRoutedRegistryOperation_DeclaresTheBackOfficeOrAdminPolicyAndIsNeverAnonymous()
+    public async Task EveryRoutedRegistryOperation_DeclaresItsPolicyAndIsNeverAnonymous()
     {
         // Arrange
         await using var factory = ApiFactory.Create(ConnectionString);
@@ -66,12 +78,14 @@ public sealed class RegistryEndpointSweepTests : RegistryIntegrationTestBase
         var violations = operations
             .Where(o => o.AllowsAnonymous
                 || o.Policies.Length != 1
-                || o.Policies[0] != AuthorizationPolicies.BackOfficeOrAdmin)
+                || o.Policies[0] != ExpectedPolicy(o.Method, o.Route))
             .Select(o => $"{o.Method} {o.Route} -> [{string.Join(", ", o.Policies)}] anonymous={o.AllowsAnonymous}")
             .ToList();
 
         // Assert
         operations.ShouldNotBeEmpty();
+        operations.Select(o => $"{o.Method} {o.Route}").ShouldContain(AdminOnlyOperations[0]);
+        operations.Select(o => $"{o.Method} {o.Route}").ShouldContain(AdminOnlyOperations[1]);
         violations.ShouldBeEmpty();
     }
 

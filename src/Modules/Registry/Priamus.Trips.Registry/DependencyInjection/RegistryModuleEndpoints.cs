@@ -9,6 +9,7 @@ using Priamus.Trips.Registry.Features.DeactivateDriver;
 using Priamus.Trips.Registry.Features.DecommissionVehicle;
 using Priamus.Trips.Registry.Features.GetContract;
 using Priamus.Trips.Registry.Features.GetCustomer;
+using Priamus.Trips.Registry.Features.GetNightBand;
 using Priamus.Trips.Registry.Features.ListContracts;
 using Priamus.Trips.Registry.Features.ListCustomers;
 using Priamus.Trips.Registry.Features.ListDrivers;
@@ -18,9 +19,11 @@ using Priamus.Trips.Registry.Features.ListVehicles;
 using Priamus.Trips.Registry.Features.ReactivateCustomer;
 using Priamus.Trips.Registry.Features.ReactivateDriver;
 using Priamus.Trips.Registry.Features.ReactivateVehicle;
+using Priamus.Trips.Registry.Features.SimulatePrice;
 using Priamus.Trips.Registry.Features.UpdateContract;
 using Priamus.Trips.Registry.Features.UpdateCustomer;
 using Priamus.Trips.Registry.Features.UpdateDriver;
+using Priamus.Trips.Registry.Features.UpdateNightBand;
 using Priamus.Trips.Registry.Features.UpdateVehicle;
 
 namespace Priamus.Trips.Registry.DependencyInjection;
@@ -58,6 +61,9 @@ public static class RegistryModuleEndpoints
         app.MapCreateContract();
         app.MapUpdateContract();
         app.MapChangeContractFromDate();
+        app.MapGetNightBand();
+        app.MapUpdateNightBand();
+        app.MapSimulatePrice();
         return app;
     }
 }

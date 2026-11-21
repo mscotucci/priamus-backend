@@ -349,6 +349,51 @@ public sealed class ContractPersistenceTests : RegistryIntegrationTestBase
     }
 
     [Fact]
+    public async Task ContractStoredWithNightPriceBelowDayPrice_StillLoads()
+    {
+        // Arrange
+        var customer = await SeedCustomerAsync();
+        var contract = await SaveAsync(NewFlatRateContract(
+            customer.Id, nightSurcharge: true, Rate.Create(45m, 55m, 5m, new MinimumRule.None()).Value));
+        await using (var seed = CreateDbContext())
+        {
+            await seed.Database.ExecuteSqlInterpolatedAsync(
+                $"UPDATE registry.contracts SET night_price = 40 WHERE id = {contract.Id.Value}", Ct);
+        }
+
+        // Act
+        await using var read = CreateDbContext();
+        var loaded = await read.Contracts.SingleAsync(c => c.Id == contract.Id, Ct);
+
+        // Assert
+        loaded.Rate.ShouldNotBeNull().NightPrice.ShouldBe(40m);
+    }
+
+    [Fact]
+    public async Task VehicleRateStoredWithNightPriceBelowDayPrice_StillLoads()
+    {
+        // Arrange
+        var customer = await SeedCustomerAsync();
+        var vehicle = await SeedVehicleAsync("AB456CD");
+        var contract = await SaveAsync(NewContractWithVehicleRates(customer.Id, RateWithoutMinimum(vehicle)));
+        await using (var seed = CreateDbContext())
+        {
+            await seed.Database.ExecuteSqlInterpolatedAsync(
+                $"UPDATE registry.contract_vehicle_rates SET night_price = 40 WHERE contract_id = {contract.Id.Value}", Ct);
+        }
+
+        // Act
+        await using var read = CreateDbContext();
+        var loaded = await read.Contracts.SingleAsync(c => c.Id == contract.Id, Ct);
+
+        // Assert
+        var vehicleRate = loaded.VehicleRates.ShouldHaveSingleItem();
+        vehicleRate.VehicleId.ShouldBe(vehicle.Id);
+        vehicleRate.Rate.DayPrice.ShouldBe(48m);
+        vehicleRate.Rate.NightPrice.ShouldBe(40m);
+    }
+
+    [Fact]
     public async Task Rate_AddedToALoadedContract_IsSaved()
     {
         // Arrange

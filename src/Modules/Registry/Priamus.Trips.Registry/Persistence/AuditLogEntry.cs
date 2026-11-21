@@ -48,6 +48,9 @@ public static class AuditEventTypes
 
     /// <summary>A contract was updated: its terms were edited, or it was closed on the day before a later contract starts (created in the same save).</summary>
     public const string ContractUpdated = "registry.contract.updated";
+
+    /// <summary>The system night band was changed.</summary>
+    public const string NightBandUpdated = "registry.night_band.updated";
 }
 
 /// <summary>
@@ -98,7 +101,7 @@ public sealed class AuditLogEntry
     public Guid? ActorId { get; private set; }
 
     /// <summary>
-    /// Identifier of the affected entity. For vehicle events this is the <c>VehicleId</c>, for customer events the <c>CustomerId</c>, for driver events the <c>DriverId</c>, for contract events the <c>ContractId</c>.
+    /// Identifier of the affected entity. For vehicle events this is the <c>VehicleId</c>, for customer events the <c>CustomerId</c>, for driver events the <c>DriverId</c>, for contract events the <c>ContractId</c>, for night band events the id of the single setting row.
     /// </summary>
     public Guid SubjectId { get; private set; }
 

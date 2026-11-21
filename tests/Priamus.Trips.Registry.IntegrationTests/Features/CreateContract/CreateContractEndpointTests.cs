@@ -496,6 +496,32 @@ public sealed class CreateContractEndpointTests : RegistryIntegrationTestBase
     }
 
     [Fact]
+    public async Task NightPriceBelowDayPrice_Returns400UnderNightPriceInItalian_ForTheRateAndTheVehicleRate()
+    {
+        // Arrange
+        var customer = await SeedCustomerAsync();
+        await using var factory = CreateFactory();
+        const string rate = """{"dayPrice":45,"nightPrice":44.99,"nightCallFee":5,"minimumRule":"None"}""";
+        var contractBody = ContractBody();
+        SetRate(contractBody, "FlatRate", "ByHour", true, rate);
+        var vehicleBody = ContractBody();
+        SetRateWithVehicleRate(vehicleBody, "FlatRate", "ByHour", true, rate);
+
+        // Act
+        var onContract = await PostAsync(BackOfficeClient(factory), customer.Id.Value, contractBody);
+        var onVehicle = await PostAsync(BackOfficeClient(factory), customer.Id.Value, vehicleBody);
+
+        // Assert
+        const string text = "Il prezzo notturno non può essere più basso del prezzo diurno.";
+        foreach (var (response, key) in new[] { (onContract, "NightPrice"), (onVehicle, "VehicleRates[0].NightPrice") })
+        {
+            response.StatusCode.ShouldBe(HttpStatusCode.BadRequest);
+            var errors = (await response.Content.ReadFromJsonAsync<JsonElement>(Ct)).GetProperty("errors");
+            errors.GetProperty(key)[0].GetString().ShouldBe(text);
+        }
+    }
+
+    [Fact]
     public async Task SuccessfulCreationWithARate_WritesTheRateInTheAuditRow()
     {
         // Arrange

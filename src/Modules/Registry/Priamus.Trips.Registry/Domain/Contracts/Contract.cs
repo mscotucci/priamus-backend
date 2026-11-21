@@ -89,7 +89,7 @@ public sealed class Contract : AggregateRoot
     {
         get => _dayPrice is not { } dayPrice
             ? null
-            : Rate.Create(dayPrice, _nightPrice, _nightCallFee, StoredMinimum()).Value;
+            : Rate.Restore(dayPrice, _nightPrice, _nightCallFee, StoredMinimum());
         private set
         {
             _dayPrice = value?.DayPrice;

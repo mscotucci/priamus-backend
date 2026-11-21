@@ -2,6 +2,8 @@ using System.Text.Json;
 using Priamus.Trips.Registry.Domain.Customers;
 using Priamus.Trips.Registry.Domain.Customers.ValueObjects;
 using Priamus.Trips.Registry.Domain.Drivers;
+using Priamus.Trips.Registry.Domain.NightBands;
+using Priamus.Trips.Registry.Domain.Pricing;
 using Priamus.Trips.Registry.Domain.Vehicles;
 using Priamus.Trips.Registry.Domain.Vehicles.ValueObjects;
 using Priamus.Trips.Registry.Persistence;
@@ -300,6 +302,27 @@ public sealed class AuditInterceptorMappingTests
             using var payload = JsonDocument.Parse(entry.Payload);
             payload.RootElement.GetProperty("driverId").GetGuid().ShouldBe(driver.Id.Value);
         }
+    }
+
+    [Fact]
+    public void NightBandUpdated_WritesTheBandAsHoursAndMinutes()
+    {
+        var clock = new FakeClock(new DateTime(2026, 11, 20, 9, 0, 0, DateTimeKind.Utc));
+        var setting = NightBandSetting.Create(NightBand.Default, clock, Actor);
+        setting.Update(NightBand.Create(new TimeOnly(21, 30), new TimeOnly(5, 5)).Value, clock, Actor);
+
+        var entry = AuditInterceptor.MapToAuditLogEntry(setting.DomainEvents.Single(), ActorGuid);
+
+        entry.EventType.ShouldBe(AuditEventTypes.NightBandUpdated);
+        entry.EventType.ShouldBe("registry.night_band.updated");
+        entry.SubjectId.ShouldBe(NightBandSetting.SingleId);
+        entry.ActorId.ShouldBe(ActorGuid);
+        entry.OccurredAt.ShouldBe(clock.UtcNow);
+        using var payload = JsonDocument.Parse(entry.Payload);
+        var root = payload.RootElement;
+        root.GetProperty("settingId").GetGuid().ShouldBe(NightBandSetting.SingleId);
+        root.GetProperty("start").GetString().ShouldBe("21:30");
+        root.GetProperty("end").GetString().ShouldBe("05:05");
     }
 
     [Fact]

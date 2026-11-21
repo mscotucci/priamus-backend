@@ -37,7 +37,7 @@ public sealed record Rate
     /// <param name="nightPrice">Night price, greater than 0 when given.</param>
     /// <param name="nightCallFee">Night call fee, 0 or more when given.</param>
     /// <param name="minimum">The minimum rule; its amounts are greater than 0.</param>
-    /// <returns>A failure with the first violated rule; every amount has at most 2 decimals and is at most <see cref="MaxAmount"/>.</returns>
+    /// <returns>A failure with the first violated rule; every amount has at most 2 decimals and is at most <see cref="MaxAmount"/>, and the night price is not below the day price.</returns>
     public static Result<Rate> Create(
         decimal dayPrice,
         decimal? nightPrice,
@@ -49,9 +49,17 @@ public sealed record Rate
         var failure = CheckPositive(dayPrice, ContractErrors.DayPriceNotPositive)
             ?? CheckOptionalPositive(nightPrice, ContractErrors.NightPriceNotPositive)
             ?? CheckNightCallFee(nightCallFee)
+            ?? CheckNightNotBelowDay(dayPrice, nightPrice)
             ?? CheckMinimum(minimum);
         return failure is { } error ? error : new Rate(dayPrice, nightPrice, nightCallFee, minimum);
     }
+
+    /// <summary>
+    /// Rebuilds a rate from its stored columns without judging it again: a rate saved before the
+    /// night price rule existed may break it and must still be read.
+    /// </summary>
+    internal static Rate Restore(decimal dayPrice, decimal? nightPrice, decimal? nightCallFee, MinimumRule minimum) =>
+        new(dayPrice, nightPrice, nightCallFee, minimum);
 
     private static Error? CheckPositive(decimal amount, Error notPositive)
     {
@@ -80,6 +88,9 @@ public sealed record Rate
 
         return CheckScale(value);
     }
+
+    private static Error? CheckNightNotBelowDay(decimal dayPrice, decimal? nightPrice) =>
+        nightPrice < dayPrice ? ContractErrors.NightPriceBelowDayPrice : null;
 
     private static Error? CheckMinimum(MinimumRule minimum) => minimum switch
     {

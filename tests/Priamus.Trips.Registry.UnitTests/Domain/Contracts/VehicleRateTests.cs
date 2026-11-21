@@ -21,7 +21,7 @@ public sealed class VehicleRateTests
     private static Validity OpenFromApril() => Validity.Create(new DateOnly(2026, 4, 1), null).Value;
 
     private static Rate NewRate(decimal? night = null, decimal? fee = null, MinimumRule? minimum = null) =>
-        Rate.Create(70m, night, fee, minimum ?? new MinimumRule.None()).Value;
+        Rate.Create(50m, night, fee, minimum ?? new MinimumRule.None()).Value;
 
     private static VehicleRate ForVehicle(VehicleId vehicleId, Rate? rate = null) =>
         new(vehicleId, rate ?? NewRate());

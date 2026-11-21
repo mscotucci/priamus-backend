@@ -1,0 +1,444 @@
+using System.Net;
+using System.Net.Http.Json;
+using System.Text.Json;
+using Microsoft.AspNetCore.Mvc.Testing;
+using Microsoft.EntityFrameworkCore;
+using Priamus.Trips.IntegrationTesting;
+using Priamus.Trips.Registry.Domain.Pricing;
+using Priamus.Trips.Registry.IntegrationTests.Infrastructure;
+using Priamus.Trips.SharedKernel.Time;
+using Shouldly;
+using Xunit;
+using static Priamus.Trips.Registry.IntegrationTests.Infrastructure.ContractTestSupport;
+using static Priamus.Trips.Registry.IntegrationTests.Infrastructure.VehicleTestSupport;
+
+namespace Priamus.Trips.Registry.IntegrationTests.Features.SimulatePrice;
+
+/// <summary>
+/// Endpoint integration tests for <c>POST /api/registry/contracts/simulation</c>, against the per-test
+/// PostgreSQL database and the test authentication scheme.
+/// </summary>
+public sealed class SimulatePriceEndpointTests : RegistryIntegrationTestBase
+{
+    public SimulatePriceEndpointTests(PostgresFixture fixture) : base(fixture) { }
+
+    private static CancellationToken Ct => TestContext.Current.CancellationToken;
+
+    private WebApplicationFactory<Program> CreateFactory() =>
+        ApiFactory.Create(ConnectionString, useTestAuthentication: true);
+
+    /// <summary>A valid body for a flat-rate contract without the night surcharge; tests override single members.</summary>
+    private static Dictionary<string, object?> Body(string pricingMode, string startTime = "10:00")
+    {
+        var body = new Dictionary<string, object?>
+        {
+            ["pricingMode"] = pricingMode,
+            ["nightSurcharge"] = false,
+            ["dayPrice"] = 60,
+            ["minimumRule"] = "None",
+            ["startTime"] = startTime,
+        };
+
+        switch (pricingMode)
+        {
+            case "ByHour":
+                body["endTime"] = "12:20";
+                break;
+            case "ByWeight":
+                body["kilograms"] = 12300;
+                break;
+            case "ByDistance":
+                body["kilometres"] = 100;
+                break;
+        }
+
+        return body;
+    }
+
+    private static void WithNightSurcharge(Dictionary<string, object?> body, decimal night, decimal fee)
+    {
+        body["nightSurcharge"] = true;
+        body["nightPrice"] = night;
+        body["nightCallFee"] = fee;
+    }
+
+    private static Task<HttpResponseMessage> PostAsync(HttpClient client, object body) =>
+        client.PostAsJsonAsync("/api/registry/contracts/simulation", body, TestJson.Options, Ct);
+
+    private static async Task<JsonElement> ReadAsync(HttpResponseMessage response)
+    {
+        response.StatusCode.ShouldBe(HttpStatusCode.OK, await response.Content.ReadAsStringAsync(Ct));
+        using var document = JsonDocument.Parse(await response.Content.ReadAsStringAsync(Ct));
+        return document.RootElement.Clone();
+    }
+
+    private async Task<int> AuditCountAsync()
+    {
+        await using var db = CreateDbContext();
+        return await db.AuditLog.CountAsync(Ct);
+    }
+
+    [Fact]
+    public async Task ByHour_DayTrip_ReturnsTheAmountAndItsSteps()
+    {
+        // Arrange
+        await using var factory = CreateFactory();
+
+        // Act
+        var result = await ReadAsync(await PostAsync(BackOfficeClient(factory), Body("ByHour")));
+
+        // Assert: 140 minutes at 60 an hour.
+        result.GetProperty("total").GetDecimal().ShouldBe(140m);
+        result.GetProperty("band").GetString().ShouldBe("Day");
+        result.GetProperty("rateSource").GetString().ShouldBe("Contract");
+        result.GetProperty("quantity").GetInt32().ShouldBe(140);
+        result.GetProperty("unitPrice").GetDecimal().ShouldBe(60m);
+        result.GetProperty("baseAmount").GetDecimal().ShouldBe(140m);
+        result.GetProperty("minimumRule").GetString().ShouldBe("None");
+        result.GetProperty("minimumApplied").GetBoolean().ShouldBeFalse();
+        result.GetProperty("nightCallFee").ValueKind.ShouldBe(JsonValueKind.Null);
+        result.GetProperty("nightBand").GetProperty("start").GetString().ShouldBe("22:00");
+        result.GetProperty("nightBand").GetProperty("end").GetString().ShouldBe("06:00");
+    }
+
+    [Fact]
+    public async Task ByHour_NightTripOverMidnight_ComputesThreeHoursAtTheNightPriceWithTheCallFee()
+    {
+        // Arrange
+        await using var factory = CreateFactory();
+        var body = Body("ByHour", "23:00");
+        body["endTime"] = "02:00";
+        WithNightSurcharge(body, night: 90, fee: 5);
+
+        // Act
+        var result = await ReadAsync(await PostAsync(BackOfficeClient(factory), body));
+
+        // Assert: 180 minutes at 90 an hour, plus the call fee.
+        result.GetProperty("band").GetString().ShouldBe("Night");
+        result.GetProperty("quantity").GetInt32().ShouldBe(180);
+        result.GetProperty("unitPrice").GetDecimal().ShouldBe(90m);
+        result.GetProperty("baseAmount").GetDecimal().ShouldBe(270m);
+        result.GetProperty("nightCallFee").GetDecimal().ShouldBe(5m);
+        result.GetProperty("total").GetDecimal().ShouldBe(275m);
+    }
+
+    [Fact]
+    public async Task ByWeight_NightTrip_ReturnsTheRoundedAmountWithTheCallFee()
+    {
+        // Arrange
+        await using var factory = CreateFactory();
+        var body = Body("ByWeight", "05:59");
+        body["dayPrice"] = 10;
+        WithNightSurcharge(body, night: 12, fee: 5);
+
+        // Act
+        var result = await ReadAsync(await PostAsync(BackOfficeClient(factory), body));
+
+        // Assert: 12 300 kg at 12 a ton, plus the call fee.
+        result.GetProperty("band").GetString().ShouldBe("Night");
+        result.GetProperty("quantity").GetInt32().ShouldBe(12300);
+        result.GetProperty("baseAmount").GetDecimal().ShouldBe(147.6m);
+        result.GetProperty("total").GetDecimal().ShouldBe(152.6m);
+    }
+
+    [Fact]
+    public async Task ByDistance_FixedMinimum_RaisesTheBaseAmountAndFlagsIt()
+    {
+        // Arrange: 100 km at 1.5 is 150, below the minimum of 200; 06:00 is a day start.
+        await using var factory = CreateFactory();
+        var body = Body("ByDistance", "06:00");
+        WithNightSurcharge(body, night: 2, fee: 5);
+        body["dayPrice"] = 1.5m;
+        body["minimumRule"] = "FixedMinimum";
+        body["minimumAmount"] = 200;
+
+        // Act
+        var result = await ReadAsync(await PostAsync(BackOfficeClient(factory), body));
+
+        // Assert
+        result.GetProperty("band").GetString().ShouldBe("Day");
+        result.GetProperty("baseAmount").GetDecimal().ShouldBe(150m);
+        result.GetProperty("minimumRule").GetString().ShouldBe("FixedMinimum");
+        result.GetProperty("minimumAmount").GetDecimal().ShouldBe(200m);
+        result.GetProperty("amountAfterMinimum").GetDecimal().ShouldBe(200m);
+        result.GetProperty("minimumApplied").GetBoolean().ShouldBeTrue();
+        result.GetProperty("nightCallFee").ValueKind.ShouldBe(JsonValueKind.Null);
+        result.GetProperty("total").GetDecimal().ShouldBe(200m);
+    }
+
+    [Fact]
+    public async Task ByTrip_StartBeforeTheBand_IsADayTripAtTheDayPrice()
+    {
+        // Arrange
+        await using var factory = CreateFactory();
+        var body = Body("ByTrip", "21:59");
+        body["dayPrice"] = 150;
+        WithNightSurcharge(body, night: 180, fee: 10);
+
+        // Act
+        var result = await ReadAsync(await PostAsync(BackOfficeClient(factory), body));
+
+        // Assert
+        result.GetProperty("band").GetString().ShouldBe("Day");
+        result.GetProperty("quantity").ValueKind.ShouldBe(JsonValueKind.Null);
+        result.GetProperty("total").GetDecimal().ShouldBe(150m);
+    }
+
+    [Fact]
+    public async Task VehicleWithARateOfItsOwn_IsPricedWithThatRate()
+    {
+        // Arrange
+        await using var factory = CreateFactory();
+        var vehicleId = Guid.NewGuid();
+        var body = Body("ByHour");
+        body["endTime"] = "12:00";
+        body["vehicleRates"] = new[] { VehicleRateItem(vehicleId, """{"dayPrice":80,"minimumRule":"None"}""") };
+        body["vehicleId"] = vehicleId;
+
+        // Act
+        var result = await ReadAsync(await PostAsync(BackOfficeClient(factory), body));
+
+        // Assert: 120 minutes at the vehicle's 80 an hour.
+        result.GetProperty("rateSource").GetString().ShouldBe("Vehicle");
+        result.GetProperty("vehicleId").GetGuid().ShouldBe(vehicleId);
+        result.GetProperty("unitPrice").GetDecimal().ShouldBe(80m);
+        result.GetProperty("total").GetDecimal().ShouldBe(160m);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task VehicleWithoutARateOfItsOwn_IsPricedWithTheContractRate(bool vehicleSent)
+    {
+        // Arrange: the vehicle sent is not among the vehicle rates, or no vehicle is sent.
+        await using var factory = CreateFactory();
+        var body = Body("ByHour");
+        body["endTime"] = "12:00";
+        body["vehicleRates"] = new[] { VehicleRateItem(Guid.NewGuid(), """{"dayPrice":80,"minimumRule":"None"}""") };
+        body["vehicleId"] = vehicleSent ? Guid.NewGuid() : null;
+
+        // Act
+        var result = await ReadAsync(await PostAsync(BackOfficeClient(factory), body));
+
+        // Assert: 120 minutes at the contract's 60 an hour.
+        result.GetProperty("rateSource").GetString().ShouldBe("Contract");
+        result.GetProperty("vehicleId").ValueKind.ShouldBe(JsonValueKind.Null);
+        result.GetProperty("total").GetDecimal().ShouldBe(120m);
+    }
+
+    [Fact]
+    public async Task ChangedBand_IsUsedByTheNextSimulation()
+    {
+        // Arrange: 21:00 is a day start in 22:00-06:00 and a night start in 20:00-05:00.
+        await using var factory = CreateFactory();
+        var client = BackOfficeClient(factory);
+        var body = Body("ByTrip", "21:00");
+        WithNightSurcharge(body, night: 90, fee: 5);
+        var before = await ReadAsync(await PostAsync(client, body));
+
+        await using (var db = CreateDbContext())
+        {
+            var setting = await db.NightBandSettings.SingleAsync(Ct);
+            setting.Update(
+                NightBand.Create(new TimeOnly(20, 0), new TimeOnly(5, 0)).Value,
+                new SystemClock(),
+                FakeCurrentUser.ActorId);
+            await db.SaveChangesAsync(Ct);
+        }
+
+        // Act
+        var after = await ReadAsync(await PostAsync(client, body));
+
+        // Assert
+        before.GetProperty("band").GetString().ShouldBe("Day");
+        before.GetProperty("total").GetDecimal().ShouldBe(60m);
+        after.GetProperty("band").GetString().ShouldBe("Night");
+        after.GetProperty("total").GetDecimal().ShouldBe(95m);
+        after.GetProperty("nightBand").GetProperty("start").GetString().ShouldBe("20:00");
+        after.GetProperty("nightBand").GetProperty("end").GetString().ShouldBe("05:00");
+    }
+
+    [Fact]
+    public async Task Simulation_WritesNothing()
+    {
+        // Arrange
+        await using var factory = CreateFactory();
+        var auditBefore = await AuditCountAsync();
+
+        // Act
+        var response = await PostAsync(BackOfficeClient(factory), Body("ByHour"));
+
+        // Assert
+        response.StatusCode.ShouldBe(HttpStatusCode.OK);
+        (await AuditCountAsync()).ShouldBe(auditBefore);
+        await using var db = CreateDbContext();
+        (await db.NightBandSettings.AsNoTracking().SingleAsync(Ct)).Version.ShouldBe(0);
+        (await db.Contracts.CountAsync(Ct)).ShouldBe(0);
+    }
+
+    [Fact]
+    public async Task Admin_CanSimulate()
+    {
+        // Arrange
+        await using var factory = CreateFactory();
+
+        // Act
+        var response = await PostAsync(TestCaller.WithRole("Admin").ApplyTo(factory.CreateClient()), Body("ByTrip"));
+
+        // Assert
+        response.StatusCode.ShouldBe(HttpStatusCode.OK);
+    }
+
+    [Fact]
+    public async Task Driver_Returns403()
+    {
+        // Arrange
+        await using var factory = CreateFactory();
+        var client = TestCaller.WithRole("Driver").ApplyTo(factory.CreateClient());
+
+        // Act
+        var response = await PostAsync(client, Body("ByHour"));
+
+        // Assert
+        response.StatusCode.ShouldBe(HttpStatusCode.Forbidden);
+    }
+
+    [Fact]
+    public async Task TotalOverTheMaximum_Returns422WithTheItalianMessage()
+    {
+        // Arrange: two kilometres at the largest day price.
+        await using var factory = CreateFactory();
+        var body = Body("ByDistance");
+        body["kilometres"] = 2;
+        body["dayPrice"] = 9999999999.99m;
+
+        // Act
+        var response = await PostAsync(BackOfficeClient(factory), body);
+
+        // Assert
+        (await DetailAsync(response)).ShouldBe("Importo troppo alto.");
+        await response.ShouldBeProblemAsync(HttpStatusCode.UnprocessableEntity, PricingErrors.AmountTooLarge, Ct);
+    }
+
+    [Theory]
+    [InlineData("ByHour", "endTime", null, "EndTime", "Valore obbligatorio.")]
+    [InlineData("ByHour", "endTime", "10:00", "EndTime", "La fine deve essere diversa dall'inizio.")]
+    [InlineData("ByHour", "endTime", "sera", "EndTime", "Inserisci un orario.")]
+    [InlineData("ByHour", "startTime", "9", "StartTime", "Inserisci un orario.")]
+    [InlineData("ByHour", "startTime", null, "StartTime", "Valore obbligatorio.")]
+    [InlineData("ByHour", "kilograms", 5, "Kilograms", "Questo valore non si applica al contratto.")]
+    [InlineData("ByHour", "kilometres", 5, "Kilometres", "Questo valore non si applica al contratto.")]
+    [InlineData("ByHour", "pricingMode", null, "PricingMode", "Valore obbligatorio.")]
+    [InlineData("ByHour", "dayPrice", null, "DayPrice", "Valore obbligatorio.")]
+    [InlineData("ByWeight", "kilograms", null, "Kilograms", "Valore obbligatorio.")]
+    [InlineData("ByWeight", "kilograms", 0, "Kilograms", "Inserisci un numero intero maggiore di zero.")]
+    [InlineData("ByWeight", "kilograms", -3, "Kilograms", "Inserisci un numero intero maggiore di zero.")]
+    [InlineData("ByWeight", "kilograms", 12.5, "Kilograms", "Inserisci un numero intero maggiore di zero.")]
+    [InlineData("ByWeight", "kilograms", 100000, "Kilograms", "Al massimo 99.999 kg.")]
+    [InlineData("ByWeight", "endTime", "10:00", "EndTime", "Questo valore non si applica al contratto.")]
+    [InlineData("ByWeight", "kilometres", 5, "Kilometres", "Questo valore non si applica al contratto.")]
+    [InlineData("ByDistance", "kilometres", null, "Kilometres", "Valore obbligatorio.")]
+    [InlineData("ByDistance", "kilometres", 0, "Kilometres", "Inserisci un numero intero maggiore di zero.")]
+    [InlineData("ByDistance", "kilometres", 2.5, "Kilometres", "Inserisci un numero intero maggiore di zero.")]
+    [InlineData("ByDistance", "kilometres", 10000, "Kilometres", "Al massimo 9.999 km.")]
+    [InlineData("ByDistance", "kilograms", 5, "Kilograms", "Questo valore non si applica al contratto.")]
+    [InlineData("ByTrip", "kilometres", 5, "Kilometres", "Questo valore non si applica al contratto.")]
+    [InlineData("ByTrip", "kilograms", 5, "Kilograms", "Questo valore non si applica al contratto.")]
+    [InlineData("ByTrip", "endTime", "10:00", "EndTime", "Questo valore non si applica al contratto.")]
+    public async Task InvalidMember_Returns400UnderThatMemberInItalian(
+        string mode, string field, object? value, string expectedKey, string expectedMessage)
+    {
+        // Arrange
+        await using var factory = CreateFactory();
+        var body = Body(mode);
+        if (value is null)
+        {
+            body.Remove(field);
+        }
+        else
+        {
+            body[field] = value;
+        }
+
+        // Act
+        var response = await PostAsync(BackOfficeClient(factory), body);
+
+        // Assert
+        response.StatusCode.ShouldBe(HttpStatusCode.BadRequest);
+        using var document = JsonDocument.Parse(await response.Content.ReadAsStringAsync(Ct));
+        var errors = document.RootElement.GetProperty("errors");
+        errors.EnumerateObject().Select(e => e.Name).ShouldBe([expectedKey]);
+        errors.GetProperty(expectedKey)[0].GetString().ShouldBe(expectedMessage);
+    }
+
+    [Fact]
+    public async Task NightPriceBelowDayPrice_Returns400UnderNightPrice()
+    {
+        // Arrange
+        await using var factory = CreateFactory();
+        var body = Body("ByHour");
+        WithNightSurcharge(body, night: 50, fee: 5);
+
+        // Act
+        var response = await PostAsync(BackOfficeClient(factory), body);
+
+        // Assert
+        response.StatusCode.ShouldBe(HttpStatusCode.BadRequest);
+        (await ErrorKeysAsync(response)).ShouldBe(["NightPrice"]);
+    }
+
+    [Fact]
+    public async Task VehicleRateWithoutVehicle_Returns400UnderItsVehicleId()
+    {
+        // Arrange
+        await using var factory = CreateFactory();
+        var body = Body("ByHour");
+        body["vehicleRates"] = new[] { VehicleRateItem(null) };
+
+        // Act
+        var response = await PostAsync(BackOfficeClient(factory), body);
+
+        // Assert
+        response.StatusCode.ShouldBe(HttpStatusCode.BadRequest);
+        (await ErrorKeysAsync(response)).ShouldBe(["VehicleRates[0].VehicleId"]);
+    }
+
+    [Fact]
+    public async Task VehicleRateWithoutNightPriceOnASurchargeContract_Returns400UnderItsNightPrice()
+    {
+        // Arrange
+        await using var factory = CreateFactory();
+        var body = Body("ByHour");
+        WithNightSurcharge(body, night: 70, fee: 5);
+        body["vehicleRates"] = new[] { VehicleRateItem(Guid.NewGuid(), """{"dayPrice":80,"minimumRule":"None"}""") };
+
+        // Act
+        var response = await PostAsync(BackOfficeClient(factory), body);
+
+        // Assert
+        response.StatusCode.ShouldBe(HttpStatusCode.BadRequest);
+        using var document = JsonDocument.Parse(await response.Content.ReadAsStringAsync(Ct));
+        var errors = document.RootElement.GetProperty("errors");
+        errors.EnumerateObject().Select(e => e.Name).ShouldContain("VehicleRates[0].NightPrice");
+        errors.GetProperty("VehicleRates[0].NightPrice")[0].GetString().ShouldBe("Valore obbligatorio.");
+    }
+
+    [Fact]
+    public async Task ByTripWithATieredMinimum_Returns400UnderMinimumRule()
+    {
+        // Arrange
+        await using var factory = CreateFactory();
+        var body = Body("ByTrip");
+        body["minimumRule"] = "TieredOverage";
+
+        // Act
+        var response = await PostAsync(BackOfficeClient(factory), body);
+
+        // Assert
+        response.StatusCode.ShouldBe(HttpStatusCode.BadRequest);
+        using var document = JsonDocument.Parse(await response.Content.ReadAsStringAsync(Ct));
+        var errors = document.RootElement.GetProperty("errors");
+        errors.EnumerateObject().Select(e => e.Name).ShouldBe(["MinimumRule"]);
+        errors.GetProperty("MinimumRule")[0].GetString().ShouldBe("Questo valore non si applica al contratto.");
+    }
+}

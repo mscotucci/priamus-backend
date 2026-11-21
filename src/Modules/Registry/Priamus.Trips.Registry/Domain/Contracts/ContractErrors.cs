@@ -60,6 +60,11 @@ public static class ContractErrors
         "Registry.Contract.NightPriceNotPositive",
         "The night price must be greater than zero.");
 
+    /// <summary>The night price is lower than the day price.</summary>
+    public static readonly Error NightPriceBelowDayPrice = Error.Validation(
+        "Registry.Contract.NightPriceBelowDayPrice",
+        "The night price cannot be lower than the day price.");
+
     /// <summary>The night call fee is negative.</summary>
     public static readonly Error NightCallFeeNegative = Error.Validation(
         "Registry.Contract.NightCallFeeNegative",

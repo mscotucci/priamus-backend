@@ -132,6 +132,12 @@ internal static class ContractRequestValidation
                 yield return check;
             }
         }
+
+        // Only a night price that passed its own checks is compared with the day price.
+        if (checks[1] is null && rate is { DayPrice: { } day, NightPrice: { } nightPrice } && nightPrice < day)
+        {
+            yield return Error(RegistryMessages.Registry_Contract_NightPriceBelowDayPrice, "NightPrice");
+        }
     }
 
     private static ValidationResult? Positive(string member, decimal? value, bool required, bool applicable) =>

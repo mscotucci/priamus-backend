@@ -64,6 +64,30 @@
   <data name="Registry.Vehicle.ConcurrentUpdate" xml:space="preserve">
     <value>Il mezzo è stato modificato da un altro utente nel frattempo. Controlla i dati aggiornati e riprova.</value>
   </data>
+  <data name="Validation.TimeOfDay" xml:space="preserve">
+    <value>Inserisci un orario.</value>
+  </data>
+  <data name="Registry.NightBand.EndEqualsStart" xml:space="preserve">
+    <value>La fine deve essere diversa dall'inizio.</value>
+  </data>
+  <data name="Registry.NightBand.ConcurrentUpdate" xml:space="preserve">
+    <value>La fascia notturna è stata modificata da un altro utente nel frattempo. Controlla i dati aggiornati e riprova.</value>
+  </data>
+  <data name="Registry.Pricing.TripEndEqualsStart" xml:space="preserve">
+    <value>La fine deve essere diversa dall'inizio.</value>
+  </data>
+  <data name="Registry.Pricing.QuantityNotPositive" xml:space="preserve">
+    <value>Inserisci un numero intero maggiore di zero.</value>
+  </data>
+  <data name="Registry.Pricing.KilogramsTooLarge" xml:space="preserve">
+    <value>Al massimo 99.999 kg.</value>
+  </data>
+  <data name="Registry.Pricing.KilometresTooLarge" xml:space="preserve">
+    <value>Al massimo 9.999 km.</value>
+  </data>
+  <data name="Registry.Pricing.AmountTooLarge" xml:space="preserve">
+    <value>Importo troppo alto.</value>
+  </data>
   <data name="Validation.VatNumber" xml:space="preserve">
     <value>La partita IVA deve avere 11 cifre con cifra di controllo valida; spazi e un IT iniziale sono ignorati.</value>
   </data>
@@ -156,6 +180,9 @@
   </data>
   <data name="Registry.Contract.NightPriceNotPositive" xml:space="preserve">
     <value>Inserisci un importo maggiore di zero.</value>
+  </data>
+  <data name="Registry.Contract.NightPriceBelowDayPrice" xml:space="preserve">
+    <value>Il prezzo notturno non può essere più basso del prezzo diurno.</value>
   </data>
   <data name="Registry.Contract.NightCallFeeNegative" xml:space="preserve">
     <value>L'importo non può essere negativo.</value>

@@ -252,6 +252,43 @@ namespace Priamus.Trips.Registry.Persistence.Migrations
                         });
                 });
 
+            modelBuilder.Entity("Priamus.Trips.Registry.Domain.NightBands.NightBandSetting", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<DateTime>("LastModifiedAt")
+                        .HasColumnType("timestamptz")
+                        .HasColumnName("last_modified_at");
+
+                    b.Property<Guid>("LastModifiedBy")
+                        .HasColumnType("uuid")
+                        .HasColumnName("last_modified_by");
+
+                    b.Property<int>("Version")
+                        .IsConcurrencyToken()
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer")
+                        .HasDefaultValue(0)
+                        .HasColumnName("version");
+
+                    b.Property<TimeOnly>("_end")
+                        .HasColumnType("time")
+                        .HasColumnName("end_time");
+
+                    b.Property<TimeOnly>("_start")
+                        .HasColumnType("time")
+                        .HasColumnName("start_time");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("night_band_settings", "registry", t =>
+                        {
+                            t.HasCheckConstraint("chk_night_band_settings_single_row", "id = '00000000-0000-0000-0000-000000000001'");
+                        });
+                });
+
             modelBuilder.Entity("Priamus.Trips.Registry.Domain.Vehicles.Vehicle", b =>
                 {
                     b.Property<Guid>("Id")
