@@ -37,7 +37,7 @@ public sealed class VehicleRateTests
             billingLevel == BillingLevel.FlatRate
                 ? (nightSurcharge ? NewRate(55m, 5m) : NewRate())
                 : null,
-            vehicleRates, NewClock(), Actor);
+            vehicleRates, [], NewClock(), Actor);
 
     [Fact]
     public void Create_FlatRateWithoutVehicleRates_HoldsAnEmptyList()
@@ -70,7 +70,7 @@ public sealed class VehicleRateTests
         var replacement = ForVehicle(VehicleId.New());
 
         var result = contract.Update(OpenFromApril(), BillingLevel.FlatRate, PricingMode.ByHour, [], false,
-            NewRate(), [replacement], clock, OtherActor);
+            NewRate(), [replacement], [], clock, OtherActor);
 
         result.IsSuccess.ShouldBeTrue();
         contract.VehicleRates.ShouldBe([replacement]);
@@ -91,7 +91,7 @@ public sealed class VehicleRateTests
 
         var result = contract.Update(OpenFromApril(), BillingLevel.FlatRate, PricingMode.ByHour, [], false,
             NewRate(), [ForVehicle(second.VehicleId, NewRate(minimum: new MinimumRule.FixedMinimum(150m))), first],
-            clock, OtherActor);
+            [], clock, OtherActor);
 
         result.IsSuccess.ShouldBeTrue();
         contract.Version.ShouldBe(0);
@@ -109,7 +109,7 @@ public sealed class VehicleRateTests
         var changed = ForVehicle(vehicleId, NewRate(minimum: new MinimumRule.FixedMinimum(150m)));
 
         var result = contract.Update(OpenFromApril(), BillingLevel.FlatRate, PricingMode.ByHour, [], false,
-            NewRate(), [changed], NewClock(), OtherActor);
+            NewRate(), [changed], [], NewClock(), OtherActor);
 
         result.IsSuccess.ShouldBeTrue();
         contract.Version.ShouldBe(1);
@@ -123,7 +123,7 @@ public sealed class VehicleRateTests
         var contract = CreateWith([ForVehicle(VehicleId.New())]).Value;
 
         var result = contract.Update(OpenFromApril(), BillingLevel.FlatRate, PricingMode.ByHour, [], false,
-            NewRate(), [], NewClock(), OtherActor);
+            NewRate(), [], [], NewClock(), OtherActor);
 
         result.IsSuccess.ShouldBeTrue();
         contract.VehicleRates.ShouldBeEmpty();
@@ -162,7 +162,7 @@ public sealed class VehicleRateTests
         contract.ClearDomainEvents();
 
         var result = contract.Update(OpenFromApril(), BillingLevel.PerLocationPair, PricingMode.ByHour, [], false,
-            null, [kept], NewClock(), OtherActor);
+            null, [kept], [], NewClock(), OtherActor);
 
         result.Error.ShouldBe(ContractErrors.VehicleRateNotApplicable);
         contract.BillingLevel.ShouldBe(BillingLevel.FlatRate);
@@ -190,7 +190,7 @@ public sealed class VehicleRateTests
         var vehicleId = VehicleId.New();
 
         var result = contract.Update(OpenFromApril(), BillingLevel.FlatRate, PricingMode.ByHour, [], false,
-            NewRate(), [ForVehicle(vehicleId), ForVehicle(vehicleId)], NewClock(), OtherActor);
+            NewRate(), [ForVehicle(vehicleId), ForVehicle(vehicleId)], [], NewClock(), OtherActor);
 
         result.Error.ShouldBe(ContractErrors.VehicleRateDuplicate);
         contract.VehicleRates.ShouldBe([original]);
@@ -255,7 +255,7 @@ public sealed class VehicleRateTests
         var badRate = ForVehicle(VehicleId.New(), NewRate(minimum: new MinimumRule.FixedMinimum(100m)));
 
         var result = contract.Update(OpenFromApril(), BillingLevel.FlatRate, PricingMode.ByTrip, [], false,
-            NewRate(), [badRate], NewClock(), OtherActor);
+            NewRate(), [badRate], [], NewClock(), OtherActor);
 
         result.Error.ShouldBe(ContractErrors.MinimumNotApplicableByTrip);
         contract.PricingMode.ShouldBe(PricingMode.ByHour);

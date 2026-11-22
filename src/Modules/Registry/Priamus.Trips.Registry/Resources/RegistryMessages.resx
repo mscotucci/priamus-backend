@@ -88,6 +88,9 @@
   <data name="Registry.Pricing.AmountTooLarge" xml:space="preserve">
     <value>Importo troppo alto.</value>
   </data>
+  <data name="Registry.Pricing.NoRateForLocation" xml:space="preserve">
+    <value>Non c'è una tariffa per i luoghi del viaggio.</value>
+  </data>
   <data name="Validation.VatNumber" xml:space="preserve">
     <value>La partita IVA deve avere 11 cifre con cifra di controllo valida; spazi e un IT iniziale sono ignorati.</value>
   </data>
@@ -252,5 +255,26 @@
   </data>
   <data name="Registry.Contract.VehicleRateDecommissioned" xml:space="preserve">
     <value>Il mezzo {0} è dismesso: non si può aggiungere una sua tariffa.</value>
+  </data>
+  <data name="Registry.Contract.LocationRateNotApplicable" xml:space="preserve">
+    <value>Questo valore non si applica al contratto.</value>
+  </data>
+  <data name="Registry.Contract.LocationRateLocationsMismatch" xml:space="preserve">
+    <value>Questo valore non si applica al contratto.</value>
+  </data>
+  <data name="Registry.Contract.LocationRateDuplicate" xml:space="preserve">
+    <value>Questo luogo o questa coppia ha già una tariffa in questo contratto.</value>
+  </data>
+  <data name="Registry.Contract.LocationRateUnknownLocation" xml:space="preserve">
+    <value>Il luogo {0} non esiste.</value>
+  </data>
+  <data name="Registry.Contract.LocationRateDeactivatedLocation" xml:space="preserve">
+    <value>Il luogo {0} è disattivato: non si può aggiungere una sua tariffa.</value>
+  </data>
+  <data name="Registry.Contract.LocationRatesRequired" xml:space="preserve">
+    <value>Questo contratto è stato salvato senza tariffa: salvalo prima con «Da sempre», poi cambia le condizioni da una data.</value>
+  </data>
+  <data name="Registry.Contract.LocationRatesMissing" xml:space="preserve">
+    <value>Aggiungi almeno una tariffa.</value>
   </data>
 </root>

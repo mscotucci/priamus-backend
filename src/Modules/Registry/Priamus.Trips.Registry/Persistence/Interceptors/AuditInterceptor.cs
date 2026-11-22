@@ -170,11 +170,11 @@ public sealed class AuditInterceptor : ISaveChangesInterceptor
 
             ContractCreated e => Create(
                 e.EventId, e.OccurredAt, actorId, e.ContractId.Value, AuditEventTypes.ContractCreated,
-                ContractState(e.ContractId, e.CustomerId, e.ValidFrom, e.ValidTo, e.BillingLevel, e.PricingMode, e.RequiredDocuments, e.NightSurcharge, e.Rate, e.VehicleRates)),
+                ContractState(e.ContractId, e.CustomerId, e.ValidFrom, e.ValidTo, e.BillingLevel, e.PricingMode, e.RequiredDocuments, e.NightSurcharge, e.Rate, e.VehicleRates, e.LocationRates)),
 
             ContractUpdated e => Create(
                 e.EventId, e.OccurredAt, actorId, e.ContractId.Value, AuditEventTypes.ContractUpdated,
-                ContractState(e.ContractId, e.CustomerId, e.ValidFrom, e.ValidTo, e.BillingLevel, e.PricingMode, e.RequiredDocuments, e.NightSurcharge, e.Rate, e.VehicleRates)),
+                ContractState(e.ContractId, e.CustomerId, e.ValidFrom, e.ValidTo, e.BillingLevel, e.PricingMode, e.RequiredDocuments, e.NightSurcharge, e.Rate, e.VehicleRates, e.LocationRates)),
 
             NightBandUpdated e => Create(
                 e.EventId, e.OccurredAt, actorId, e.SettingId, AuditEventTypes.NightBandUpdated,
@@ -267,7 +267,8 @@ public sealed class AuditInterceptor : ISaveChangesInterceptor
         IReadOnlyList<RequiredDocument> requiredDocuments,
         bool nightSurcharge,
         Rate? rate,
-        IReadOnlyList<VehicleRate> vehicleRates) =>
+        IReadOnlyList<VehicleRate> vehicleRates,
+        IReadOnlyList<LocationRate> locationRates) =>
         new
         {
             ContractId = contractId.Value,
@@ -297,6 +298,20 @@ public sealed class AuditInterceptor : ISaveChangesInterceptor
                     MinimumAmount = v.Rate.Minimum.Amount,
                     MinimumThreshold = v.Rate.Minimum.Threshold,
                     MinimumOveragePrice = v.Rate.Minimum.OveragePrice,
+                }).ToArray(),
+            LocationRates = locationRates.Count == 0
+                ? null
+                : locationRates.Select(l => new
+                {
+                    PickupLocationId = l.PickupLocationId?.Value,
+                    DeliveryLocationId = l.DeliveryLocationId?.Value,
+                    DayPrice = l.Rate.DayPrice,
+                    NightPrice = l.Rate.NightPrice,
+                    NightCallFee = l.Rate.NightCallFee,
+                    MinimumRule = l.Rate.Minimum.Kind,
+                    MinimumAmount = l.Rate.Minimum.Amount,
+                    MinimumThreshold = l.Rate.Minimum.Threshold,
+                    MinimumOveragePrice = l.Rate.Minimum.OveragePrice,
                 }).ToArray(),
         };
 

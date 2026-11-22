@@ -2,6 +2,7 @@ using Priamus.Trips.Registry.Domain.Contracts;
 using Priamus.Trips.Registry.Domain.Contracts.Events;
 using Priamus.Trips.Registry.Domain.Contracts.ValueObjects;
 using Priamus.Trips.Registry.Domain.Customers;
+using Priamus.Trips.Registry.Domain.Locations;
 using Priamus.Trips.Registry.UnitTests.TestData;
 using Priamus.Trips.SharedKernel.Results;
 using Priamus.Trips.SharedKernel.Security;
@@ -39,11 +40,22 @@ public sealed class ContractTests
             nightSurcharge,
             rate ?? (billingLevel == BillingLevel.FlatRate ? DefaultRate(nightSurcharge) : null),
             [],
+            LocationRatesFor(billingLevel, nightSurcharge),
             clock,
             Actor).Value;
 
     private static Rate DefaultRate(bool nightSurcharge) =>
         nightSurcharge ? NewRate(55m, 5m) : NewRate();
+
+    // The one location rate a contract of a location level needs; none for a flat-rate contract.
+    private static IReadOnlyList<LocationRate> LocationRatesFor(BillingLevel billingLevel, bool nightSurcharge) =>
+        billingLevel switch
+        {
+            BillingLevel.FlatRate => [],
+            BillingLevel.PerPickupLocation => [new LocationRate(LocationId.New(), null, DefaultRate(nightSurcharge))],
+            BillingLevel.PerDeliveryLocation => [new LocationRate(null, LocationId.New(), DefaultRate(nightSurcharge))],
+            _ => [new LocationRate(LocationId.New(), LocationId.New(), DefaultRate(nightSurcharge))],
+        };
 
     // ── Create ───────────────────────────────────────────────────────────────
 
@@ -56,7 +68,8 @@ public sealed class ContractTests
         var validity = V("2026-04-01", "2026-12-31");
 
         var contract = Contract.Create(id, customerId, validity, BillingLevel.PerLocationPair,
-            PricingMode.ByWeight, [RequiredDocument.WasteForm], true, null, [], clock, Actor).Value;
+            PricingMode.ByWeight, [RequiredDocument.WasteForm], true, null, [],
+            LocationRatesFor(BillingLevel.PerLocationPair, true), clock, Actor).Value;
 
         contract.Id.ShouldBe(id);
         contract.CustomerId.ShouldBe(customerId);
@@ -132,7 +145,7 @@ public sealed class ContractTests
 
         contract.Update(V("2026-05-01", "2026-09-30"), BillingLevel.PerPickupLocation, PricingMode.ByTrip,
             [RequiredDocument.DailySummary, RequiredDocument.DeliveryNote, RequiredDocument.DailySummary],
-            true, null, [], clock, OtherActor);
+            true, null, [], LocationRatesFor(BillingLevel.PerPickupLocation, true), clock, OtherActor);
 
         contract.Validity.ShouldBe(V("2026-05-01", "2026-09-30"));
         contract.BillingLevel.ShouldBe(BillingLevel.PerPickupLocation);
@@ -160,7 +173,7 @@ public sealed class ContractTests
     private static Result<Contract> CreateWith(
         BillingLevel billingLevel, PricingMode pricingMode, bool nightSurcharge, Rate? rate) =>
         Contract.Create(ContractId.New(), CustomerId.New(), V("2026-04-01", null), billingLevel, pricingMode,
-            [], nightSurcharge, rate, [], NewClock(), Actor);
+            [], nightSurcharge, rate, [], LocationRatesFor(billingLevel, nightSurcharge), NewClock(), Actor);
 
     [Fact]
     public void Create_WithRate_HoldsItAndCarriesItInTheEvent()
@@ -183,7 +196,9 @@ public sealed class ContractTests
         var newRate = NewRate(minimum: new MinimumRule.TieredOverage(300m, 4m, 60m));
 
         var result = contract.Update(V("2026-04-01", null), BillingLevel.FlatRate, PricingMode.ByHour,
-            [], false, newRate, [], clock, OtherActor);
+            [], false, newRate, [],
+            [],
+            clock, OtherActor);
 
         result.IsSuccess.ShouldBeTrue();
         contract.Rate.ShouldBe(newRate);
@@ -216,7 +231,9 @@ public sealed class ContractTests
         contract.ClearDomainEvents();
 
         var result = contract.Update(V("2026-05-01", null), BillingLevel.FlatRate, PricingMode.ByHour,
-            [], false, null, [], clock, OtherActor);
+            [], false, null, [],
+            [],
+            clock, OtherActor);
 
         result.Error.ShouldBe(ContractErrors.RateRequired);
         contract.Rate.ShouldBe(original);
@@ -287,7 +304,9 @@ public sealed class ContractTests
         contract.ClearDomainEvents();
 
         var result = contract.Update(V("2026-05-01", null), BillingLevel.FlatRate, PricingMode.ByTrip,
-            [], false, NewRate(minimum: new MinimumRule.FixedMinimum(100m)), [], clock, OtherActor);
+            [], false, NewRate(minimum: new MinimumRule.FixedMinimum(100m)), [],
+            [],
+            clock, OtherActor);
 
         result.Error.ShouldBe(ContractErrors.MinimumNotApplicableByTrip);
         contract.Rate.ShouldBe(original);

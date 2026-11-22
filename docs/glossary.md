@@ -40,6 +40,7 @@ This file lives in the backend repository and is the source of truth for the pro
 | Snapshot tariffa | RateSnapshot |
 | Matrice tariffaria | RateMatrix |
 | Tariffa del mezzo | VehicleRate |
+| Tariffa del luogo, Tariffa della coppia | LocationRate |
 | Importo calcolato | CalculatedAmount |
 | Motore di calcolo | PricingEngine |
 | Configurazione fasce | TimeBandConfiguration |

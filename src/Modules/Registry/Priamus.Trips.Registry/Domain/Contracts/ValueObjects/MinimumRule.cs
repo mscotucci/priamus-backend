@@ -1,7 +1,7 @@
 namespace Priamus.Trips.Registry.Domain.Contracts.ValueObjects;
 
 /// <summary>
-/// What a flat-rate trip costs at least. Amounts are euro; the amounts of the cases are checked
+/// What a trip costs at least under a <see cref="Rate"/>. Amounts are euro; the amounts of the cases are checked
 /// when the <see cref="Rate"/> that holds the rule is built.
 /// </summary>
 public abstract record MinimumRule

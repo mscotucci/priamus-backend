@@ -23,6 +23,7 @@ namespace Priamus.Trips.Registry.Features.ListContracts;
 /// <param name="MinimumThreshold">The threshold X; <c>null</c> unless the rule is tiered overage.</param>
 /// <param name="MinimumOveragePrice">The overage price Y; <c>null</c> unless the rule is tiered overage.</param>
 /// <param name="VehicleRates">The vehicle rates, ordered by license plate; empty when the contract has none.</param>
+/// <param name="LocationRates">The location rates, ordered by pickup then delivery location; empty when the contract has none.</param>
 /// <param name="Version">Version the client sends back with its next write on this contract.</param>
 public sealed record ContractDto(
     Guid Id,
@@ -42,13 +43,19 @@ public sealed record ContractDto(
     decimal? MinimumThreshold,
     decimal? MinimumOveragePrice,
     IReadOnlyList<ContractVehicleRateDto> VehicleRates,
+    IReadOnlyList<ContractLocationRateDto> LocationRates,
     int Version)
 {
     /// <summary>Maps a contract, computing its status on <paramref name="today"/>.</summary>
     /// <param name="contract">The contract.</param>
     /// <param name="today">Today in Italian time.</param>
     /// <param name="vehicleRates">The contract's vehicle rates, as <see cref="ContractVehicleRateDto.LoadAsync"/> builds them.</param>
-    internal static ContractDto From(Contract contract, DateOnly today, IReadOnlyList<ContractVehicleRateDto> vehicleRates)
+    /// <param name="locationRates">The contract's location rates, as <see cref="ContractLocationRateDto.LoadAsync"/> builds them.</param>
+    internal static ContractDto From(
+        Contract contract,
+        DateOnly today,
+        IReadOnlyList<ContractVehicleRateDto> vehicleRates,
+        IReadOnlyList<ContractLocationRateDto> locationRates)
     {
         var rate = contract.Rate;
         return new(
@@ -69,6 +76,7 @@ public sealed record ContractDto(
             rate?.Minimum.Threshold,
             rate?.Minimum.OveragePrice,
             vehicleRates,
+            locationRates,
             contract.Version);
     }
 }

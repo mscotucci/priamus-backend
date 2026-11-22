@@ -20,6 +20,7 @@ namespace Priamus.Trips.Registry.Domain.Contracts.Events;
 /// <param name="NightSurcharge">Whether night trips cost more.</param>
 /// <param name="Rate">The rate; <c>null</c> when the contract has none.</param>
 /// <param name="VehicleRates">The vehicle rates; empty when the contract has none.</param>
+/// <param name="LocationRates">The location rates; empty when the contract has none.</param>
 public sealed record ContractCreated(
     Guid EventId,
     DateTime OccurredAt,
@@ -32,4 +33,5 @@ public sealed record ContractCreated(
     IReadOnlyList<RequiredDocument> RequiredDocuments,
     bool NightSurcharge,
     Rate? Rate,
-    IReadOnlyList<VehicleRate> VehicleRates) : IDomainEvent;
+    IReadOnlyList<VehicleRate> VehicleRates,
+    IReadOnlyList<LocationRate> LocationRates) : IDomainEvent;

@@ -269,4 +269,80 @@ public sealed class ListContractsEndpointTests : RegistryIntegrationTestBase
         earlier[0].GetProperty("minimumAmount").GetDecimal().ShouldBe(120m);
         contracts[2].GetProperty("vehicleRates").GetArrayLength().ShouldBe(0);
     }
+
+    [Fact]
+    public async Task ReturnsEachContractsLocationRatesOrderedWithTheStatusOfTheLocations()
+    {
+        // Arrange
+        var customer = await SeedCustomerAsync();
+        await using (var db = CreateDbContext())
+        {
+            var deactivated = await LocationTestSupport.SeedLocationAsync(db, "Cava Sud", "Chieti", deactivated: true);
+            var active = await LocationTestSupport.SeedLocationAsync(db, "Cava Nord", "Pescara");
+            await SeedContractAsync(
+                db, customer.Id, D(2025, 1, 1), D(2025, 12, 31), BillingLevel.PerPickupLocation, PricingMode.ByHour,
+                nightSurcharge: true,
+                locationRates:
+                [
+                    new LocationRate(deactivated.Id, null, Rate.Create(52.5m, 70.25m, 12m, new MinimumRule.FixedMinimum(120m)).Value),
+                    new LocationRate(active.Id, null, Rate.Create(50m, 65m, 5m, new MinimumRule.None()).Value),
+                ]);
+            await SeedContractAsync(
+                db, customer.Id, D(2026, 1, 1), null, BillingLevel.PerLocationPair, PricingMode.ByHour,
+                nightSurcharge: false,
+                locationRates: [new LocationRate(active.Id, deactivated.Id, Rate.Create(51m, null, null, new MinimumRule.None()).Value)]);
+            await SeedLocationContractWithoutRatesAsync(db, customer.Id, D(2024, 1, 1), D(2024, 12, 31));
+        }
+
+        // Act
+        var list = await GetListAsync(customer.Id.Value, Midday);
+
+        // Assert
+        var contracts = list.EnumerateArray().ToList();
+        contracts.Count.ShouldBe(3);
+        var pair = contracts[0].GetProperty("locationRates").EnumerateArray().Single();
+        pair.GetProperty("pickup").GetProperty("name").GetString().ShouldBe("Cava Nord");
+        pair.GetProperty("delivery").GetProperty("name").GetString().ShouldBe("Cava Sud");
+        pair.GetProperty("delivery").GetProperty("municipality").GetString().ShouldBe("Chieti");
+        pair.GetProperty("pickup").GetProperty("status").GetString().ShouldBe("Active");
+        pair.GetProperty("delivery").GetProperty("status").GetString().ShouldBe("Deactivated");
+        pair.GetProperty("dayPrice").GetDecimal().ShouldBe(51m);
+        var earlier = contracts[1].GetProperty("locationRates").EnumerateArray().ToList();
+        earlier.Select(r => r.GetProperty("pickup").GetProperty("name").GetString()).ShouldBe(["Cava Nord", "Cava Sud"]);
+        earlier.Select(r => r.GetProperty("pickup").GetProperty("status").GetString()).ShouldBe(["Active", "Deactivated"]);
+        earlier[1].GetProperty("minimumAmount").GetDecimal().ShouldBe(120m);
+        earlier[1].GetProperty("delivery").ValueKind.ShouldBe(JsonValueKind.Null);
+        contracts[2].GetProperty("locationRates").GetArrayLength().ShouldBe(0);
+    }
+
+    [Theory]
+    [InlineData("BackOffice", HttpStatusCode.OK)]
+    [InlineData("Admin", HttpStatusCode.OK)]
+    [InlineData("Driver", HttpStatusCode.Forbidden)]
+    public async Task Role_DecidesWhoListsContractsWithLocationRates(string role, HttpStatusCode expected)
+    {
+        // Arrange
+        var customer = await SeedCustomerAsync();
+        await using (var db = CreateDbContext())
+        {
+            var location = await LocationTestSupport.SeedLocationAsync(db);
+            await SeedContractAsync(
+                db, customer.Id, D(2026, 1, 1), null, BillingLevel.PerPickupLocation, PricingMode.ByHour,
+                nightSurcharge: false,
+                locationRates: [new LocationRate(location.Id, null, Rate.Create(48m, null, null, new MinimumRule.None()).Value)]);
+        }
+
+        await using var factory = CreateFactory(ConnectionString, Midday);
+        var client = TestCaller.WithRole(role).ApplyTo(factory.CreateClient());
+
+        // Act
+        var response = await client.GetAsync(Url(customer.Id.Value), Ct);
+
+        // Assert
+        response.StatusCode.ShouldBe(expected);
+        if (expected == HttpStatusCode.Forbidden)
+        {
+            (await response.Content.ReadAsStringAsync(Ct)).ShouldNotContain("dayPrice");
+        }
+    }
 }

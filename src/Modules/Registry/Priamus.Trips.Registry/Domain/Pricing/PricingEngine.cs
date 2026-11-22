@@ -1,12 +1,13 @@
 using Priamus.Trips.Registry.Domain.Contracts;
 using Priamus.Trips.Registry.Domain.Contracts.ValueObjects;
+using Priamus.Trips.Registry.Domain.Locations;
 using Priamus.Trips.Registry.Domain.Vehicles;
 using Priamus.Trips.SharedKernel.Results;
 
 namespace Priamus.Trips.Registry.Domain.Pricing;
 
 /// <summary>
-/// The amount of a trip on a flat-rate contract (PRD §5.5–§5.9, ADR 0003): a pure function, no
+/// The amount of a trip (PRD §5.5–§5.9, ADR 0003): a pure function, no
 /// state, no I/O, no clock. The night call fee is added after the minimum rule, which sees the
 /// base amount alone.
 /// </summary>
@@ -14,15 +15,19 @@ internal static class PricingEngine
 {
     /// <summary>Computes the amount of a trip.</summary>
     /// <param name="terms">The terms of the contract.</param>
-    /// <param name="vehicle">The trip's leading vehicle; <c>null</c> or without a rate of its own uses the contract's rate.</param>
+    /// <param name="vehicle">The trip's leading vehicle; on a flat-rate contract, <c>null</c> or without a rate of its own uses the contract's rate. A location level ignores it.</param>
+    /// <param name="pickup">The trip's pickup location; a flat-rate contract ignores it.</param>
+    /// <param name="delivery">The trip's delivery location; a flat-rate contract ignores it.</param>
     /// <param name="trip">The trip; its mode must be the mode of <paramref name="terms"/>.</param>
     /// <param name="band">The night band.</param>
-    /// <returns>The amount and its steps, or <see cref="PricingErrors.AmountTooLarge"/>.</returns>
+    /// <returns>The amount and its steps, <see cref="PricingErrors.NoRateForLocation"/> or <see cref="PricingErrors.AmountTooLarge"/>.</returns>
     /// <exception cref="ArgumentException">The mode of the trip differs from the mode of the terms.</exception>
-    /// <exception cref="InvalidOperationException">The terms lack a night value they need, or a trip priced by trip has a tiered overage.</exception>
+    /// <exception cref="InvalidOperationException">The terms lack a rate or a night value they need, or a trip priced by trip has a tiered overage.</exception>
     public static Result<PriceCalculation> Calculate(
         PricingTerms terms,
         VehicleId? vehicle,
+        LocationId? pickup,
+        LocationId? delivery,
         TripMeasure trip,
         NightBand band)
     {
@@ -34,8 +39,26 @@ internal static class PricingEngine
             throw new ArgumentException("The trip is measured in a different pricing mode than the terms.", nameof(trip));
         }
 
-        var vehicleRate = vehicle is { } id ? terms.VehicleRates.FirstOrDefault(r => r.VehicleId == id) : null;
-        var rate = vehicleRate?.Rate ?? terms.Rate;
+        VehicleRate? vehicleRate = null;
+        Rate rate;
+        RateSource rateSource;
+        if (terms.BillingLevel == BillingLevel.FlatRate)
+        {
+            vehicleRate = vehicle is { } id ? terms.VehicleRates.FirstOrDefault(r => r.VehicleId == id) : null;
+            rate = vehicleRate?.Rate ?? terms.Rate ?? throw new InvalidOperationException("A flat-rate contract needs a rate.");
+            rateSource = vehicleRate is null ? RateSource.Contract : RateSource.Vehicle;
+        }
+        else
+        {
+            var locationRate = terms.LocationRates.FirstOrDefault(r => IsRateOf(terms.BillingLevel, r, pickup, delivery));
+            if (locationRate is null)
+            {
+                return PricingErrors.NoRateForLocation;
+            }
+
+            rate = locationRate.Rate;
+            rateSource = terms.BillingLevel == BillingLevel.PerLocationPair ? RateSource.LocationPair : RateSource.Location;
+        }
 
         var isNight = band.IsNight(trip.Start);
         var nightPriced = isNight && terms.NightSurcharge;
@@ -68,7 +91,7 @@ internal static class PricingEngine
             isNight ? TimeBand.Night : TimeBand.Day,
             terms.NightSurcharge,
             band,
-            vehicleRate is null ? RateSource.Contract : RateSource.Vehicle,
+            rateSource,
             vehicleRate?.VehicleId,
             QuantityOf(trip),
             unitPrice,
@@ -78,6 +101,14 @@ internal static class PricingEngine
             afterMinimum != baseAmount,
             nightCallFee);
     }
+
+    // An absent location never matches: the key of the level must be present in the trip.
+    private static bool IsRateOf(BillingLevel level, LocationRate rate, LocationId? pickup, LocationId? delivery) => level switch
+    {
+        BillingLevel.PerPickupLocation => pickup is not null && rate.PickupLocationId == pickup,
+        BillingLevel.PerDeliveryLocation => delivery is not null && rate.DeliveryLocationId == delivery,
+        _ => pickup is not null && delivery is not null && rate.PickupLocationId == pickup && rate.DeliveryLocationId == delivery,
+    };
 
     private static int? QuantityOf(TripMeasure trip) => trip switch
     {

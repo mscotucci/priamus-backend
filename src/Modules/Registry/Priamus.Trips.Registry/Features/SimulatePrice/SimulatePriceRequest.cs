@@ -9,16 +9,21 @@ using Priamus.Trips.Registry.Resources;
 namespace Priamus.Trips.Registry.Features.SimulatePrice;
 
 /// <summary>
-/// Request body for <c>POST /api/registry/contracts/simulation</c>: the terms of a flat-rate contract as
-/// written on the page, saved or not, and a sample trip. The rate members and the vehicle rates follow the
-/// contract requests; <c>StartTime</c> and <c>EndTime</c> are <c>HH:mm</c>. The end is for a trip by hour
+/// Request body for <c>POST /api/registry/contracts/simulation</c>: the terms of a contract as
+/// written on the page, saved or not, and a sample trip. The billing level, the rate members, the vehicle
+/// rates and the location rates follow the contract requests; <c>StartTime</c> and <c>EndTime</c> are
+/// <c>HH:mm</c>. The end is for a trip by hour
 /// only, <c>Kilograms</c> for a trip by weight only and <c>Kilometres</c> for a trip by distance only;
 /// the quantities are whole numbers, read as numbers so that a fraction is reported on its own member.
-/// <c>VehicleId</c> is the trip's vehicle: <c>null</c>, or a vehicle without a vehicle rate, uses the
-/// contract's rate.
+/// <c>VehicleId</c> is the trip's vehicle on a flat-rate contract: <c>null</c>, or a vehicle without a
+/// vehicle rate, uses the contract's rate. <c>PickupLocationId</c> and <c>DeliveryLocationId</c> are the
+/// trip's locations: each is required when the billing level uses it, refused when it does not, and must
+/// have a rate among the written location rates.
 /// </summary>
 [ValidatableType]
 public sealed record SimulatePriceRequest(
+    [Required(ErrorMessageResourceType = typeof(RegistryMessages), ErrorMessageResourceName = nameof(RegistryMessages.Validation_Required))]
+    BillingLevel? BillingLevel,
     [Required(ErrorMessageResourceType = typeof(RegistryMessages), ErrorMessageResourceName = nameof(RegistryMessages.Validation_Required))]
     PricingMode? PricingMode,
     [Required(ErrorMessageResourceType = typeof(RegistryMessages), ErrorMessageResourceName = nameof(RegistryMessages.Validation_Required))]
@@ -31,7 +36,10 @@ public sealed record SimulatePriceRequest(
     decimal? MinimumThreshold,
     decimal? MinimumOveragePrice,
     IReadOnlyList<ContractVehicleRateRequest>? VehicleRates,
+    IReadOnlyList<ContractLocationRateRequest>? LocationRates,
     Guid? VehicleId,
+    Guid? PickupLocationId,
+    Guid? DeliveryLocationId,
     [Required(ErrorMessageResourceType = typeof(RegistryMessages), ErrorMessageResourceName = nameof(RegistryMessages.Validation_Required))]
     [TimeOfDayFormat]
     string StartTime,
@@ -44,7 +52,12 @@ public sealed record SimulatePriceRequest(
     public IEnumerable<ValidationResult> Validate(ValidationContext validationContext)
     {
         foreach (var result in ContractRequestValidation.Validate(
-            null, null, BillingLevel.FlatRate, PricingMode, NightSurcharge, RateMembers(), VehicleRates))
+            null, null, BillingLevel, PricingMode, NightSurcharge, RateMembers(), VehicleRates, LocationRates))
+        {
+            yield return result;
+        }
+
+        foreach (var result in ValidateTripLocations())
         {
             yield return result;
         }
@@ -58,6 +71,62 @@ public sealed record SimulatePriceRequest(
     /// <summary>The rate members, gathered for validation and for building the rate.</summary>
     internal ContractRateMembers RateMembers() =>
         new(DayPrice, NightPrice, NightCallFee, MinimumRule, MinimumAmount, MinimumThreshold, MinimumOveragePrice);
+
+    private IEnumerable<ValidationResult> ValidateTripLocations()
+    {
+        // A missing BillingLevel is reported on its own: the trip's locations are not judged without it.
+        if (BillingLevel is not { } level)
+        {
+            yield break;
+        }
+
+        var usesPickup = level is Domain.Contracts.BillingLevel.PerPickupLocation or Domain.Contracts.BillingLevel.PerLocationPair;
+        var usesDelivery = level is Domain.Contracts.BillingLevel.PerDeliveryLocation or Domain.Contracts.BillingLevel.PerLocationPair;
+
+        if (level != Domain.Contracts.BillingLevel.FlatRate && VehicleId is not null)
+        {
+            yield return NotApplicable(nameof(VehicleId));
+        }
+
+        var memberReported = false;
+        foreach (var (value, used, member) in new[]
+        {
+            (PickupLocationId, usesPickup, nameof(PickupLocationId)),
+            (DeliveryLocationId, usesDelivery, nameof(DeliveryLocationId)),
+        })
+        {
+            if (value is null && used)
+            {
+                yield return new ValidationResult(RegistryMessages.Validation_Required, [member]);
+                memberReported = true;
+            }
+            else if (value is not null && !used)
+            {
+                yield return NotApplicable(member);
+                memberReported = true;
+            }
+        }
+
+        // Without written rates the list is reported on its own, whatever the trip names.
+        if (memberReported || LocationRates is not { Count: > 0 } rates || !(usesPickup || usesDelivery))
+        {
+            yield break;
+        }
+
+        var written = rates.Where(r => r is not null).ToList();
+        var hasRate = level switch
+        {
+            Domain.Contracts.BillingLevel.PerPickupLocation => written.Any(r => r.PickupLocationId == PickupLocationId),
+            Domain.Contracts.BillingLevel.PerDeliveryLocation => written.Any(r => r.DeliveryLocationId == DeliveryLocationId),
+            _ => written.Any(r => r.PickupLocationId == PickupLocationId && r.DeliveryLocationId == DeliveryLocationId),
+        };
+
+        if (!hasRate)
+        {
+            var member = usesDelivery ? nameof(DeliveryLocationId) : nameof(PickupLocationId);
+            yield return new ValidationResult(RegistryMessages.Registry_Pricing_NoRateForLocation, [member]);
+        }
+    }
 
     private IEnumerable<ValidationResult> ValidateTrip()
     {

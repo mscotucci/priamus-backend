@@ -111,12 +111,20 @@ What a trip's amount is measured by, and so what the driver enters: `ByHour` (A 
 _Avoid_: payment method (it is not how the customer pays), rate type
 
 **Rate** (Tariffa):
-The prices a contract charges a trip, in the unit of its pricing mode: a day price and, when the contract has the night surcharge, a night price and a night call fee, with its minimum rule. A flat-rate contract has one rate; the other billing levels have one per location or pair of locations. A rate applies for the whole validity of its contract and has no validity of its own: prices that change from a date make a new contract from that date.
+The prices a contract charges a trip, in the unit of its pricing mode: a day price and, when the contract has the night surcharge, a night price and a night call fee, with its minimum rule. A flat-rate contract has one rate; the other billing levels have at least one, one per location (**Location rate**) or per pair of locations (**Pair rate**). A rate applies for the whole validity of its contract and has no validity of its own: prices that change from a date make a new contract from that date.
 _Avoid_: price list, tariff, rate validity
 
 **Vehicle rate** (Tariffa del mezzo):
 A complete rate of its own that a contract gives one vehicle (a tractor or a standalone vehicle): day price, night price and night call fee when the contract has the night surcharge, and its own minimum rule. A trip led by that vehicle is priced with it instead of the contract's rate. Like the contract's rate, it lives as long as its contract and has no validity of its own.
 _Avoid_: override (the PRD's word, not used by the business), special rate
+
+**Location rate** (Tariffa del luogo):
+A complete rate that a contract priced per pickup location or per delivery location gives one location: day price, night price and night call fee when the contract has the night surcharge, and its own minimum rule. A trip is priced with the rate of its pickup or delivery location, according to the billing level. A location without a rate is not usable for that customer. Like the contract's rate, it lives as long as its contract and has no validity of its own.
+_Avoid_: location price, location tariff
+
+**Pair rate** (Tariffa della coppia):
+The same, for a contract priced per pair of locations: it belongs to an ordered pair (pickup location, delivery location), so A → B and B → A are two rates, and the same location may be both. A trip is priced with the rate of its pair.
+_Avoid_: route rate, itinerary rate
 
 **Night band** (Fascia notturna):
 The hours of the day in which a trip that starts is a night trip, one for the whole system (22:00–06:00 unless the administrator changes it). A change holds for every amount computed from then on, never for amounts already computed.
@@ -151,7 +159,7 @@ _Avoid_: dismissed, fired, disabled (that is an account's)
 ### Locations
 
 **Location** (Luogo):
-A place a trip starts from or delivers to: a warehouse, a building site, a landfill, a plant. One registry for the whole company: a location belongs to no customer, and any location can be the pickup or the delivery location of a trip. The locations a customer's trips use are those its contract has rates for. People know it as "<name>, <municipality>".
+A place a trip starts from or delivers to: a warehouse, a building site, a landfill, a plant. One registry for the whole company: a location belongs to no customer, and any location can be the pickup or the delivery location of a trip. The locations a customer's trips use are those its contract has rates for: a **Location rate** for a pickup or delivery location, a **Pair rate** for a pair. People know it as "<name>, <municipality>".
 _Avoid_: site, address (that is one of its fields), destination, customer location, general location
 
 **Location name** (Nome del luogo):

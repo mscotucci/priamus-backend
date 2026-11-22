@@ -35,4 +35,9 @@ public static class PricingErrors
     public static readonly Error AmountTooLarge = Error.Domain(
         "Registry.Pricing.AmountTooLarge",
         "The computed amount is too large.");
+
+    /// <summary>A location contract holds no rate for the location or pair of the trip.</summary>
+    public static readonly Error NoRateForLocation = Error.Domain(
+        "Registry.Pricing.NoRateForLocation",
+        "There is no rate for the locations of the trip.");
 }

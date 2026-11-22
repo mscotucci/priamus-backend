@@ -475,6 +475,86 @@ namespace Priamus.Trips.Registry.Persistence.Migrations
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
 
+                    b.OwnsMany("Priamus.Trips.Registry.Domain.Contracts.ValueObjects.StoredLocationRate", "_storedLocationRates", b1 =>
+                        {
+                            b1.Property<Guid>("ContractId")
+                                .HasColumnType("uuid")
+                                .HasColumnName("contract_id");
+
+                            b1.Property<int>("Id")
+                                .ValueGeneratedOnAdd()
+                                .HasColumnType("integer")
+                                .HasColumnName("id");
+
+                            NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b1.Property<int>("Id"));
+
+                            b1.Property<decimal>("DayPrice")
+                                .HasColumnType("numeric(12,2)")
+                                .HasColumnName("day_price");
+
+                            b1.Property<Guid?>("DeliveryLocationId")
+                                .HasColumnType("uuid")
+                                .HasColumnName("delivery_location_id");
+
+                            b1.Property<decimal?>("MinimumAmount")
+                                .HasColumnType("numeric(12,2)")
+                                .HasColumnName("minimum_amount");
+
+                            b1.Property<decimal?>("MinimumOveragePrice")
+                                .HasColumnType("numeric(12,2)")
+                                .HasColumnName("minimum_overage_price");
+
+                            b1.Property<string>("MinimumRule")
+                                .IsRequired()
+                                .HasColumnType("text")
+                                .HasColumnName("minimum_rule");
+
+                            b1.Property<decimal?>("MinimumThreshold")
+                                .HasColumnType("numeric(12,2)")
+                                .HasColumnName("minimum_threshold");
+
+                            b1.Property<decimal?>("NightCallFee")
+                                .HasColumnType("numeric(12,2)")
+                                .HasColumnName("night_call_fee");
+
+                            b1.Property<decimal?>("NightPrice")
+                                .HasColumnType("numeric(12,2)")
+                                .HasColumnName("night_price");
+
+                            b1.Property<Guid?>("PickupLocationId")
+                                .HasColumnType("uuid")
+                                .HasColumnName("pickup_location_id");
+
+                            b1.HasKey("ContractId", "Id");
+
+                            b1.HasIndex("DeliveryLocationId")
+                                .HasDatabaseName("ix_contract_location_rates_delivery_location_id");
+
+                            b1.HasIndex("PickupLocationId")
+                                .HasDatabaseName("ix_contract_location_rates_pickup_location_id");
+
+                            b1.HasIndex("ContractId", "PickupLocationId", "DeliveryLocationId")
+                                .IsUnique()
+                                .HasDatabaseName("uq_contract_location_rates_locations");
+
+                            NpgsqlIndexBuilderExtensions.AreNullsDistinct(b1.HasIndex("ContractId", "PickupLocationId", "DeliveryLocationId"), false);
+
+                            b1.ToTable("contract_location_rates", "registry");
+
+                            b1.WithOwner()
+                                .HasForeignKey("ContractId");
+
+                            b1.HasOne("Priamus.Trips.Registry.Domain.Locations.Location", null)
+                                .WithMany()
+                                .HasForeignKey("DeliveryLocationId")
+                                .OnDelete(DeleteBehavior.Restrict);
+
+                            b1.HasOne("Priamus.Trips.Registry.Domain.Locations.Location", null)
+                                .WithMany()
+                                .HasForeignKey("PickupLocationId")
+                                .OnDelete(DeleteBehavior.Restrict);
+                        });
+
                     b.OwnsMany("Priamus.Trips.Registry.Domain.Contracts.ValueObjects.StoredVehicleRate", "_storedVehicleRates", b1 =>
                         {
                             b1.Property<Guid>("ContractId")
@@ -530,6 +610,8 @@ namespace Priamus.Trips.Registry.Persistence.Migrations
                                 .OnDelete(DeleteBehavior.Restrict)
                                 .IsRequired();
                         });
+
+                    b.Navigation("_storedLocationRates");
 
                     b.Navigation("_storedVehicleRates");
                 });

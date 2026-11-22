@@ -32,6 +32,7 @@ public sealed class SimulatePriceEndpointTests : RegistryIntegrationTestBase
     {
         var body = new Dictionary<string, object?>
         {
+            ["billingLevel"] = "FlatRate",
             ["pricingMode"] = pricingMode,
             ["nightSurcharge"] = false,
             ["dayPrice"] = 60,
@@ -329,6 +330,9 @@ public sealed class SimulatePriceEndpointTests : RegistryIntegrationTestBase
     [InlineData("ByHour", "kilograms", 5, "Kilograms", "Questo valore non si applica al contratto.")]
     [InlineData("ByHour", "kilometres", 5, "Kilometres", "Questo valore non si applica al contratto.")]
     [InlineData("ByHour", "pricingMode", null, "PricingMode", "Valore obbligatorio.")]
+    [InlineData("ByHour", "billingLevel", null, "BillingLevel", "Valore obbligatorio.")]
+    [InlineData("ByHour", "pickupLocationId", "7d0e8f0e-9b3a-4c53-9a39-3f6a1d2b4c11", "PickupLocationId", "Questo valore non si applica al contratto.")]
+    [InlineData("ByHour", "deliveryLocationId", "7d0e8f0e-9b3a-4c53-9a39-3f6a1d2b4c11", "DeliveryLocationId", "Questo valore non si applica al contratto.")]
     [InlineData("ByHour", "dayPrice", null, "DayPrice", "Valore obbligatorio.")]
     [InlineData("ByWeight", "kilograms", null, "Kilograms", "Valore obbligatorio.")]
     [InlineData("ByWeight", "kilograms", 0, "Kilograms", "Inserisci un numero intero maggiore di zero.")]
@@ -440,5 +444,208 @@ public sealed class SimulatePriceEndpointTests : RegistryIntegrationTestBase
         var errors = document.RootElement.GetProperty("errors");
         errors.EnumerateObject().Select(e => e.Name).ShouldBe(["MinimumRule"]);
         errors.GetProperty("MinimumRule")[0].GetString().ShouldBe("Questo valore non si applica al contratto.");
+    }
+
+    private static readonly Guid LocationA = Guid.NewGuid();
+    private static readonly Guid LocationB = Guid.NewGuid();
+    private static readonly Guid LocationC = Guid.NewGuid();
+
+    /// <summary>A valid body for a location contract by hour without the night surcharge, holding the given location rates.</summary>
+    private static Dictionary<string, object?> LocationBodyFor(
+        string billingLevel, params Dictionary<string, object?>[] locationRates)
+    {
+        var body = Body("ByHour");
+        body["billingLevel"] = billingLevel;
+        body.Remove("dayPrice");
+        body.Remove("minimumRule");
+        body["locationRates"] = locationRates;
+        return body;
+    }
+
+    private static string Camel(string member) => char.ToLowerInvariant(member[0]) + member[1..];
+
+    [Theory]
+    [InlineData("PerPickupLocation", "Location", 80, 160)]
+    [InlineData("PerDeliveryLocation", "Location", 90, 180)]
+    [InlineData("PerLocationPair", "LocationPair", 100, 200)]
+    public async Task LocationLevel_IsPricedWithTheRateOfTheTripLocationsAndNamesItsSource(
+        string level, string source, int dayPrice, int total)
+    {
+        // Arrange: two rates; the trip is 120 minutes and names the second one's locations.
+        await using var factory = CreateFactory();
+        var body = LocationBodyFor(
+            level,
+            LocationRateFor(level, LocationA, LocationA, """{"dayPrice":1,"minimumRule":"None"}"""),
+            LocationRateFor(level, LocationB, LocationC, $$"""{"dayPrice":{{dayPrice}},"minimumRule":"None"}"""));
+        body["endTime"] = "12:00";
+        body["pickupLocationId"] = level == "PerDeliveryLocation" ? null : LocationB;
+        body["deliveryLocationId"] = level == "PerPickupLocation" ? null : LocationC;
+
+        // Act
+        var result = await ReadAsync(await PostAsync(BackOfficeClient(factory), body));
+
+        // Assert
+        result.GetProperty("rateSource").GetString().ShouldBe(source);
+        result.GetProperty("vehicleId").ValueKind.ShouldBe(JsonValueKind.Null);
+        result.GetProperty("unitPrice").GetDecimal().ShouldBe(dayPrice);
+        result.GetProperty("total").GetDecimal().ShouldBe(total);
+    }
+
+    [Theory]
+    [InlineData("PerPickupLocation", "PickupLocationId")]
+    [InlineData("PerDeliveryLocation", "DeliveryLocationId")]
+    [InlineData("PerLocationPair", "DeliveryLocationId")]
+    public async Task LocationOrPairWithoutARate_Returns400OnTheMemberWithTheNoRateText(string level, string expectedKey)
+    {
+        // Arrange: the trip names a location, or a pair in the reverse order, that no written rate has.
+        await using var factory = CreateFactory();
+        var body = LocationBodyFor(level, LocationRateFor(level, LocationA, LocationB));
+        body["pickupLocationId"] = level == "PerDeliveryLocation" ? null : LocationB;
+        body["deliveryLocationId"] = level == "PerPickupLocation" ? null : LocationA;
+
+        // Act
+        var response = await PostAsync(BackOfficeClient(factory), body);
+
+        // Assert
+        response.StatusCode.ShouldBe(HttpStatusCode.BadRequest);
+        (await ErrorKeysAsync(response)).ShouldBe([expectedKey]);
+        using var document = JsonDocument.Parse(await response.Content.ReadAsStringAsync(Ct));
+        document.RootElement.GetProperty("errors").GetProperty(expectedKey)[0].GetString()
+            .ShouldBe("Non c'è una tariffa per i luoghi del viaggio.");
+    }
+
+    [Theory]
+    [InlineData("PerPickupLocation", "PickupLocationId")]
+    [InlineData("PerDeliveryLocation", "DeliveryLocationId")]
+    [InlineData("PerLocationPair", "PickupLocationId")]
+    [InlineData("PerLocationPair", "DeliveryLocationId")]
+    public async Task LocationTheLevelUses_WhenMissing_Returns400RequiredOnTheMember(string level, string member)
+    {
+        // Arrange
+        await using var factory = CreateFactory();
+        var body = LocationBodyFor(level, LocationRateFor(level, LocationA, LocationB));
+        body["pickupLocationId"] = level == "PerDeliveryLocation" ? null : LocationA;
+        body["deliveryLocationId"] = level == "PerPickupLocation" ? null : LocationB;
+        body.Remove(Camel(member));
+
+        // Act
+        var response = await PostAsync(BackOfficeClient(factory), body);
+
+        // Assert
+        response.StatusCode.ShouldBe(HttpStatusCode.BadRequest);
+        (await ErrorKeysAsync(response)).ShouldBe([member]);
+        using var document = JsonDocument.Parse(await response.Content.ReadAsStringAsync(Ct));
+        document.RootElement.GetProperty("errors").GetProperty(member)[0].GetString().ShouldBe("Valore obbligatorio.");
+    }
+
+    [Theory]
+    [InlineData("PerPickupLocation", "DeliveryLocationId")]
+    [InlineData("PerDeliveryLocation", "PickupLocationId")]
+    public async Task LocationTheLevelDoesNotUse_Returns400NotApplicableOnTheMember(string level, string member)
+    {
+        // Arrange: the trip names the level's location and, besides, the one the level does not use.
+        await using var factory = CreateFactory();
+        var body = LocationBodyFor(level, LocationRateFor(level, LocationA, LocationA));
+        body["pickupLocationId"] = LocationA;
+        body["deliveryLocationId"] = LocationA;
+
+        // Act
+        var response = await PostAsync(BackOfficeClient(factory), body);
+
+        // Assert
+        response.StatusCode.ShouldBe(HttpStatusCode.BadRequest);
+        (await ErrorKeysAsync(response)).ShouldBe([member]);
+        using var document = JsonDocument.Parse(await response.Content.ReadAsStringAsync(Ct));
+        document.RootElement.GetProperty("errors").GetProperty(member)[0].GetString()
+            .ShouldBe("Questo valore non si applica al contratto.");
+    }
+
+    [Fact]
+    public async Task VehicleOnALocationLevel_Returns400NotApplicableOnVehicleId()
+    {
+        // Arrange
+        await using var factory = CreateFactory();
+        var body = LocationBodyFor("PerPickupLocation", LocationRateFor("PerPickupLocation", LocationA, null));
+        body["pickupLocationId"] = LocationA;
+        body["vehicleId"] = Guid.NewGuid();
+
+        // Act
+        var response = await PostAsync(BackOfficeClient(factory), body);
+
+        // Assert
+        response.StatusCode.ShouldBe(HttpStatusCode.BadRequest);
+        (await ErrorKeysAsync(response)).ShouldBe(["VehicleId"]);
+    }
+
+    [Fact]
+    public async Task LocationLevelWithoutWrittenRates_Returns400OnLocationRatesOnly()
+    {
+        // Arrange
+        await using var factory = CreateFactory();
+        var body = LocationBodyFor("PerPickupLocation");
+        body["pickupLocationId"] = LocationA;
+
+        // Act
+        var response = await PostAsync(BackOfficeClient(factory), body);
+
+        // Assert
+        response.StatusCode.ShouldBe(HttpStatusCode.BadRequest);
+        (await ErrorKeysAsync(response)).ShouldBe(["LocationRates"]);
+    }
+
+    [Fact]
+    public async Task FlatRateWithLocationRates_Returns400NotApplicableOnLocationRates()
+    {
+        // Arrange
+        await using var factory = CreateFactory();
+        var body = Body("ByHour");
+        body["locationRates"] = new[] { LocationRateFor("PerPickupLocation", LocationA, null) };
+
+        // Act
+        var response = await PostAsync(BackOfficeClient(factory), body);
+
+        // Assert
+        response.StatusCode.ShouldBe(HttpStatusCode.BadRequest);
+        (await ErrorKeysAsync(response)).ShouldBe(["LocationRates"]);
+    }
+
+    [Theory]
+    [MemberData(nameof(InvalidLocationRates), MemberType = typeof(ContractTestSupport))]
+    public async Task BrokenLocationRate_Returns400UnderItsMemberKey(
+        string pricingMode, bool nightSurcharge, string rate, string keys)
+    {
+        // Arrange
+        await using var factory = CreateFactory();
+        var body = LocationBodyFor("PerPickupLocation", LocationRateFor("PerPickupLocation", LocationA, null, rate));
+        body["pricingMode"] = pricingMode;
+        body["nightSurcharge"] = nightSurcharge;
+        body["pickupLocationId"] = LocationA;
+        if (pricingMode != "ByHour")
+        {
+            body.Remove("endTime");
+        }
+
+        // Act
+        var response = await PostAsync(BackOfficeClient(factory), body);
+
+        // Assert
+        response.StatusCode.ShouldBe(HttpStatusCode.BadRequest);
+        (await ErrorKeysAsync(response)).ShouldBe([.. LocationRateKeys(keys).Order(StringComparer.Ordinal)]);
+    }
+
+    [Fact]
+    public async Task LocationSimulation_AsDriver_Returns403()
+    {
+        // Arrange
+        await using var factory = CreateFactory();
+        var client = TestCaller.WithRole("Driver").ApplyTo(factory.CreateClient());
+        var body = LocationBodyFor("PerPickupLocation", LocationRateFor("PerPickupLocation", LocationA, null));
+        body["pickupLocationId"] = LocationA;
+
+        // Act
+        var response = await PostAsync(client, body);
+
+        // Assert
+        response.StatusCode.ShouldBe(HttpStatusCode.Forbidden);
     }
 }

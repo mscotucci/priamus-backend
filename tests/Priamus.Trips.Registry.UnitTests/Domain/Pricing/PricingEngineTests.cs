@@ -1,7 +1,9 @@
 using Priamus.Trips.Registry.Domain.Contracts;
 using Priamus.Trips.Registry.Domain.Contracts.ValueObjects;
+using Priamus.Trips.Registry.Domain.Locations;
 using Priamus.Trips.Registry.Domain.Pricing;
 using Priamus.Trips.Registry.Domain.Vehicles;
+using Priamus.Trips.SharedKernel.Results;
 using Shouldly;
 using Xunit;
 
@@ -21,7 +23,7 @@ public sealed class PricingEngineTests
         Rate rate,
         bool nightSurcharge = false,
         params VehicleRate[] vehicleRates) =>
-        new(mode, nightSurcharge, rate, vehicleRates);
+        new(mode, nightSurcharge, BillingLevel.FlatRate, rate, vehicleRates, []);
 
     private static TripMeasure Hours(string start, string end) =>
         TripMeasure.ByHour.Create(TimeOnly.Parse(start), TimeOnly.Parse(end)).Value;
@@ -33,7 +35,7 @@ public sealed class PricingEngineTests
         TripMeasure.ByDistance.Create(kilometres, TimeOnly.Parse(start)).Value;
 
     private static PriceCalculation Calculate(PricingTerms terms, TripMeasure trip, VehicleId? vehicle = null) =>
-        PricingEngine.Calculate(terms, vehicle, trip, Band).Value;
+        PricingEngine.Calculate(terms, vehicle, null, null, trip, Band).Value;
 
     public static TheoryData<string, PricingTerms, VehicleId?, TripMeasure, decimal> PrdExamples()
     {
@@ -78,10 +80,280 @@ public sealed class PricingEngineTests
         decimal expected)
     {
         // Act
-        var result = PricingEngine.Calculate(terms, vehicle, trip, Band);
+        var result = PricingEngine.Calculate(terms, vehicle, null, null, trip, Band);
 
         // Assert
         result.Value.Total.ShouldBe(expected, example);
+    }
+
+    private static readonly LocationId Lecco = LocationId.New();
+    private static readonly LocationId Como = LocationId.New();
+    private static readonly LocationId Monza = LocationId.New();
+
+    private static PricingTerms LocationTerms(
+        BillingLevel level,
+        PricingMode mode,
+        bool nightSurcharge,
+        params LocationRate[] rates) =>
+        new(mode, nightSurcharge, level, null, [], rates);
+
+    private static LocationRate RateOfLevel(BillingLevel level, Rate rate) => level switch
+    {
+        BillingLevel.PerPickupLocation => new LocationRate(Lecco, null, rate),
+        BillingLevel.PerDeliveryLocation => new LocationRate(null, Como, rate),
+        _ => new LocationRate(Lecco, Como, rate),
+    };
+
+    private static Result<PriceCalculation> CalculateAt(
+        PricingTerms terms,
+        LocationId? pickup,
+        LocationId? delivery,
+        TripMeasure trip,
+        VehicleId? vehicle = null) =>
+        PricingEngine.Calculate(terms, vehicle, pickup, delivery, trip, Band);
+
+    [Fact]
+    public void Calculate_PerDeliveryLocation_UsesTheRateOfTheDeliveryAndIgnoresThePickup()
+    {
+        // Arrange
+        var terms = LocationTerms(
+            BillingLevel.PerDeliveryLocation,
+            PricingMode.ByHour,
+            false,
+            new LocationRate(null, Como, MakeRate(30m)),
+            new LocationRate(null, Monza, MakeRate(50m)));
+
+        // Act
+        var fromLecco = CalculateAt(terms, Lecco, Como, Hours("10:00", "13:00"));
+        var fromMonza = CalculateAt(terms, Monza, Como, Hours("10:00", "13:00"));
+
+        // Assert
+        fromLecco.Value.Total.ShouldBe(90m);
+        fromLecco.Value.RateSource.ShouldBe(RateSource.Location);
+        fromLecco.Value.VehicleId.ShouldBeNull();
+        fromMonza.Value.Total.ShouldBe(90m);
+    }
+
+    [Fact]
+    public void Calculate_PerPickupLocation_UsesTheRateOfThePickupAndIgnoresTheDelivery()
+    {
+        // Arrange
+        var terms = LocationTerms(
+            BillingLevel.PerPickupLocation,
+            PricingMode.ByHour,
+            false,
+            new LocationRate(Lecco, null, MakeRate(30m)),
+            new LocationRate(Como, null, MakeRate(50m)));
+
+        // Act
+        var toComo = CalculateAt(terms, Lecco, Como, Hours("10:00", "13:00"));
+        var toNowhere = CalculateAt(terms, Como, null, Hours("10:00", "13:00"));
+
+        // Assert
+        toComo.Value.Total.ShouldBe(90m);
+        toComo.Value.RateSource.ShouldBe(RateSource.Location);
+        toNowhere.Value.Total.ShouldBe(150m);
+    }
+
+    [Fact]
+    public void Calculate_PerLocationPair_PricesEachDirectionWithItsOwnRate()
+    {
+        // Arrange
+        var terms = LocationTerms(
+            BillingLevel.PerLocationPair,
+            PricingMode.ByHour,
+            false,
+            new LocationRate(Lecco, Como, MakeRate(30m)),
+            new LocationRate(Como, Lecco, MakeRate(40m)));
+
+        // Act
+        var there = CalculateAt(terms, Lecco, Como, Hours("10:00", "13:00"));
+        var back = CalculateAt(terms, Como, Lecco, Hours("10:00", "13:00"));
+
+        // Assert
+        there.Value.Total.ShouldBe(90m);
+        there.Value.RateSource.ShouldBe(RateSource.LocationPair);
+        back.Value.Total.ShouldBe(120m);
+    }
+
+    [Fact]
+    public void Calculate_PerLocationPair_AcceptsTheSameLocationOnBothSides()
+    {
+        // Arrange
+        var terms = LocationTerms(
+            BillingLevel.PerLocationPair,
+            PricingMode.ByTrip,
+            false,
+            new LocationRate(Lecco, Lecco, MakeRate(70m)));
+
+        // Act
+        var result = CalculateAt(terms, Lecco, Lecco, new TripMeasure.ByTrip(new TimeOnly(10, 0)));
+
+        // Assert
+        result.Value.Total.ShouldBe(70m);
+    }
+
+    [Fact]
+    public void Calculate_ALocationContractIgnoresTheVehicle()
+    {
+        // Arrange
+        var terms = LocationTerms(
+            BillingLevel.PerDeliveryLocation,
+            PricingMode.ByHour,
+            false,
+            new LocationRate(null, Como, MakeRate(30m)));
+
+        // Act
+        var result = CalculateAt(terms, null, Como, Hours("10:00", "13:00"), Tanker);
+
+        // Assert
+        result.Value.Total.ShouldBe(90m);
+        result.Value.RateSource.ShouldBe(RateSource.Location);
+        result.Value.VehicleId.ShouldBeNull();
+    }
+
+    public static TheoryData<string, BillingLevel, LocationId?, LocationId?> TripsWithoutARate() => new()
+    {
+        { "pickup absent", BillingLevel.PerPickupLocation, null, null },
+        { "pickup without a rate", BillingLevel.PerPickupLocation, Monza, Como },
+        { "delivery absent", BillingLevel.PerDeliveryLocation, Lecco, null },
+        { "delivery without a rate", BillingLevel.PerDeliveryLocation, Lecco, Monza },
+        { "pair with the pickup absent", BillingLevel.PerLocationPair, null, Como },
+        { "pair with the delivery absent", BillingLevel.PerLocationPair, Lecco, null },
+        { "pair in the other direction", BillingLevel.PerLocationPair, Como, Lecco },
+        { "pair with only the pickup rated", BillingLevel.PerLocationPair, Lecco, Monza },
+    };
+
+    [Theory]
+    [MemberData(nameof(TripsWithoutARate))]
+    public void Calculate_WithoutARateForTheLocations_FailsWithNoRateForLocation(
+        string scenario,
+        BillingLevel level,
+        LocationId? pickup,
+        LocationId? delivery)
+    {
+        // Arrange
+        var terms = LocationTerms(level, PricingMode.ByHour, false, RateOfLevel(level, MakeRate(30m)));
+
+        // Act
+        var result = CalculateAt(terms, pickup, delivery, Hours("10:00", "13:00"));
+
+        // Assert
+        result.IsFailure.ShouldBeTrue(scenario);
+        result.Error.ShouldBe(PricingErrors.NoRateForLocation, scenario);
+    }
+
+    public static TheoryData<BillingLevel> LocationLevels() => new()
+    {
+        BillingLevel.PerPickupLocation,
+        BillingLevel.PerDeliveryLocation,
+        BillingLevel.PerLocationPair,
+    };
+
+    [Theory]
+    [MemberData(nameof(LocationLevels))]
+    public void Calculate_OnALocationLevel_AppliesNightMinimumAndCallFeeOfTheLocationRate(BillingLevel level)
+    {
+        // Arrange: by hour, night surcharge, fixed minimum 100 and call fee 35
+        var rate = MakeRate(30m, 42m, 35m, new MinimumRule.FixedMinimum(100m));
+        var terms = LocationTerms(level, PricingMode.ByHour, true, RateOfLevel(level, rate));
+
+        // Act
+        var day = CalculateAt(terms, Lecco, Como, Hours("10:00", "13:00")).Value;
+        var night = CalculateAt(terms, Lecco, Como, Hours("23:00", "00:00")).Value;
+
+        // Assert
+        day.Total.ShouldBe(100m);
+        day.MinimumApplied.ShouldBeTrue();
+        day.NightCallFee.ShouldBeNull();
+        night.UnitPrice.ShouldBe(42m);
+        night.AmountAfterMinimum.ShouldBe(100m);
+        night.MinimumApplied.ShouldBeTrue();
+        night.NightCallFee.ShouldBe(35m);
+        night.Total.ShouldBe(135m);
+    }
+
+    [Theory]
+    [MemberData(nameof(LocationLevels))]
+    public void Calculate_OnALocationLevel_AppliesTheTieredOverageOfTheLocationRate(BillingLevel level)
+    {
+        // Arrange: 50 up to 4 h, then 12 per hour
+        var rate = MakeRate(20m, minimum: new MinimumRule.TieredOverage(50m, 4m, 12m));
+        var terms = LocationTerms(level, PricingMode.ByHour, false, RateOfLevel(level, rate));
+
+        // Act
+        var calculation = CalculateAt(terms, Lecco, Como, Hours("10:00", "16:00")).Value;
+
+        // Assert
+        calculation.Total.ShouldBe(74m);
+        calculation.MinimumApplied.ShouldBeTrue();
+    }
+
+    [Fact]
+    public void Calculate_OnALocationLevelByWeightAndDistance_PricesTheQuantityWithTheLocationRate()
+    {
+        // Arrange
+        var weightTerms = LocationTerms(
+            BillingLevel.PerDeliveryLocation,
+            PricingMode.ByWeight,
+            false,
+            new LocationRate(null, Como, MakeRate(18.50m)));
+        var distanceTerms = LocationTerms(
+            BillingLevel.PerPickupLocation,
+            PricingMode.ByDistance,
+            false,
+            new LocationRate(Lecco, null, MakeRate(1.20m)));
+
+        // Act
+        var byWeight = CalculateAt(weightTerms, null, Como, Weight(12_300)).Value;
+        var byDistance = CalculateAt(distanceTerms, Lecco, null, Distance(80)).Value;
+
+        // Assert
+        byWeight.Total.ShouldBe(227.55m);
+        byDistance.Total.ShouldBe(96m);
+    }
+
+    [Fact]
+    public void Calculate_FlatRate_IgnoresTheLocationsOfTheTrip()
+    {
+        // Arrange
+        var terms = Terms(PricingMode.ByHour, MakeRate(30m));
+
+        // Act
+        var result = CalculateAt(terms, Lecco, Como, Hours("10:00", "13:00"));
+
+        // Assert
+        result.Value.Total.ShouldBe(90m);
+        result.Value.RateSource.ShouldBe(RateSource.Contract);
+    }
+
+    [Fact]
+    public void Calculate_FlatRateWithoutARate_Throws()
+    {
+        // Arrange
+        var terms = new PricingTerms(PricingMode.ByHour, false, BillingLevel.FlatRate, null, [], []);
+
+        // Act and assert
+        Should.Throw<InvalidOperationException>(() => CalculateAt(terms, null, null, Hours("10:00", "13:00")));
+    }
+
+    [Fact]
+    public void Calculate_PrdExample123AAndBAsAPairRate_ReturnsTheStatedAmounts()
+    {
+        // Arrange: PRD §12.3 cases A and B, the standard rate of a pair
+        var terms = LocationTerms(
+            BillingLevel.PerLocationPair,
+            PricingMode.ByHour,
+            true,
+            new LocationRate(Lecco, Como, MakeRate(30m, 42m, 35m)));
+
+        // Act
+        var a = CalculateAt(terms, Lecco, Como, Hours("10:00", "13:00")).Value;
+        var b = CalculateAt(terms, Lecco, Como, Hours("23:00", "02:00")).Value;
+
+        // Assert
+        a.Total.ShouldBe(90m);
+        b.Total.ShouldBe(161m);
     }
 
     [Fact]
@@ -427,7 +699,7 @@ public sealed class PricingEngineTests
         var terms = Terms(PricingMode.ByTrip, MakeRate(Rate.MaxAmount, Rate.MaxAmount, 1m), nightSurcharge: true);
 
         // Act
-        var result = PricingEngine.Calculate(terms, null, new TripMeasure.ByTrip(new TimeOnly(23, 0)), Band);
+        var result = PricingEngine.Calculate(terms, null, null, null, new TripMeasure.ByTrip(new TimeOnly(23, 0)), Band);
 
         // Assert
         result.IsFailure.ShouldBeTrue();
@@ -441,7 +713,7 @@ public sealed class PricingEngineTests
         var terms = Terms(PricingMode.ByTrip, MakeRate(Rate.MaxAmount));
 
         // Act
-        var result = PricingEngine.Calculate(terms, null, new TripMeasure.ByTrip(new TimeOnly(10, 0)), Band);
+        var result = PricingEngine.Calculate(terms, null, null, null, new TripMeasure.ByTrip(new TimeOnly(10, 0)), Band);
 
         // Assert
         result.Value.Total.ShouldBe(Rate.MaxAmount);
@@ -454,7 +726,7 @@ public sealed class PricingEngineTests
         var terms = Terms(PricingMode.ByWeight, MakeRate(Rate.MaxAmount));
 
         // Act
-        var result = PricingEngine.Calculate(terms, null, Weight(TripMeasure.MaxKilograms), Band);
+        var result = PricingEngine.Calculate(terms, null, null, null, Weight(TripMeasure.MaxKilograms), Band);
 
         // Assert
         result.Error.ShouldBe(PricingErrors.AmountTooLarge);
@@ -467,7 +739,7 @@ public sealed class PricingEngineTests
         var terms = Terms(PricingMode.ByHour, MakeRate(30m));
 
         // Act and assert
-        Should.Throw<ArgumentException>(() => PricingEngine.Calculate(terms, null, Weight(100), Band));
+        Should.Throw<ArgumentException>(() => PricingEngine.Calculate(terms, null, null, null, Weight(100), Band));
     }
 
     [Fact]
@@ -478,7 +750,7 @@ public sealed class PricingEngineTests
 
         // Act and assert
         Should.Throw<InvalidOperationException>(
-            () => PricingEngine.Calculate(terms, null, new TripMeasure.ByTrip(new TimeOnly(23, 0)), Band));
+            () => PricingEngine.Calculate(terms, null, null, null, new TripMeasure.ByTrip(new TimeOnly(23, 0)), Band));
     }
 
     [Fact]
@@ -489,7 +761,7 @@ public sealed class PricingEngineTests
 
         // Act and assert
         Should.Throw<InvalidOperationException>(
-            () => PricingEngine.Calculate(terms, null, new TripMeasure.ByTrip(new TimeOnly(23, 0)), Band));
+            () => PricingEngine.Calculate(terms, null, null, null, new TripMeasure.ByTrip(new TimeOnly(23, 0)), Band));
     }
 
     [Fact]
@@ -500,6 +772,6 @@ public sealed class PricingEngineTests
 
         // Act and assert
         Should.Throw<InvalidOperationException>(
-            () => PricingEngine.Calculate(terms, null, new TripMeasure.ByTrip(new TimeOnly(10, 0)), Band));
+            () => PricingEngine.Calculate(terms, null, null, null, new TripMeasure.ByTrip(new TimeOnly(10, 0)), Band));
     }
 }

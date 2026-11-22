@@ -48,6 +48,7 @@ internal sealed class GetContractHandler
         }
 
         var vehicleRates = await ContractVehicleRateDto.LoadAsync(_db, [contract], cancellationToken);
-        return ContractDto.From(contract, _clock.TodayInItaly(), vehicleRates[contract.Id]);
+        var locationRates = await ContractLocationRateDto.LoadAsync(_db, [contract], cancellationToken);
+        return ContractDto.From(contract, _clock.TodayInItaly(), vehicleRates[contract.Id], locationRates[contract.Id]);
     }
 }

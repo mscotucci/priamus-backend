@@ -115,6 +115,18 @@ internal sealed class CreateContractHandler
             return vehicleError;
         }
 
+        var locationRates = ContractLocationRateRequest.ToLocationRates(request.LocationRates);
+        if (locationRates.IsFailure)
+        {
+            return locationRates.Error;
+        }
+
+        if (await ContractLocationRateChecks.FindAsync(
+            _db, locationRates.Value, [], _arguments, cancellationToken) is { } locationError)
+        {
+            return locationError;
+        }
+
         var created = Contract.Create(
             ContractId.New(),
             ownerId,
@@ -125,6 +137,7 @@ internal sealed class CreateContractHandler
             request.NightSurcharge!.Value,
             rate.Value,
             vehicleRates.Value,
+            locationRates.Value,
             _clock,
             actorId);
 
@@ -154,6 +167,7 @@ internal sealed class CreateContractHandler
             contract.Id.Value, customerId, actorId.Value);
 
         var vehicleRateDtos = await ContractVehicleRateDto.LoadAsync(_db, [contract], cancellationToken);
-        return ContractDto.From(contract, _clock.TodayInItaly(), vehicleRateDtos[contract.Id]);
+        var locationRateDtos = await ContractLocationRateDto.LoadAsync(_db, [contract], cancellationToken);
+        return ContractDto.From(contract, _clock.TodayInItaly(), vehicleRateDtos[contract.Id], locationRateDtos[contract.Id]);
     }
 }

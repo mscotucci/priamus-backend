@@ -3,7 +3,7 @@ using Priamus.Trips.SharedKernel.Results;
 namespace Priamus.Trips.Registry.Domain.Contracts.ValueObjects;
 
 /// <summary>
-/// The rate of a flat-rate <see cref="Contract"/>: day price, night price and night call fee
+/// The rate of a flat-rate <see cref="Contract"/>, of one of its vehicles or of a location: day price, night price and night call fee
 /// (both present only with the night surcharge) and the minimum rule. It applies for the whole
 /// validity of its contract and has none of its own. Amounts are euro.
 /// </summary>

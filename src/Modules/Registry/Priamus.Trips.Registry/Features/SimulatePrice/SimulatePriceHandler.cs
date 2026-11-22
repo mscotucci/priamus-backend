@@ -1,5 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using Priamus.Trips.Registry.Domain.Contracts;
+using Priamus.Trips.Registry.Domain.Contracts.ValueObjects;
+using Priamus.Trips.Registry.Domain.Locations;
 using Priamus.Trips.Registry.Domain.Pricing;
 using Priamus.Trips.Registry.Domain.Vehicles;
 using Priamus.Trips.Registry.Features.Validation;
@@ -32,11 +34,18 @@ internal sealed class SimulatePriceHandler
         SimulatePriceRequest request,
         CancellationToken cancellationToken)
     {
-        // Request validation has already run: the members the mode needs are present.
-        var rate = request.RateMembers().ToRate();
-        if (rate.IsFailure)
+        // Request validation has already run: the members the billing level needs are present.
+        var level = request.BillingLevel!.Value;
+        Rate? rate = null;
+        if (level == BillingLevel.FlatRate)
         {
-            return rate.Error;
+            var flatRate = request.RateMembers().ToRate();
+            if (flatRate.IsFailure)
+            {
+                return flatRate.Error;
+            }
+
+            rate = flatRate.Value;
         }
 
         var vehicleRates = ContractVehicleRateRequest.ToVehicleRates(request.VehicleRates);
@@ -45,11 +54,19 @@ internal sealed class SimulatePriceHandler
             return vehicleRates.Error;
         }
 
+        var locationRates = ContractLocationRateRequest.ToLocationRates(request.LocationRates);
+        if (locationRates.IsFailure)
+        {
+            return locationRates.Error;
+        }
+
         var terms = new PricingTerms(
             request.PricingMode!.Value,
             request.NightSurcharge!.Value,
-            rate.Value!,
-            vehicleRates.Value);
+            level,
+            rate,
+            vehicleRates.Value,
+            locationRates.Value);
 
         var trip = BuildTrip(request);
         if (trip.IsFailure)
@@ -60,7 +77,10 @@ internal sealed class SimulatePriceHandler
         var setting = await _db.NightBandSettings.AsNoTracking().SingleAsync(cancellationToken);
         VehicleId? vehicle = request.VehicleId is { } id ? new VehicleId(id) : null;
 
-        var calculation = PricingEngine.Calculate(terms, vehicle, trip.Value, setting.Band);
+        LocationId? pickup = request.PickupLocationId is { } pickupId ? new LocationId(pickupId) : null;
+        LocationId? delivery = request.DeliveryLocationId is { } deliveryId ? new LocationId(deliveryId) : null;
+
+        var calculation = PricingEngine.Calculate(terms, vehicle, pickup, delivery, trip.Value, setting.Band);
         if (calculation.IsFailure)
         {
             return calculation.Error;

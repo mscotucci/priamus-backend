@@ -17,6 +17,7 @@ using Priamus.Trips.Registry.Features.ListCustomers;
 using Priamus.Trips.Registry.Features.ListDrivers;
 using Priamus.Trips.Registry.Features.ListLinkableAccounts;
 using Priamus.Trips.Registry.Features.ListLocations;
+using Priamus.Trips.Registry.Features.ListRateableLocations;
 using Priamus.Trips.Registry.Features.ListRateableVehicles;
 using Priamus.Trips.Registry.Features.ListVehicles;
 using Priamus.Trips.Registry.Features.ReactivateCustomer;
@@ -72,6 +73,7 @@ public static class RegistryModuleEndpoints
         app.MapCreateLocation();
         app.MapUpdateLocation();
         app.MapListLocations();
+        app.MapListRateableLocations();
         app.MapDeactivateLocation();
         app.MapReactivateLocation();
         return app;

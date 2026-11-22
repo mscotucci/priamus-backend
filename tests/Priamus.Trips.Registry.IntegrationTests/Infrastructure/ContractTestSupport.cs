@@ -9,6 +9,7 @@ using Priamus.Trips.IntegrationTesting;
 using Priamus.Trips.Registry.Domain.Contracts;
 using Priamus.Trips.Registry.Domain.Contracts.ValueObjects;
 using Priamus.Trips.Registry.Domain.Customers;
+using Priamus.Trips.Registry.Domain.Locations;
 using Priamus.Trips.Registry.Persistence;
 using Priamus.Trips.SharedKernel.Time;
 using Xunit;
@@ -18,6 +19,11 @@ namespace Priamus.Trips.Registry.IntegrationTests.Infrastructure;
 /// <summary>Helpers shared by the contract endpoint tests.</summary>
 public static class ContractTestSupport
 {
+    private static readonly string[] RateMemberNames =
+    [
+        "dayPrice", "nightPrice", "nightCallFee", "minimumRule", "minimumAmount", "minimumThreshold", "minimumOveragePrice",
+    ];
+
     /// <summary>A clock that always reads the same instant.</summary>
     public sealed class FixedClock(DateTime now) : IClock
     {
@@ -51,8 +57,14 @@ public static class ContractTestSupport
         RequiredDocument[]? requiredDocuments = null,
         bool nightSurcharge = true,
         Rate? rate = null,
-        IReadOnlyList<VehicleRate>? vehicleRates = null)
+        IReadOnlyList<VehicleRate>? vehicleRates = null,
+        IReadOnlyList<LocationRate>? locationRates = null)
     {
+        if (locationRates is null && billingLevel != BillingLevel.FlatRate)
+        {
+            locationRates = [await DefaultLocationRateAsync(db, billingLevel, nightSurcharge)];
+        }
+
         var contract = Contract.Create(
             ContractId.New(),
             customerId,
@@ -63,6 +75,7 @@ public static class ContractTestSupport
             nightSurcharge,
             rate,
             vehicleRates ?? [],
+            locationRates ?? [],
             new SystemClock(),
             FakeCurrentUser.ActorId).Value;
 
@@ -72,12 +85,35 @@ public static class ContractTestSupport
     }
 
     /// <summary>
+    /// A rate for a location (or pair) seeded on the spot, so that a location contract seeded without
+    /// rates still has the one rate it requires; the rate fits any pricing mode.
+    /// </summary>
+    private static async Task<LocationRate> DefaultLocationRateAsync(
+        RegistryDbContext db, BillingLevel billingLevel, bool nightSurcharge)
+    {
+        var rate = Rate.Create(
+            45m, nightSurcharge ? 55m : null, nightSurcharge ? 5m : null, new MinimumRule.None()).Value;
+        LocationId? pickup = billingLevel == BillingLevel.PerDeliveryLocation
+            ? null
+            : (await LocationTestSupport.SeedLocationAsync(db, $"Partenza {Guid.NewGuid():N}", "Pescara")).Id;
+        LocationId? delivery = billingLevel == BillingLevel.PerPickupLocation
+            ? null
+            : (await LocationTestSupport.SeedLocationAsync(db, $"Consegna {Guid.NewGuid():N}", "Pescara")).Id;
+        return new LocationRate(pickup, delivery, rate);
+    }
+
+    /// <summary>
     /// Sets the billing terms and the rate members of a contract request body; <paramref name="rate"/>
     /// is a JSON object of the rate members (<c>{}</c> for none).
     /// </summary>
     public static void SetRate(
         Dictionary<string, object?> body, string billingLevel, string pricingMode, bool nightSurcharge, string rate)
     {
+        foreach (var member in RateMemberNames)
+        {
+            body.Remove(member);
+        }
+
         body["billingLevel"] = billingLevel;
         body["pricingMode"] = pricingMode;
         body["nightSurcharge"] = nightSurcharge;
@@ -170,10 +206,7 @@ public static class ContractTestSupport
     public static void SetRateWithVehicleRate(
         Dictionary<string, object?> body, string billingLevel, string pricingMode, bool nightSurcharge, string vehicleRate)
     {
-        foreach (var member in new[]
-        {
-            "dayPrice", "nightPrice", "nightCallFee", "minimumRule", "minimumAmount", "minimumThreshold", "minimumOveragePrice",
-        })
+        foreach (var member in RateMemberNames)
         {
             body.Remove(member);
         }
@@ -182,6 +215,7 @@ public static class ContractTestSupport
             : nightSurcharge ? """{"dayPrice":45,"nightPrice":55,"nightCallFee":5,"minimumRule":"None"}"""
             : """{"dayPrice":45,"minimumRule":"None"}""";
         SetRate(body, billingLevel, pricingMode, nightSurcharge, contractRate);
+        WithLocationRateForTheLevel(body, billingLevel, nightSurcharge);
         body["vehicleRates"] = new[] { VehicleRateItem(Guid.NewGuid(), vehicleRate) };
     }
 
@@ -191,6 +225,95 @@ public static class ContractTestSupport
     /// </summary>
     public static string[] VehicleRateKeys(string billingLevel, string keys) =>
         billingLevel == "FlatRate" ? [.. keys.Split(',').Select(k => $"VehicleRates[0].{k}")] : ["VehicleRates"];
+
+    /// <summary>
+    /// The 400 keys a broken location rate is reported under: its member keys under the first item.
+    /// </summary>
+    public static string[] LocationRateKeys(string keys) =>
+        [.. keys.Split(',').Select(k => $"LocationRates[0].{k}")];
+
+    /// <summary>
+    /// Gives the body of a location-level contract the one location rate it requires, fitting its
+    /// night surcharge, so that only what a test breaks is reported; a flat-rate body is left as it is.
+    /// </summary>
+    public static void WithLocationRateForTheLevel(
+        Dictionary<string, object?> body, string billingLevel, bool nightSurcharge, Guid? pickupId = null, Guid? deliveryId = null)
+    {
+        if (billingLevel == "FlatRate")
+        {
+            return;
+        }
+
+        body["locationRates"] = new[]
+        {
+            LocationRateFor(
+                billingLevel,
+                pickupId ?? Guid.NewGuid(),
+                deliveryId ?? Guid.NewGuid(),
+                nightSurcharge ? """{"dayPrice":45,"nightPrice":55,"nightCallFee":5,"minimumRule":"None"}""" : DayOnlyRate),
+        };
+    }
+
+    /// <summary>
+    /// The rows of <see cref="InvalidRates"/> that are about the members of a rate on a flat-rate
+    /// contract, which a location rate follows: pricing mode, night surcharge, members, error keys.
+    /// </summary>
+    public static TheoryData<string, bool, string, string> InvalidLocationRates
+    {
+        get
+        {
+            var rows = new TheoryData<string, bool, string, string>();
+            foreach (var (level, pricingMode, night, rate, keys) in InvalidRates.Select(r => r.Data))
+            {
+                if (level == "FlatRate")
+                {
+                    rows.Add(pricingMode, night, rate, keys);
+                }
+            }
+
+            return rows;
+        }
+    }
+
+    /// <summary>
+    /// One item of the <c>locationRates</c> member of a contract request body, with the pickup and the
+    /// delivery location the billing level <paramref name="billingLevel"/> uses and no other.
+    /// </summary>
+    public static Dictionary<string, object?> LocationRateFor(
+        string billingLevel, Guid? pickupId, Guid? deliveryId, string rate = DayOnlyRate)
+    {
+        var item = new Dictionary<string, object?>
+        {
+            ["pickupLocationId"] = billingLevel == "PerDeliveryLocation" ? null : pickupId,
+            ["deliveryLocationId"] = billingLevel == "PerPickupLocation" ? null : deliveryId,
+        };
+        foreach (var member in JsonSerializer.Deserialize<Dictionary<string, JsonElement>>(rate)!)
+        {
+            item[member.Key] = member.Value;
+        }
+
+        return item;
+    }
+
+    /// <summary>
+    /// Writes a contract request body of a location contract: the billing terms, no rate member of
+    /// its own and <paramref name="locationRates"/> as written.
+    /// </summary>
+    public static void SetLocationRates(
+        Dictionary<string, object?> body,
+        string billingLevel,
+        string pricingMode,
+        bool nightSurcharge,
+        params Dictionary<string, object?>[] locationRates)
+    {
+        foreach (var member in RateMemberNames)
+        {
+            body.Remove(member);
+        }
+
+        SetRate(body, billingLevel, pricingMode, nightSurcharge, "{}");
+        body["locationRates"] = locationRates;
+    }
 
     /// <summary>
     /// Saves a flat-rate contract that has no rate, as one stored before rates existed: the domain
@@ -206,6 +329,27 @@ public static class ContractTestSupport
             db, customerId, validFrom, validTo, BillingLevel.PerLocationPair, PricingMode.ByHour, nightSurcharge: false);
         await db.Database.ExecuteSqlInterpolatedAsync(
             $"UPDATE registry.contracts SET billing_level = 'FlatRate' WHERE id = {contract.Id.Value}",
+            TestContext.Current.CancellationToken);
+        return contract;
+    }
+
+    /// <summary>
+    /// Saves a location contract that has no rates, as one stored before they were required: the domain
+    /// no longer builds one, so it is seeded with a rate and the rows are deleted from the table.
+    /// </summary>
+    public static async Task<Contract> SeedLocationContractWithoutRatesAsync(
+        RegistryDbContext db,
+        CustomerId customerId,
+        DateOnly validFrom,
+        DateOnly? validTo,
+        BillingLevel billingLevel = BillingLevel.PerLocationPair,
+        PricingMode pricingMode = PricingMode.ByHour,
+        bool nightSurcharge = false)
+    {
+        var contract = await SeedContractAsync(
+            db, customerId, validFrom, validTo, billingLevel, pricingMode, nightSurcharge: nightSurcharge);
+        await db.Database.ExecuteSqlInterpolatedAsync(
+            $"DELETE FROM registry.contract_location_rates WHERE contract_id = {contract.Id.Value}",
             TestContext.Current.CancellationToken);
         return contract;
     }

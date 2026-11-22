@@ -108,6 +108,7 @@ public sealed class RegistryMessagesTests : RegistryIntegrationTestBase
         (await DetailAsync(PricingErrors.KilogramsTooLarge)).ShouldBe("Al massimo 99.999 kg.");
         (await DetailAsync(PricingErrors.KilometresTooLarge)).ShouldBe("Al massimo 9.999 km.");
         (await DetailAsync(PricingErrors.AmountTooLarge)).ShouldBe("Importo troppo alto.");
+        (await DetailAsync(PricingErrors.NoRateForLocation)).ShouldBe("Non c'è una tariffa per i luoghi del viaggio.");
     }
 
     [Fact]
@@ -282,6 +283,12 @@ public sealed class RegistryMessagesTests : RegistryIntegrationTestBase
             ContractErrors.VehicleRateUnknownVehicle,
             ContractErrors.VehicleRateOnTrailer,
             ContractErrors.VehicleRateDecommissioned,
+            ContractErrors.LocationRateNotApplicable,
+            ContractErrors.LocationRateLocationsMismatch,
+            ContractErrors.LocationRateDuplicate,
+            ContractErrors.LocationRateUnknownLocation,
+            ContractErrors.LocationRateDeactivatedLocation,
+            ContractErrors.LocationRatesRequired,
         };
 
         foreach (var error in errors)

@@ -3,6 +3,7 @@ using Microsoft.EntityFrameworkCore.Metadata.Builders;
 using Priamus.Trips.Registry.Domain.Contracts;
 using Priamus.Trips.Registry.Domain.Contracts.ValueObjects;
 using Priamus.Trips.Registry.Domain.Customers;
+using Priamus.Trips.Registry.Domain.Locations;
 using Priamus.Trips.Registry.Domain.Vehicles;
 using Priamus.Trips.Registry.Persistence.Converters;
 
@@ -84,6 +85,9 @@ internal sealed class ContractConfiguration : IEntityTypeConfiguration<Contract>
         // The vehicle rates are rebuilt from the rows of their own table, held in a private field.
         builder.Ignore(c => c.VehicleRates);
 
+        // The location rates are rebuilt from the rows of their own table, held in a private field.
+        builder.Ignore(c => c.LocationRates);
+
         builder.Property<decimal?>("_dayPrice")
             .HasColumnName("day_price")
             .HasColumnType("numeric(12,2)");
@@ -139,34 +143,60 @@ internal sealed class ContractConfiguration : IEntityTypeConfiguration<Contract>
             rates.HasIndex(r => r.VehicleId)
                 .HasDatabaseName("ix_contract_vehicle_rates_vehicle_id");
 
-            rates.Property(r => r.DayPrice)
-                .HasColumnName("day_price")
-                .HasColumnType("numeric(12,2)");
+            MapRateColumns(rates);
+        });
 
-            rates.Property(r => r.NightPrice)
-                .HasColumnName("night_price")
-                .HasColumnType("numeric(12,2)");
+        builder.OwnsMany<StoredLocationRate>("_storedLocationRates", rates =>
+        {
+            rates.ToTable("contract_location_rates", "registry");
 
-            rates.Property(r => r.NightCallFee)
-                .HasColumnName("night_call_fee")
-                .HasColumnType("numeric(12,2)");
+            rates.WithOwner().HasForeignKey("ContractId");
 
-            rates.Property(r => r.MinimumRule)
-                .HasConversion<string>()
-                .HasColumnName("minimum_rule")
-                .HasColumnType("text");
+            rates.Property<ContractId>("ContractId")
+                .HasConversion(new ContractIdConverter())
+                .HasColumnName("contract_id")
+                .HasColumnType("uuid");
 
-            rates.Property(r => r.MinimumAmount)
-                .HasColumnName("minimum_amount")
-                .HasColumnType("numeric(12,2)");
+            rates.Property<int>("Id")
+                .HasColumnName("id")
+                .HasColumnType("integer")
+                .ValueGeneratedOnAdd();
 
-            rates.Property(r => r.MinimumThreshold)
-                .HasColumnName("minimum_threshold")
-                .HasColumnType("numeric(12,2)");
+            rates.HasKey("ContractId", "Id");
 
-            rates.Property(r => r.MinimumOveragePrice)
-                .HasColumnName("minimum_overage_price")
-                .HasColumnType("numeric(12,2)");
+            rates.Property(r => r.PickupLocationId)
+                .HasConversion(new LocationIdConverter())
+                .HasColumnName("pickup_location_id")
+                .HasColumnType("uuid");
+
+            rates.Property(r => r.DeliveryLocationId)
+                .HasConversion(new LocationIdConverter())
+                .HasColumnName("delivery_location_id")
+                .HasColumnType("uuid");
+
+            rates.HasOne<Location>()
+                .WithMany()
+                .HasForeignKey(r => r.PickupLocationId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            rates.HasOne<Location>()
+                .WithMany()
+                .HasForeignKey(r => r.DeliveryLocationId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            rates.HasIndex(r => r.PickupLocationId)
+                .HasDatabaseName("ix_contract_location_rates_pickup_location_id");
+
+            rates.HasIndex(r => r.DeliveryLocationId)
+                .HasDatabaseName("ix_contract_location_rates_delivery_location_id");
+
+            // A location or ordered pair has one rate per contract; a null side counts as a value.
+            rates.HasIndex("ContractId", nameof(StoredLocationRate.PickupLocationId), nameof(StoredLocationRate.DeliveryLocationId))
+                .IsUnique()
+                .AreNullsDistinct(false)
+                .HasDatabaseName("uq_contract_location_rates_locations");
+
+            MapRateColumns(rates);
         });
 
         builder.Property(c => c.CreatedAt)
@@ -197,5 +227,39 @@ internal sealed class ContractConfiguration : IEntityTypeConfiguration<Contract>
             .HasColumnType("integer")
             .IsConcurrencyToken()
             .HasDefaultValue(0);
+    }
+
+    /// <summary>Maps the seven columns of the rate held by a row owned by the contract.</summary>
+    private static void MapRateColumns<TRow>(OwnedNavigationBuilder<Contract, TRow> rates)
+        where TRow : StoredRate
+    {
+        rates.Property(r => r.DayPrice)
+            .HasColumnName("day_price")
+            .HasColumnType("numeric(12,2)");
+
+        rates.Property(r => r.NightPrice)
+            .HasColumnName("night_price")
+            .HasColumnType("numeric(12,2)");
+
+        rates.Property(r => r.NightCallFee)
+            .HasColumnName("night_call_fee")
+            .HasColumnType("numeric(12,2)");
+
+        rates.Property(r => r.MinimumRule)
+            .HasConversion<string>()
+            .HasColumnName("minimum_rule")
+            .HasColumnType("text");
+
+        rates.Property(r => r.MinimumAmount)
+            .HasColumnName("minimum_amount")
+            .HasColumnType("numeric(12,2)");
+
+        rates.Property(r => r.MinimumThreshold)
+            .HasColumnName("minimum_threshold")
+            .HasColumnType("numeric(12,2)");
+
+        rates.Property(r => r.MinimumOveragePrice)
+            .HasColumnName("minimum_overage_price")
+            .HasColumnType("numeric(12,2)");
     }
 }

@@ -148,6 +148,39 @@ public static class ContractErrors
         "Registry.Contract.VehicleRateDecommissioned",
         "A vehicle rate cannot be added for a decommissioned vehicle.");
 
+    /// <summary>A flat-rate contract holds location rates.</summary>
+    public static readonly Error LocationRateNotApplicable = Error.Validation(
+        "Registry.Contract.LocationRateNotApplicable",
+        "A flat-rate contract has no location rates.");
+
+    /// <summary>A location rate does not name exactly the locations of the contract's billing level.</summary>
+    public static readonly Error LocationRateLocationsMismatch = Error.Validation(
+        "Registry.Contract.LocationRateLocationsMismatch",
+        "A location rate must name exactly the locations of the billing level.");
+
+    /// <summary>A location or an ordered pair of locations has more than one rate in the contract.</summary>
+    public static readonly Error LocationRateDuplicate = Error.Validation(
+        "Registry.Contract.LocationRateDuplicate",
+        "A location or pair of locations can have only one rate in a contract.");
+
+    /// <summary>A location rate is for a location that does not exist; the location id is the message argument.</summary>
+    public static readonly Error LocationRateUnknownLocation = Error.Validation(
+        "Registry.Contract.LocationRateUnknownLocation",
+        "The location of a location rate does not exist.");
+
+    /// <summary>
+    /// A location rate is for a deactivated location the contract did not already have a rate for; the
+    /// location as "name, municipality" is the message argument.
+    /// </summary>
+    public static readonly Error LocationRateDeactivatedLocation = Error.Validation(
+        "Registry.Contract.LocationRateDeactivatedLocation",
+        "A location rate cannot be added for a deactivated location.");
+
+    /// <summary>A contract priced per location or pair has no location rates.</summary>
+    public static readonly Error LocationRatesRequired = Error.Validation(
+        "Registry.Contract.LocationRatesRequired",
+        "A contract priced per location or pair needs at least one location rate.");
+
     /// <summary>
     /// The contract belongs to a deactivated customer, so its terms cannot be changed.
     /// </summary>

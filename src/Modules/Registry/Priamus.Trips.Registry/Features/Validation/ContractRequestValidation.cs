@@ -8,8 +8,8 @@ namespace Priamus.Trips.Registry.Features.Validation;
 /// <summary>
 /// The cross-field rules shared by the create and edit requests (PRD §5.4, RF-16): the end of the
 /// validity is not before its start, and the rate and the minimum fit the billing level, the
-/// pricing mode and the night surcharge; the vehicle rates are judged like the rate, each under its
-/// own <c>VehicleRates[i]</c> key.
+/// pricing mode and the night surcharge; the vehicle rates and the location rates are judged like the
+/// rate, each under its own <c>VehicleRates[i]</c> or <c>LocationRates[i]</c> key.
 /// </summary>
 internal static class ContractRequestValidation
 {
@@ -21,7 +21,8 @@ internal static class ContractRequestValidation
         PricingMode? pricingMode,
         bool? nightSurcharge,
         ContractRateMembers rate,
-        IReadOnlyList<ContractVehicleRateRequest>? vehicleRates)
+        IReadOnlyList<ContractVehicleRateRequest>? vehicleRates,
+        IReadOnlyList<ContractLocationRateRequest>? locationRates)
     {
         if (validFrom is { } from && validTo is { } to && to < from)
         {
@@ -30,12 +31,21 @@ internal static class ContractRequestValidation
                 ["ValidTo"]);
         }
 
-        foreach (var result in ValidateRate(billingLevel, pricingMode, nightSurcharge, rate))
+        // A missing BillingLevel is not judged here: it is required and reports its own error.
+        if (billingLevel is { } level)
+        {
+            foreach (var result in ValidateRate(level == BillingLevel.FlatRate, pricingMode, nightSurcharge, rate))
+            {
+                yield return result;
+            }
+        }
+
+        foreach (var result in ValidateVehicleRates(billingLevel, pricingMode, nightSurcharge, vehicleRates))
         {
             yield return result;
         }
 
-        foreach (var result in ValidateVehicleRates(billingLevel, pricingMode, nightSurcharge, vehicleRates))
+        foreach (var result in ValidateLocationRates(billingLevel, pricingMode, nightSurcharge, locationRates))
         {
             yield return result;
         }
@@ -78,7 +88,7 @@ internal static class ContractRequestValidation
                 yield return Error(RegistryMessages.Registry_Contract_VehicleRateDuplicate, $"{key}.VehicleId");
             }
 
-            foreach (var result in ValidateRate(billingLevel, pricingMode, nightSurcharge, item.RateMembers()))
+            foreach (var result in ValidateRate(true, pricingMode, nightSurcharge, item.RateMembers()))
             {
                 yield return new ValidationResult(
                     result.ErrorMessage, [.. result.MemberNames.Select(member => $"{key}.{member}")]);
@@ -86,40 +96,110 @@ internal static class ContractRequestValidation
         }
     }
 
-    private static IEnumerable<ValidationResult> ValidateRate(
+    private static IEnumerable<ValidationResult> ValidateLocationRates(
         BillingLevel? billingLevel,
         PricingMode? pricingMode,
         bool? nightSurcharge,
-        ContractRateMembers rate)
+        IReadOnlyList<ContractLocationRateRequest>? locationRates)
     {
-        if (billingLevel is null)
+        // A missing BillingLevel is not judged here: it is required and reports its own error.
+        if (billingLevel is not { } level)
         {
             yield break;
         }
 
-        var flatRate = billingLevel == BillingLevel.FlatRate;
-        var night = flatRate && nightSurcharge is true;
-        var nightApplies = flatRate && nightSurcharge is not false;
+        if (locationRates is not { Count: > 0 })
+        {
+            if (level != BillingLevel.FlatRate)
+            {
+                yield return Error(RegistryMessages.Registry_Contract_LocationRatesMissing, "LocationRates");
+            }
+
+            yield break;
+        }
+
+        if (level == BillingLevel.FlatRate)
+        {
+            yield return Error(RegistryMessages.Registry_Contract_ValueNotApplicable, "LocationRates");
+            yield break;
+        }
+
+        var usesPickup = level is BillingLevel.PerPickupLocation or BillingLevel.PerLocationPair;
+        var usesDelivery = level is BillingLevel.PerDeliveryLocation or BillingLevel.PerLocationPair;
+        var seen = new HashSet<(Guid?, Guid?)>();
+        for (var i = 0; i < locationRates.Count; i++)
+        {
+            var key = $"LocationRates[{i}]";
+            if (locationRates[i] is not { } item)
+            {
+                yield return Error(RegistryMessages.Validation_Required, key);
+                continue;
+            }
+
+            var pickupJudged = LocationMember(item.PickupLocationId, usesPickup, $"{key}.PickupLocationId");
+            var deliveryJudged = LocationMember(item.DeliveryLocationId, usesDelivery, $"{key}.DeliveryLocationId");
+            foreach (var result in new[] { pickupJudged, deliveryJudged })
+            {
+                if (result is not null)
+                {
+                    yield return result;
+                }
+            }
+
+            if (pickupJudged is null && deliveryJudged is null
+                && !seen.Add((item.PickupLocationId, item.DeliveryLocationId)))
+            {
+                var duplicateKey = usesDelivery ? $"{key}.DeliveryLocationId" : $"{key}.PickupLocationId";
+                yield return Error(RegistryMessages.Registry_Contract_LocationRateDuplicate, duplicateKey);
+            }
+
+            foreach (var result in ValidateRate(true, pricingMode, nightSurcharge, item.RateMembers()))
+            {
+                yield return new ValidationResult(
+                    result.ErrorMessage, [.. result.MemberNames.Select(member => $"{key}.{member}")]);
+            }
+        }
+    }
+
+    private static ValidationResult? LocationMember(Guid? value, bool used, string key) => (value, used) switch
+    {
+        (null, true) => Error(RegistryMessages.Validation_Required, key),
+        (not null, false) => Error(RegistryMessages.Registry_Contract_ValueNotApplicable, key),
+        _ => null,
+    };
+
+    /// <summary>
+    /// Judges one rate; <paramref name="rateApplies"/> is whether the rate applies at all: the
+    /// contract's own rate only to a flat-rate contract, a vehicle or location rate always.
+    /// </summary>
+    private static IEnumerable<ValidationResult> ValidateRate(
+        bool rateApplies,
+        PricingMode? pricingMode,
+        bool? nightSurcharge,
+        ContractRateMembers rate)
+    {
+        var night = rateApplies && nightSurcharge is true;
+        var nightApplies = rateApplies && nightSurcharge is not false;
 
         // A contract priced by trip has no minimum; with the pricing mode missing the minimum is
         // not judged (the mode is reported on its own).
-        var minimumAsked = flatRate && pricingMode is { } mode && mode != PricingMode.ByTrip;
-        var noMinimumAllowed = flatRate && pricingMode == PricingMode.ByTrip;
+        var minimumAsked = rateApplies && pricingMode is { } mode && mode != PricingMode.ByTrip;
+        var noMinimumAllowed = rateApplies && pricingMode == PricingMode.ByTrip;
         var kind = rate.MinimumRule;
         var amountRequired = minimumAsked && kind is MinimumRuleKind.FixedMinimum or MinimumRuleKind.TieredOverage;
         var tieredRequired = minimumAsked && kind is MinimumRuleKind.TieredOverage;
 
         // With the pricing mode missing the minimum members are judged by the kind alone.
-        var minimumJudged = flatRate && !noMinimumAllowed;
+        var minimumJudged = rateApplies && !noMinimumAllowed;
         var amountApplies = minimumJudged && (kind is null or MinimumRuleKind.FixedMinimum or MinimumRuleKind.TieredOverage);
         var tieredApplies = minimumJudged && (kind is null or MinimumRuleKind.TieredOverage);
 
         ValidationResult?[] checks =
         [
-            Positive("DayPrice", rate.DayPrice, required: flatRate, applicable: flatRate),
+            Positive("DayPrice", rate.DayPrice, required: rateApplies, applicable: rateApplies),
             Positive("NightPrice", rate.NightPrice, required: night, applicable: nightApplies),
             NonNegative("NightCallFee", rate.NightCallFee, required: night, applicable: nightApplies),
-            MinimumRuleMember(kind, required: minimumAsked, applicable: flatRate && (!noMinimumAllowed || kind is MinimumRuleKind.None)),
+            MinimumRuleMember(kind, required: minimumAsked, applicable: rateApplies && (!noMinimumAllowed || kind is MinimumRuleKind.None)),
             Positive("MinimumAmount", rate.MinimumAmount, required: amountRequired, applicable: amountApplies),
             Positive("MinimumThreshold", rate.MinimumThreshold, required: tieredRequired, applicable: tieredApplies),
             Positive("MinimumOveragePrice", rate.MinimumOveragePrice, required: tieredRequired, applicable: tieredApplies),

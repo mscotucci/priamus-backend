@@ -119,6 +119,18 @@ internal sealed class UpdateContractHandler
             return vehicleError;
         }
 
+        var locationRates = ContractLocationRateRequest.ToLocationRates(request.LocationRates);
+        if (locationRates.IsFailure)
+        {
+            return locationRates.Error;
+        }
+
+        if (await ContractLocationRateChecks.FindAsync(
+            _db, locationRates.Value, contract.LocationRates, _arguments, cancellationToken) is { } locationError)
+        {
+            return locationError;
+        }
+
         var actorId = _currentUser.UserId;
 
         var updated = contract.Update(
@@ -129,6 +141,7 @@ internal sealed class UpdateContractHandler
             request.NightSurcharge!.Value,
             rate.Value,
             vehicleRates.Value,
+            locationRates.Value,
             _clock,
             actorId);
         if (updated.IsFailure)

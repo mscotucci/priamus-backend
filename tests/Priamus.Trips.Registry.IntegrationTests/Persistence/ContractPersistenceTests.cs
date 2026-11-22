@@ -4,6 +4,7 @@ using Npgsql;
 using Priamus.Trips.Registry.Domain.Contracts;
 using Priamus.Trips.Registry.Domain.Contracts.ValueObjects;
 using Priamus.Trips.Registry.Domain.Customers;
+using Priamus.Trips.Registry.Domain.Locations;
 using Priamus.Trips.Registry.Domain.Vehicles;
 using Priamus.Trips.Registry.IntegrationTests.Infrastructure;
 using Priamus.Trips.Registry.Persistence;
@@ -38,11 +39,12 @@ public sealed class ContractPersistenceTests : RegistryIntegrationTestBase
             ContractId.New(),
             customerId,
             Validity.Create(validFrom, validTo).Value,
-            BillingLevel.PerLocationPair,
+            BillingLevel.FlatRate,
             PricingMode.ByTrip,
             documents ?? [RequiredDocument.DailySummary, RequiredDocument.DeliveryNote],
             nightSurcharge: true,
-            rate: null,
+            rate: Rate.Create(45m, 55m, 5m, new MinimumRule.None()).Value,
+            [],
             [],
             new SystemClock(),
             FakeCurrentUser.ActorId).Value;
@@ -92,7 +94,7 @@ public sealed class ContractPersistenceTests : RegistryIntegrationTestBase
         loadedOpen.CustomerId.ShouldBe(customer.Id);
         loadedOpen.Validity.ValidFrom.ShouldBe(D(2027, 1, 1));
         loadedOpen.Validity.ValidTo.ShouldBeNull();
-        loadedOpen.BillingLevel.ShouldBe(BillingLevel.PerLocationPair);
+        loadedOpen.BillingLevel.ShouldBe(BillingLevel.FlatRate);
         loadedOpen.PricingMode.ShouldBe(PricingMode.ByTrip);
         loadedOpen.RequiredDocuments.ShouldBe([RequiredDocument.DeliveryNote, RequiredDocument.WasteForm]);
         loadedOpen.NightSurcharge.ShouldBeTrue();
@@ -116,7 +118,7 @@ public sealed class ContractPersistenceTests : RegistryIntegrationTestBase
                 loaded.Validity, loaded.BillingLevel, loaded.PricingMode,
                 [RequiredDocument.DailySummary, RequiredDocument.WasteForm, RequiredDocument.DeliveryNote],
                 loaded.NightSurcharge, loaded.Rate,
-                loaded.VehicleRates, new SystemClock(), FakeCurrentUser.ActorId).IsSuccess.ShouldBeTrue();
+                loaded.VehicleRates, [], new SystemClock(), FakeCurrentUser.ActorId).IsSuccess.ShouldBeTrue();
             await db.SaveChangesAsync(Ct);
         }
 
@@ -238,7 +240,7 @@ public sealed class ContractPersistenceTests : RegistryIntegrationTestBase
         root.GetProperty("customerId").GetGuid().ShouldBe(customer.Id.Value);
         root.GetProperty("validFrom").GetString().ShouldBe("2026-04-01");
         root.TryGetProperty("validTo", out _).ShouldBeFalse();
-        root.GetProperty("billingLevel").GetString().ShouldBe("PerLocationPair");
+        root.GetProperty("billingLevel").GetString().ShouldBe("FlatRate");
         root.GetProperty("pricingMode").GetString().ShouldBe("ByTrip");
         root.GetProperty("requiredDocuments").EnumerateArray().Select(e => e.GetString())
             .ShouldBe(["DeliveryNote", "DailySummary"]);
@@ -259,7 +261,7 @@ public sealed class ContractPersistenceTests : RegistryIntegrationTestBase
             loaded.Update(
                 Validity.Create(D(2026, 4, 1), D(2026, 9, 30)).Value, BillingLevel.FlatRate, PricingMode.ByHour,
                 [], nightSurcharge: false, Rate.Create(45m, null, null, new MinimumRule.None()).Value,
-                [], new SystemClock(), FakeCurrentUser.ActorId)
+                [], [], new SystemClock(), FakeCurrentUser.ActorId)
                 .IsSuccess.ShouldBeTrue();
             await db.SaveChangesAsync(Ct);
         }
@@ -290,6 +292,7 @@ public sealed class ContractPersistenceTests : RegistryIntegrationTestBase
             [],
             nightSurcharge,
             rate,
+            [],
             [],
             new SystemClock(),
             FakeCurrentUser.ActorId).Value;
@@ -412,7 +415,7 @@ public sealed class ContractPersistenceTests : RegistryIntegrationTestBase
             var loaded = await db.Contracts.SingleAsync(c => c.Id == contract.Id, Ct);
             loaded.Update(
                 loaded.Validity, loaded.BillingLevel, loaded.PricingMode, [], nightSurcharge: false, rate,
-                [], new SystemClock(), FakeCurrentUser.ActorId).IsSuccess.ShouldBeTrue();
+                [], [], new SystemClock(), FakeCurrentUser.ActorId).IsSuccess.ShouldBeTrue();
             await db.SaveChangesAsync(Ct);
         }
 
@@ -452,6 +455,11 @@ public sealed class ContractPersistenceTests : RegistryIntegrationTestBase
         var customer = await SeedCustomerAsync();
         var rate = Rate.Create(30m, null, null, new MinimumRule.None()).Value;
         var contract = await SaveAsync(NewFlatRateContract(customer.Id, nightSurcharge: false, rate));
+        Location location;
+        await using (var seed = CreateDbContext())
+        {
+            location = await LocationTestSupport.SeedLocationAsync(seed, "Magazzino centrale", "Pescara");
+        }
 
         // Act
         await using (var db = CreateDbContext())
@@ -459,7 +467,8 @@ public sealed class ContractPersistenceTests : RegistryIntegrationTestBase
             var loaded = await db.Contracts.SingleAsync(c => c.Id == contract.Id, Ct);
             loaded.Update(
                 loaded.Validity, BillingLevel.PerLocationPair, PricingMode.ByTrip, [], nightSurcharge: false,
-                rate: null, [], new SystemClock(), FakeCurrentUser.ActorId).IsSuccess.ShouldBeTrue();
+                rate: null, [], [new LocationRate(location.Id, location.Id, rate)], new SystemClock(),
+                FakeCurrentUser.ActorId).IsSuccess.ShouldBeTrue();
             await db.SaveChangesAsync(Ct);
         }
 
@@ -502,6 +511,7 @@ public sealed class ContractPersistenceTests : RegistryIntegrationTestBase
             nightSurcharge: true,
             Rate.Create(45m, 60m, 10m, new MinimumRule.None()).Value,
             vehicleRates,
+            [],
             new SystemClock(),
             FakeCurrentUser.ActorId).Value;
 
@@ -556,7 +566,7 @@ public sealed class ContractPersistenceTests : RegistryIntegrationTestBase
             var loaded = await db.Contracts.SingleAsync(c => c.Id == contract.Id, Ct);
             loaded.Update(
                 loaded.Validity, loaded.BillingLevel, loaded.PricingMode, loaded.RequiredDocuments,
-                loaded.NightSurcharge, loaded.Rate, [repriced, addedRate], new SystemClock(), FakeCurrentUser.ActorId)
+                loaded.NightSurcharge, loaded.Rate, [repriced, addedRate], [], new SystemClock(), FakeCurrentUser.ActorId)
                 .IsSuccess.ShouldBeTrue();
             await db.SaveChangesAsync(Ct);
         }
@@ -582,7 +592,7 @@ public sealed class ContractPersistenceTests : RegistryIntegrationTestBase
             var loaded = await db.Contracts.SingleAsync(c => c.Id == contract.Id, Ct);
             loaded.Update(
                 loaded.Validity, loaded.BillingLevel, loaded.PricingMode, loaded.RequiredDocuments,
-                loaded.NightSurcharge, loaded.Rate, [], new SystemClock(), FakeCurrentUser.ActorId)
+                loaded.NightSurcharge, loaded.Rate, [], [], new SystemClock(), FakeCurrentUser.ActorId)
                 .IsSuccess.ShouldBeTrue();
             await db.SaveChangesAsync(Ct);
         }
@@ -620,7 +630,7 @@ public sealed class ContractPersistenceTests : RegistryIntegrationTestBase
         var other = Contract.Create(
             ContractId.New(), customer.Id, Validity.Create(D(2025, 1, 1), D(2025, 12, 31)).Value, BillingLevel.FlatRate,
             PricingMode.ByHour, [], true, Rate.Create(45m, 60m, 10m, new MinimumRule.None()).Value,
-            [NightRateWithTieredMinimum(vehicle)], new SystemClock(), FakeCurrentUser.ActorId).Value;
+            [NightRateWithTieredMinimum(vehicle)], [], new SystemClock(), FakeCurrentUser.ActorId).Value;
         await SaveAsync(other);
 
         // Act
@@ -684,7 +694,7 @@ public sealed class ContractPersistenceTests : RegistryIntegrationTestBase
             var loaded = await db.Contracts.SingleAsync(c => c.Id == contract.Id, Ct);
             loaded.Update(
                 loaded.Validity, loaded.BillingLevel, loaded.PricingMode, loaded.RequiredDocuments,
-                loaded.NightSurcharge, loaded.Rate, [NightRateWithTieredMinimum(second)], new SystemClock(),
+                loaded.NightSurcharge, loaded.Rate, [NightRateWithTieredMinimum(second)], [], new SystemClock(),
                 FakeCurrentUser.ActorId).IsSuccess.ShouldBeTrue();
             await db.SaveChangesAsync(Ct);
         }

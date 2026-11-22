@@ -131,6 +131,18 @@ internal sealed class ChangeContractFromDateHandler
             return vehicleError;
         }
 
+        var locationRates = ContractLocationRateRequest.ToLocationRates(request.LocationRates);
+        if (locationRates.IsFailure)
+        {
+            return locationRates.Error;
+        }
+
+        if (await ContractLocationRateChecks.FindAsync(
+            _db, locationRates.Value, source.LocationRates, _arguments, cancellationToken) is { } locationError)
+        {
+            return locationError;
+        }
+
         var actorId = _currentUser.UserId;
 
         var kept = source.Update(
@@ -141,6 +153,7 @@ internal sealed class ChangeContractFromDateHandler
             source.NightSurcharge,
             source.Rate,
             source.VehicleRates,
+            source.LocationRates,
             _clock,
             actorId);
         if (kept.IsFailure)
@@ -158,6 +171,7 @@ internal sealed class ChangeContractFromDateHandler
             request.NightSurcharge!.Value,
             rate.Value,
             vehicleRates.Value,
+            locationRates.Value,
             _clock,
             actorId);
         if (created.IsFailure)
@@ -187,6 +201,7 @@ internal sealed class ChangeContractFromDateHandler
             contractId, customerId, changeFrom, actorId.Value, contract.Id.Value);
 
         var vehicleRateDtos = await ContractVehicleRateDto.LoadAsync(_db, [contract], cancellationToken);
-        return ContractDto.From(contract, _clock.TodayInItaly(), vehicleRateDtos[contract.Id]);
+        var locationRateDtos = await ContractLocationRateDto.LoadAsync(_db, [contract], cancellationToken);
+        return ContractDto.From(contract, _clock.TodayInItaly(), vehicleRateDtos[contract.Id], locationRateDtos[contract.Id]);
     }
 }
