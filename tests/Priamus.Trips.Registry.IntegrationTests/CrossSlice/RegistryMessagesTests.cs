@@ -7,6 +7,7 @@ using Priamus.Trips.Registry.Application.Services;
 using Priamus.Trips.Registry.Domain.Contracts;
 using Priamus.Trips.Registry.Domain.Customers;
 using Priamus.Trips.Registry.Domain.Drivers;
+using Priamus.Trips.Registry.Domain.Locations;
 using Priamus.Trips.Registry.Domain.NightBands;
 using Priamus.Trips.Registry.Domain.Pricing;
 using Priamus.Trips.Registry.Domain.Vehicles;
@@ -162,6 +163,29 @@ public sealed class RegistryMessagesTests : RegistryIntegrationTestBase
         {
             var detail = await DetailAsync(error, "01455280683", "Comune di Penne");
             detail.ShouldNotBe(error.Description, error.Code);
+        }
+    }
+
+    [Fact]
+    public async Task EveryLocationError_AnswersInItalianWithTheLocationAsStored()
+    {
+        var expected = new (Error Error, string Text)[]
+        {
+            (LocationErrors.NameInvalid, "Il nome è obbligatorio e può avere al massimo 100 caratteri."),
+            (LocationErrors.MunicipalityInvalid, "Il comune è obbligatorio e può avere al massimo 100 caratteri."),
+            (LocationErrors.AddressInvalid, "L'indirizzo può avere al massimo 200 caratteri."),
+            (LocationErrors.NotFound, "Luogo non trovato."),
+            (LocationErrors.Taken, "Il luogo Magazzino  centrale, Spoltore è già in anagrafica."),
+            (LocationErrors.TakenByDeactivated,
+                "Il luogo Magazzino  centrale, Spoltore è già in anagrafica (disattivato). Per riprenderlo, riattivalo dalla lista."),
+            (LocationErrors.ConcurrentUpdate,
+                "Il luogo è stato modificato da un altro utente nel frattempo. Controlla i dati aggiornati e riprova."),
+        };
+
+        foreach (var (error, text) in expected)
+        {
+            var detail = await DetailAsync(error, "Magazzino  centrale", "Spoltore");
+            detail.ShouldBe(text, error.Code);
         }
     }
 

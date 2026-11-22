@@ -252,6 +252,76 @@ namespace Priamus.Trips.Registry.Persistence.Migrations
                         });
                 });
 
+            modelBuilder.Entity("Priamus.Trips.Registry.Domain.Locations.Location", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<string>("Address")
+                        .HasColumnType("varchar(200)")
+                        .HasColumnName("address");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamptz")
+                        .HasColumnName("created_at");
+
+                    b.Property<Guid>("CreatedBy")
+                        .HasColumnType("uuid")
+                        .HasColumnName("created_by");
+
+                    b.Property<DateTime>("LastModifiedAt")
+                        .HasColumnType("timestamptz")
+                        .HasColumnName("last_modified_at");
+
+                    b.Property<Guid>("LastModifiedBy")
+                        .HasColumnType("uuid")
+                        .HasColumnName("last_modified_by");
+
+                    b.Property<string>("Municipality")
+                        .IsRequired()
+                        .HasColumnType("varchar(100)")
+                        .HasColumnName("municipality");
+
+                    b.Property<string>("MunicipalityKey")
+                        .IsRequired()
+                        .HasColumnType("varchar(100)")
+                        .HasColumnName("municipality_key");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasColumnType("varchar(100)")
+                        .HasColumnName("name");
+
+                    b.Property<string>("NameKey")
+                        .IsRequired()
+                        .HasColumnType("varchar(100)")
+                        .HasColumnName("name_key");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("status");
+
+                    b.Property<int>("Version")
+                        .IsConcurrencyToken()
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer")
+                        .HasDefaultValue(0)
+                        .HasColumnName("version");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("NameKey", "MunicipalityKey")
+                        .IsUnique()
+                        .HasDatabaseName("uq_locations_name_municipality_key");
+
+                    b.ToTable("locations", "registry", t =>
+                        {
+                            t.HasCheckConstraint("chk_locations_status", "status IN ('Active', 'Deactivated')");
+                        });
+                });
+
             modelBuilder.Entity("Priamus.Trips.Registry.Domain.NightBands.NightBandSetting", b =>
                 {
                     b.Property<Guid>("Id")

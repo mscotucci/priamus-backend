@@ -5,7 +5,7 @@ Bounded contexts of the Priamus Trips backend, one per module. Each context owns
 ## Contexts
 
 - [Identity](./src/Modules/Identity/CONTEXT.md) — authentication, sessions (refresh tokens), users and roles, audit log of identity events.
-- [Registry](./src/Modules/Registry/CONTEXT.md) — customers, contracts, rates and overrides, vehicles, drivers, locations, pricing engine. Its glossary covers the vehicle registry (2026-11-16) and the customer registry; the rest is not yet built.
+- [Registry](./src/Modules/Registry/CONTEXT.md) — customers, contracts, rates and overrides, vehicles, drivers, locations, pricing engine. Its glossary covers the vehicle registry (2026-11-16), the customer registry, contracts, drivers and locations (2026-11-21); the rest is not yet built.
 - **Operations** — trips with their attachments and issues, daily summaries. Not yet built.
 - **BackOffice** — reporting, filterable trip list, Excel/PDF export. Not yet built.
 

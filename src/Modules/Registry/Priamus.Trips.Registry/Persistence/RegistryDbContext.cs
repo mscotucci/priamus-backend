@@ -5,6 +5,7 @@ using Priamus.Trips.Registry.Domain.Contracts;
 using Priamus.Trips.Registry.Domain.Customers;
 using Priamus.Trips.Registry.Domain.Customers.ValueObjects;
 using Priamus.Trips.Registry.Domain.Drivers;
+using Priamus.Trips.Registry.Domain.Locations;
 using Priamus.Trips.Registry.Domain.NightBands;
 using Priamus.Trips.Registry.Domain.Vehicles;
 using Priamus.Trips.Registry.Domain.Vehicles.ValueObjects;
@@ -39,6 +40,9 @@ public sealed class RegistryDbContext : DbContext
 
     /// <summary>The company's drivers.</summary>
     public DbSet<Driver> Drivers => Set<Driver>();
+
+    /// <summary>The company's locations.</summary>
+    public DbSet<Location> Locations => Set<Location>();
 
     /// <summary>The customers' contracts.</summary>
     public DbSet<Contract> Contracts => Set<Contract>();

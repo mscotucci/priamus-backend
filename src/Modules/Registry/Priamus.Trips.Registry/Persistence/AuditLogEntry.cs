@@ -31,6 +31,18 @@ public static class AuditEventTypes
     /// <summary>A customer was reactivated.</summary>
     public const string CustomerReactivated = "registry.customer.reactivated";
 
+    /// <summary>A new location was created.</summary>
+    public const string LocationCreated = "registry.location.created";
+
+    /// <summary>A location was edited.</summary>
+    public const string LocationUpdated = "registry.location.updated";
+
+    /// <summary>A location was deactivated.</summary>
+    public const string LocationDeactivated = "registry.location.deactivated";
+
+    /// <summary>A location was reactivated.</summary>
+    public const string LocationReactivated = "registry.location.reactivated";
+
     /// <summary>A new driver was created.</summary>
     public const string DriverCreated = "registry.driver.created";
 
@@ -101,7 +113,7 @@ public sealed class AuditLogEntry
     public Guid? ActorId { get; private set; }
 
     /// <summary>
-    /// Identifier of the affected entity. For vehicle events this is the <c>VehicleId</c>, for customer events the <c>CustomerId</c>, for driver events the <c>DriverId</c>, for contract events the <c>ContractId</c>, for night band events the id of the single setting row.
+    /// Identifier of the affected entity. For vehicle events this is the <c>VehicleId</c>, for customer events the <c>CustomerId</c>, for location events the <c>LocationId</c>, for driver events the <c>DriverId</c>, for contract events the <c>ContractId</c>, for night band events the id of the single setting row.
     /// </summary>
     public Guid SubjectId { get; private set; }
 

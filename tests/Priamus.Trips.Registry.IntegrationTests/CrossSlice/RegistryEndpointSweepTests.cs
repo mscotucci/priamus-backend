@@ -170,6 +170,24 @@ public sealed class RegistryEndpointSweepTests : RegistryIntegrationTestBase
     }
 
     [Fact]
+    public async Task NoRoutedRegistryOperationDeletesALocation()
+    {
+        // Arrange
+        await using var factory = ApiFactory.Create(ConnectionString);
+
+        // Act
+        var locationOperations = RoutedOperations(factory.Services)
+            .Where(o => o.Route.StartsWith(Prefix + "locations", StringComparison.Ordinal))
+            .Select(o => $"{o.Method} {o.Route}")
+            .ToList();
+
+        // Assert
+        locationOperations.ShouldContain("POST /api/registry/locations/{id}/deactivate");
+        locationOperations.ShouldContain("POST /api/registry/locations/{id}/reactivate");
+        locationOperations.Where(o => o.StartsWith("DELETE ", StringComparison.Ordinal)).ShouldBeEmpty();
+    }
+
+    [Fact]
     public async Task NoRoutedRegistryOperationDeletesADriver()
     {
         // Arrange

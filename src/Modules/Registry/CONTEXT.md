@@ -148,6 +148,24 @@ _Avoid_: driver user, login (alone)
 Whether a driver can work in the system: `Active` (Attivo) or `Deactivated` (Disattivato). A deactivated driver stays in the registry for the trips that name them.
 _Avoid_: dismissed, fired, disabled (that is an account's)
 
+### Locations
+
+**Location** (Luogo):
+A place a trip starts from or delivers to: a warehouse, a building site, a landfill, a plant. One registry for the whole company: a location belongs to no customer, and any location can be the pickup or the delivery location of a trip. The locations a customer's trips use are those its contract has rates for. People know it as "<name>, <municipality>".
+_Avoid_: site, address (that is one of its fields), destination, customer location, general location
+
+**Location name** (Nome del luogo):
+What people call the place ("Magazzino centrale", "Cantiere A14"). Together with the municipality it is unique among all locations, deactivated ones included.
+_Avoid_: description, label
+
+**Municipality** (Comune):
+The town the location is in. Required, so that two places with the same name are told apart.
+_Avoid_: city, town, comune (in code)
+
+**Location status** (Stato):
+Whether a location can be chosen for new rates and trips: `Active` (Attivo) or `Deactivated` (Disattivato). A deactivated location stays in the registry for the rates and trips that name it.
+_Avoid_: deleted, archived, decommissioned (that is a vehicle's)
+
 ## Relationships
 
 - A trip records its own vehicle composition when it is registered (Operations); changing a vehicle's type or its requires-trailer property later does not change it.

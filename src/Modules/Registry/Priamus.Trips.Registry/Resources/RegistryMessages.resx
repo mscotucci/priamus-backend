@@ -124,6 +124,27 @@
   <data name="Registry.Customer.ConcurrentUpdate" xml:space="preserve">
     <value>Il cliente è stato modificato da un altro utente nel frattempo. Controlla i dati aggiornati e riprova.</value>
   </data>
+  <data name="Registry.Location.NameInvalid" xml:space="preserve">
+    <value>Il nome è obbligatorio e può avere al massimo 100 caratteri.</value>
+  </data>
+  <data name="Registry.Location.MunicipalityInvalid" xml:space="preserve">
+    <value>Il comune è obbligatorio e può avere al massimo 100 caratteri.</value>
+  </data>
+  <data name="Registry.Location.AddressInvalid" xml:space="preserve">
+    <value>L'indirizzo può avere al massimo 200 caratteri.</value>
+  </data>
+  <data name="Registry.Location.NotFound" xml:space="preserve">
+    <value>Luogo non trovato.</value>
+  </data>
+  <data name="Registry.Location.Taken" xml:space="preserve">
+    <value>Il luogo {0}, {1} è già in anagrafica.</value>
+  </data>
+  <data name="Registry.Location.TakenByDeactivated" xml:space="preserve">
+    <value>Il luogo {0}, {1} è già in anagrafica (disattivato). Per riprenderlo, riattivalo dalla lista.</value>
+  </data>
+  <data name="Registry.Location.ConcurrentUpdate" xml:space="preserve">
+    <value>Il luogo è stato modificato da un altro utente nel frattempo. Controlla i dati aggiornati e riprova.</value>
+  </data>
   <data name="Registry.Driver.FirstNameInvalid" xml:space="preserve">
     <value>Il nome è obbligatorio e può avere al massimo 60 caratteri.</value>
   </data>
