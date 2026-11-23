@@ -45,7 +45,7 @@ public sealed class PricingEngineTests
             PricingMode.ByHour,
             MakeRate(30m, 42m, 35m),
             true,
-            new VehicleRate(Tanker, MakeRate(55m, 72m, 50m)));
+            new VehicleRate(Tanker, null, null, MakeRate(55m, 72m, 50m)));
         var epsilon = Terms(PricingMode.ByHour, MakeRate(20m, 30m, 25m), true);
         var zeta = Terms(PricingMode.ByDistance, MakeRate(1.20m, 1.60m, 30m), true);
         var eta = Terms(PricingMode.ByTrip, MakeRate(150m, 200m, 40m), true);
@@ -193,23 +193,158 @@ public sealed class PricingEngineTests
         result.Value.Total.ShouldBe(70m);
     }
 
-    [Fact]
-    public void Calculate_ALocationContractIgnoresTheVehicle()
+    private static VehicleRate VehicleRateOfLevel(BillingLevel level, VehicleId vehicle, Rate rate) => level switch
     {
-        // Arrange
-        var terms = LocationTerms(
-            BillingLevel.PerDeliveryLocation,
-            PricingMode.ByHour,
-            false,
-            new LocationRate(null, Como, MakeRate(30m)));
+        BillingLevel.PerPickupLocation => new VehicleRate(vehicle, Lecco, null, rate),
+        BillingLevel.PerDeliveryLocation => new VehicleRate(vehicle, null, Como, rate),
+        _ => new VehicleRate(vehicle, Lecco, Como, rate),
+    };
+
+    private static PricingTerms LocationTermsWithVehicleRates(
+        BillingLevel level,
+        bool nightSurcharge,
+        Rate locationRate,
+        params VehicleRate[] vehicleRates) =>
+        new(PricingMode.ByHour, nightSurcharge, level, null, vehicleRates, [RateOfLevel(level, locationRate)]);
+
+    [Theory]
+    [MemberData(nameof(LocationLevels))]
+    public void Calculate_OnALocationLevel_UsesTheVehicleRateOfTheTripLocationForEveryStep(BillingLevel level)
+    {
+        // Arrange: the location's rate is 30 with a minimum of 10; the vehicle's own is 55 with a minimum of 200,
+        // night price 72 and call fee 50
+        var terms = LocationTermsWithVehicleRates(
+            level,
+            true,
+            MakeRate(30m, 42m, 35m, new MinimumRule.FixedMinimum(10m)),
+            VehicleRateOfLevel(level, Tanker, MakeRate(55m, 72m, 50m, new MinimumRule.FixedMinimum(200m))));
 
         // Act
-        var result = CalculateAt(terms, null, Como, Hours("10:00", "13:00"), Tanker);
+        var day = CalculateAt(terms, Lecco, Como, Hours("10:00", "13:00"), Tanker).Value;
+        var night = CalculateAt(terms, Lecco, Como, Hours("23:00", "02:00"), Tanker).Value;
 
         // Assert
-        result.Value.Total.ShouldBe(90m);
-        result.Value.RateSource.ShouldBe(RateSource.Location);
-        result.Value.VehicleId.ShouldBeNull();
+        day.RateSource.ShouldBe(RateSource.Vehicle);
+        day.VehicleId.ShouldBe(Tanker);
+        day.UnitPrice.ShouldBe(55m);
+        day.Minimum.ShouldBe(new MinimumRule.FixedMinimum(200m));
+        day.MinimumApplied.ShouldBeTrue();
+        day.Total.ShouldBe(200m);
+        night.RateSource.ShouldBe(RateSource.Vehicle);
+        night.UnitPrice.ShouldBe(72m);
+        night.NightCallFee.ShouldBe(50m);
+        night.Total.ShouldBe(266m);
+    }
+
+    [Fact]
+    public void Calculate_PrdExample123OnAPair_ReturnsTheFourStatedAmounts()
+    {
+        // Arrange: pair Magazzino A to Cantiere X, standard rate 30 / 42 / 35, Autospurgo's own 55 / 72 / 50
+        var terms = LocationTermsWithVehicleRates(
+            BillingLevel.PerLocationPair,
+            true,
+            MakeRate(30m, 42m, 35m),
+            VehicleRateOfLevel(BillingLevel.PerLocationPair, Tanker, MakeRate(55m, 72m, 50m)));
+
+        // Act
+        var dayWithoutOwnRate = CalculateAt(terms, Lecco, Como, Hours("10:00", "13:00"), OtherVehicle).Value;
+        var nightWithoutOwnRate = CalculateAt(terms, Lecco, Como, Hours("23:00", "02:00"), OtherVehicle).Value;
+        var dayWithOwnRate = CalculateAt(terms, Lecco, Como, Hours("10:00", "13:00"), Tanker).Value;
+        var nightWithOwnRate = CalculateAt(terms, Lecco, Como, Hours("23:00", "02:00"), Tanker).Value;
+
+        // Assert
+        dayWithoutOwnRate.Total.ShouldBe(90m);
+        nightWithoutOwnRate.Total.ShouldBe(161m);
+        dayWithOwnRate.Total.ShouldBe(165m);
+        nightWithOwnRate.Total.ShouldBe(266m);
+    }
+
+    [Theory]
+    [MemberData(nameof(LocationLevels))]
+    public void Calculate_OnALocationLevel_AVehicleWithoutARateOnTheLocationOrNoVehicleUsesTheLocationRate(BillingLevel level)
+    {
+        // Arrange: Tanker has a rate on Monza only, which the contract also has a rate for
+        var monzaRate = level switch
+        {
+            BillingLevel.PerPickupLocation => new LocationRate(Monza, null, MakeRate(40m)),
+            BillingLevel.PerDeliveryLocation => new LocationRate(null, Monza, MakeRate(40m)),
+            _ => new LocationRate(Monza, Monza, MakeRate(40m)),
+        };
+        var tankerOnMonza = level switch
+        {
+            BillingLevel.PerPickupLocation => new VehicleRate(Tanker, Monza, null, MakeRate(55m)),
+            BillingLevel.PerDeliveryLocation => new VehicleRate(Tanker, null, Monza, MakeRate(55m)),
+            _ => new VehicleRate(Tanker, Monza, Monza, MakeRate(55m)),
+        };
+        var terms = new PricingTerms(
+            PricingMode.ByHour,
+            false,
+            level,
+            null,
+            [tankerOnMonza],
+            [RateOfLevel(level, MakeRate(30m)), monzaRate]);
+
+        // Act
+        var otherLocation = CalculateAt(terms, Lecco, Como, Hours("10:00", "13:00"), Tanker).Value;
+        var otherVehicle = CalculateAt(terms, Monza, Monza, Hours("10:00", "13:00"), OtherVehicle).Value;
+        var noVehicle = CalculateAt(terms, Lecco, Como, Hours("10:00", "13:00")).Value;
+
+        // Assert
+        var expectedSource = level == BillingLevel.PerLocationPair ? RateSource.LocationPair : RateSource.Location;
+        otherLocation.Total.ShouldBe(90m);
+        otherLocation.RateSource.ShouldBe(expectedSource);
+        otherLocation.VehicleId.ShouldBeNull();
+        otherVehicle.Total.ShouldBe(120m);
+        otherVehicle.RateSource.ShouldBe(expectedSource);
+        noVehicle.Total.ShouldBe(90m);
+        noVehicle.VehicleId.ShouldBeNull();
+    }
+
+    [Fact]
+    public void Calculate_PerLocationPair_TheSameVehicleWithTwoRatesIsPricedByTheTripPair()
+    {
+        // Arrange: Tanker has 55 on Lecco to Como and 65 on Como to Monza
+        var terms = new PricingTerms(
+            PricingMode.ByHour,
+            false,
+            BillingLevel.PerLocationPair,
+            null,
+            [
+                new VehicleRate(Tanker, Lecco, Como, MakeRate(55m)),
+                new VehicleRate(Tanker, Como, Monza, MakeRate(65m)),
+            ],
+            [
+                new LocationRate(Lecco, Como, MakeRate(30m)),
+                new LocationRate(Como, Monza, MakeRate(35m)),
+            ]);
+
+        // Act
+        var first = CalculateAt(terms, Lecco, Como, Hours("10:00", "13:00"), Tanker).Value;
+        var second = CalculateAt(terms, Como, Monza, Hours("10:00", "13:00"), Tanker).Value;
+
+        // Assert
+        first.UnitPrice.ShouldBe(55m);
+        first.Total.ShouldBe(165m);
+        second.UnitPrice.ShouldBe(65m);
+        second.Total.ShouldBe(195m);
+    }
+
+    [Fact]
+    public void Calculate_OnALocationLevelWithoutARateForTheLocation_FailsWhateverTheVehicleHasElsewhere()
+    {
+        // Arrange: Tanker has a rate on Lecco, the trip is on Monza, which has no rate
+        var terms = LocationTermsWithVehicleRates(
+            BillingLevel.PerPickupLocation,
+            false,
+            MakeRate(30m),
+            VehicleRateOfLevel(BillingLevel.PerPickupLocation, Tanker, MakeRate(55m)));
+
+        // Act
+        var result = CalculateAt(terms, Monza, null, Hours("10:00", "13:00"), Tanker);
+
+        // Assert
+        result.IsFailure.ShouldBeTrue();
+        result.Error.ShouldBe(PricingErrors.NoRateForLocation);
     }
 
     public static TheoryData<string, BillingLevel, LocationId?, LocationId?> TripsWithoutARate() => new()
@@ -646,7 +781,7 @@ public sealed class PricingEngineTests
             PricingMode.ByHour,
             MakeRate(30m, minimum: new MinimumRule.FixedMinimum(10m)),
             false,
-            new VehicleRate(Tanker, MakeRate(55m, minimum: new MinimumRule.FixedMinimum(200m))));
+            new VehicleRate(Tanker, null, null, MakeRate(55m, minimum: new MinimumRule.FixedMinimum(200m))));
 
         // Act
         var calculation = Calculate(terms, Hours("10:00", "13:00"), Tanker);
@@ -667,7 +802,7 @@ public sealed class PricingEngineTests
             PricingMode.ByHour,
             MakeRate(30m),
             false,
-            new VehicleRate(Tanker, MakeRate(55m)));
+            new VehicleRate(Tanker, null, null, MakeRate(55m)));
 
         // Act
         var calculation = Calculate(terms, Hours("10:00", "13:00"), OtherVehicle);
@@ -682,7 +817,7 @@ public sealed class PricingEngineTests
     public void Calculate_WithoutAVehicle_UsesTheContractRate()
     {
         // Arrange
-        var terms = Terms(PricingMode.ByHour, MakeRate(30m), false, new VehicleRate(Tanker, MakeRate(55m)));
+        var terms = Terms(PricingMode.ByHour, MakeRate(30m), false, new VehicleRate(Tanker, null, null, MakeRate(55m)));
 
         // Act
         var calculation = Calculate(terms, Hours("10:00", "13:00"));

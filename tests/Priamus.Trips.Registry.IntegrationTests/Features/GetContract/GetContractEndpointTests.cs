@@ -199,9 +199,9 @@ public sealed class GetContractEndpointTests : RegistryIntegrationTestBase
                 nightSurcharge: true, rate: Rate.Create(45m, 60m, 10m, new MinimumRule.None()).Value,
                 vehicleRates:
                 [
-                    new VehicleRate(last.Id, Rate.Create(48m, 62m, 0m, new MinimumRule.FixedMinimum(120m)).Value),
-                    new VehicleRate(decommissioned.Id, Rate.Create(52.5m, 70.25m, 12m, new MinimumRule.TieredOverage(100m, 4.5m, 22.25m)).Value),
-                    new VehicleRate(first.Id, Rate.Create(50m, 65m, 5m, new MinimumRule.None()).Value),
+                    new VehicleRate(last.Id, null, null, Rate.Create(48m, 62m, 0m, new MinimumRule.FixedMinimum(120m)).Value),
+                    new VehicleRate(decommissioned.Id, null, null, Rate.Create(52.5m, 70.25m, 12m, new MinimumRule.TieredOverage(100m, 4.5m, 22.25m)).Value),
+                    new VehicleRate(first.Id, null, null, Rate.Create(50m, 65m, 5m, new MinimumRule.None()).Value),
                 ]);
         }
 
@@ -386,6 +386,118 @@ public sealed class GetContractEndpointTests : RegistryIntegrationTestBase
         if (expected == HttpStatusCode.Forbidden)
         {
             (await response.Content.ReadAsStringAsync(Ct)).ShouldNotContain("dayPrice");
+        }
+    }
+
+    [Fact]
+    public async Task ReturnsTheLocationsOfEachVehicleRateOrderedByPlateThenPickupThenDeliveryWithTheirStatus()
+    {
+        // Arrange
+        var customer = await SeedCustomerAsync();
+        Contract contract;
+        await using (var db = CreateDbContext())
+        {
+            var later = await SeedVehicleAsync(db, "EF789GH");
+            var earlier = await SeedVehicleAsync(db, "AB456CD");
+            var cavaSud = await LocationTestSupport.SeedLocationAsync(db, "Cava Sud", "Chieti");
+            var cavaNord = await LocationTestSupport.SeedLocationAsync(db, "Cava Nord", "Pescara");
+            var discarica = await LocationTestSupport.SeedLocationAsync(db, "Discarica Est", "Spoltore", deactivated: true);
+            var locationRate = Rate.Create(40m, null, null, new MinimumRule.None()).Value;
+            contract = await SeedContractAsync(
+                db, customer.Id, new DateOnly(2026, 4, 1), null, BillingLevel.PerLocationPair, PricingMode.ByHour,
+                nightSurcharge: false,
+                vehicleRates:
+                [
+                    new VehicleRate(later.Id, cavaNord.Id, discarica.Id, Rate.Create(48m, null, null, new MinimumRule.None()).Value),
+                    new VehicleRate(earlier.Id, cavaSud.Id, discarica.Id, Rate.Create(50m, null, null, new MinimumRule.None()).Value),
+                    new VehicleRate(earlier.Id, cavaNord.Id, discarica.Id, Rate.Create(50m, null, null, new MinimumRule.None()).Value),
+                ],
+                locationRates:
+                [
+                    new LocationRate(cavaNord.Id, discarica.Id, locationRate),
+                    new LocationRate(cavaSud.Id, discarica.Id, locationRate),
+                ]);
+        }
+
+        await using var factory = CreateFactory(ConnectionString, Midday);
+
+        // Act
+        var response = await BackOfficeClient(factory).GetAsync(Url(customer.Id.Value, contract.Id.Value), Ct);
+
+        // Assert
+        response.StatusCode.ShouldBe(HttpStatusCode.OK);
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>(Ct);
+        var rates = body.GetProperty("vehicleRates").EnumerateArray().ToList();
+        rates.Select(r => r.GetProperty("licensePlate").GetString() + " " + r.GetProperty("pickup").GetProperty("name").GetString()
+                + " -> " + r.GetProperty("delivery").GetProperty("name").GetString())
+            .ShouldBe(["AB456CD Cava Nord -> Discarica Est", "AB456CD Cava Sud -> Discarica Est", "EF789GH Cava Nord -> Discarica Est"]);
+        rates[0].GetProperty("pickup").GetProperty("municipality").GetString().ShouldBe("Pescara");
+        rates[0].GetProperty("pickup").GetProperty("id").GetGuid().ShouldNotBe(Guid.Empty);
+        rates[0].GetProperty("pickup").GetProperty("status").GetString().ShouldBe("Active");
+        rates[0].GetProperty("delivery").GetProperty("municipality").GetString().ShouldBe("Spoltore");
+        rates[0].GetProperty("delivery").GetProperty("status").GetString().ShouldBe("Deactivated");
+        rates[1].GetProperty("pickup").GetProperty("name").GetString().ShouldBe("Cava Sud");
+    }
+
+    [Fact]
+    public async Task VehicleRatesOfAFlatRateContract_ReturnNullPickupAndDelivery()
+    {
+        // Arrange
+        var customer = await SeedCustomerAsync();
+        Contract contract;
+        await using (var db = CreateDbContext())
+        {
+            var vehicle = await SeedVehicleAsync(db, "AB456CD");
+            contract = await SeedContractAsync(
+                db, customer.Id, new DateOnly(2026, 4, 1), null, BillingLevel.FlatRate, PricingMode.ByHour,
+                nightSurcharge: false, rate: Rate.Create(45m, null, null, new MinimumRule.None()).Value,
+                vehicleRates: [new VehicleRate(vehicle.Id, null, null, Rate.Create(50m, null, null, new MinimumRule.None()).Value)]);
+        }
+
+        await using var factory = CreateFactory(ConnectionString, Midday);
+
+        // Act
+        var response = await BackOfficeClient(factory).GetAsync(Url(customer.Id.Value, contract.Id.Value), Ct);
+
+        // Assert
+        var body = await response.Content.ReadFromJsonAsync<JsonElement>(Ct);
+        var rate = body.GetProperty("vehicleRates").EnumerateArray().Single();
+        rate.GetProperty("pickup").ValueKind.ShouldBe(JsonValueKind.Null);
+        rate.GetProperty("delivery").ValueKind.ShouldBe(JsonValueKind.Null);
+    }
+
+    [Theory]
+    [InlineData("BackOffice", HttpStatusCode.OK)]
+    [InlineData("Admin", HttpStatusCode.OK)]
+    [InlineData("Driver", HttpStatusCode.Forbidden)]
+    public async Task Role_DecidesWhoReadsAContractWithVehicleRatesOnLocations(string role, HttpStatusCode expected)
+    {
+        // Arrange
+        var customer = await SeedCustomerAsync();
+        Contract contract;
+        await using (var db = CreateDbContext())
+        {
+            var location = await LocationTestSupport.SeedLocationAsync(db);
+            var vehicle = await SeedVehicleAsync(db, "AB456CD");
+            var rate = Rate.Create(48m, null, null, new MinimumRule.None()).Value;
+            contract = await SeedContractAsync(
+                db, customer.Id, new DateOnly(2026, 4, 1), null, BillingLevel.PerPickupLocation, PricingMode.ByHour,
+                nightSurcharge: false,
+                vehicleRates: [new VehicleRate(vehicle.Id, location.Id, null, rate)],
+                locationRates: [new LocationRate(location.Id, null, rate)]);
+        }
+
+        await using var factory = CreateFactory(ConnectionString, Midday);
+        var client = TestCaller.WithRole(role).ApplyTo(factory.CreateClient());
+
+        // Act
+        var response = await client.GetAsync(Url(customer.Id.Value, contract.Id.Value), Ct);
+
+        // Assert
+        response.StatusCode.ShouldBe(expected);
+        if (expected == HttpStatusCode.Forbidden)
+        {
+            (await response.Content.ReadAsStringAsync(Ct)).ShouldNotContain("vehicleRates");
         }
     }
 }

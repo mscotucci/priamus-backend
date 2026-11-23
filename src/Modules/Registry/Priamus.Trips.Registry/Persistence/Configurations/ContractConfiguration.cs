@@ -128,20 +128,57 @@ internal sealed class ContractConfiguration : IEntityTypeConfiguration<Contract>
                 .HasColumnName("contract_id")
                 .HasColumnType("uuid");
 
+            rates.Property<int>("Id")
+                .HasColumnName("id")
+                .HasColumnType("integer")
+                .ValueGeneratedOnAdd();
+
+            rates.HasKey("ContractId", "Id");
+
             rates.Property(r => r.VehicleId)
                 .HasConversion(new VehicleIdConverter())
                 .HasColumnName("vehicle_id")
                 .HasColumnType("uuid");
 
-            rates.HasKey("ContractId", nameof(StoredVehicleRate.VehicleId));
+            rates.Property(r => r.PickupLocationId)
+                .HasConversion(new LocationIdConverter())
+                .HasColumnName("pickup_location_id")
+                .HasColumnType("uuid");
+
+            rates.Property(r => r.DeliveryLocationId)
+                .HasConversion(new LocationIdConverter())
+                .HasColumnName("delivery_location_id")
+                .HasColumnType("uuid");
 
             rates.HasOne<Vehicle>()
                 .WithMany()
                 .HasForeignKey(r => r.VehicleId)
                 .OnDelete(DeleteBehavior.Restrict);
 
+            rates.HasOne<Location>()
+                .WithMany()
+                .HasForeignKey(r => r.PickupLocationId)
+                .OnDelete(DeleteBehavior.Restrict);
+
+            rates.HasOne<Location>()
+                .WithMany()
+                .HasForeignKey(r => r.DeliveryLocationId)
+                .OnDelete(DeleteBehavior.Restrict);
+
             rates.HasIndex(r => r.VehicleId)
                 .HasDatabaseName("ix_contract_vehicle_rates_vehicle_id");
+
+            rates.HasIndex(r => r.PickupLocationId)
+                .HasDatabaseName("ix_contract_vehicle_rates_pickup_location_id");
+
+            rates.HasIndex(r => r.DeliveryLocationId)
+                .HasDatabaseName("ix_contract_vehicle_rates_delivery_location_id");
+
+            // A vehicle has one rate per location or ordered pair; a null side counts as a value.
+            rates.HasIndex("ContractId", nameof(StoredVehicleRate.VehicleId), nameof(StoredVehicleRate.PickupLocationId), nameof(StoredVehicleRate.DeliveryLocationId))
+                .IsUnique()
+                .AreNullsDistinct(false)
+                .HasDatabaseName("uq_contract_vehicle_rates_vehicle_locations");
 
             MapRateColumns(rates);
         });

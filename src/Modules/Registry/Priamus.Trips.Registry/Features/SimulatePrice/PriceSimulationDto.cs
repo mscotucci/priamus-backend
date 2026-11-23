@@ -18,7 +18,7 @@ public sealed record SimulatedNightBandDto(string Start, string End);
 /// <param name="NightSurcharge">Whether the terms have the night surcharge.</param>
 /// <param name="NightBand">The night band the trip was classified with.</param>
 /// <param name="RateSource">Where the rate came from.</param>
-/// <param name="VehicleId">The vehicle whose rate was used; <c>null</c> for the contract's rate.</param>
+/// <param name="VehicleId">The vehicle whose rate was used; <c>null</c> when no vehicle rate was used.</param>
 /// <param name="Quantity">Minutes, kilograms or kilometres; <c>null</c> for a trip priced by trip.</param>
 /// <param name="UnitPrice">The price used: day or night, of the rate chosen.</param>
 /// <param name="BaseAmount">The amount before the minimum rule.</param>

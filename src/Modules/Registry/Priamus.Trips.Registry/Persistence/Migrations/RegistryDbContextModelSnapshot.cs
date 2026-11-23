@@ -561,13 +561,20 @@ namespace Priamus.Trips.Registry.Persistence.Migrations
                                 .HasColumnType("uuid")
                                 .HasColumnName("contract_id");
 
-                            b1.Property<Guid>("VehicleId")
-                                .HasColumnType("uuid")
-                                .HasColumnName("vehicle_id");
+                            b1.Property<int>("Id")
+                                .ValueGeneratedOnAdd()
+                                .HasColumnType("integer")
+                                .HasColumnName("id");
+
+                            NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b1.Property<int>("Id"));
 
                             b1.Property<decimal>("DayPrice")
                                 .HasColumnType("numeric(12,2)")
                                 .HasColumnName("day_price");
+
+                            b1.Property<Guid?>("DeliveryLocationId")
+                                .HasColumnType("uuid")
+                                .HasColumnName("delivery_location_id");
 
                             b1.Property<decimal?>("MinimumAmount")
                                 .HasColumnType("numeric(12,2)")
@@ -594,15 +601,45 @@ namespace Priamus.Trips.Registry.Persistence.Migrations
                                 .HasColumnType("numeric(12,2)")
                                 .HasColumnName("night_price");
 
-                            b1.HasKey("ContractId", "VehicleId");
+                            b1.Property<Guid?>("PickupLocationId")
+                                .HasColumnType("uuid")
+                                .HasColumnName("pickup_location_id");
+
+                            b1.Property<Guid>("VehicleId")
+                                .HasColumnType("uuid")
+                                .HasColumnName("vehicle_id");
+
+                            b1.HasKey("ContractId", "Id");
+
+                            b1.HasIndex("DeliveryLocationId")
+                                .HasDatabaseName("ix_contract_vehicle_rates_delivery_location_id");
+
+                            b1.HasIndex("PickupLocationId")
+                                .HasDatabaseName("ix_contract_vehicle_rates_pickup_location_id");
 
                             b1.HasIndex("VehicleId")
                                 .HasDatabaseName("ix_contract_vehicle_rates_vehicle_id");
+
+                            b1.HasIndex("ContractId", "VehicleId", "PickupLocationId", "DeliveryLocationId")
+                                .IsUnique()
+                                .HasDatabaseName("uq_contract_vehicle_rates_vehicle_locations");
+
+                            NpgsqlIndexBuilderExtensions.AreNullsDistinct(b1.HasIndex("ContractId", "VehicleId", "PickupLocationId", "DeliveryLocationId"), false);
 
                             b1.ToTable("contract_vehicle_rates", "registry");
 
                             b1.WithOwner()
                                 .HasForeignKey("ContractId");
+
+                            b1.HasOne("Priamus.Trips.Registry.Domain.Locations.Location", null)
+                                .WithMany()
+                                .HasForeignKey("DeliveryLocationId")
+                                .OnDelete(DeleteBehavior.Restrict);
+
+                            b1.HasOne("Priamus.Trips.Registry.Domain.Locations.Location", null)
+                                .WithMany()
+                                .HasForeignKey("PickupLocationId")
+                                .OnDelete(DeleteBehavior.Restrict);
 
                             b1.HasOne("Priamus.Trips.Registry.Domain.Vehicles.Vehicle", null)
                                 .WithMany()

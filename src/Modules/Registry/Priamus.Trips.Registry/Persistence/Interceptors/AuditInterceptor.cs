@@ -291,6 +291,8 @@ public sealed class AuditInterceptor : ISaveChangesInterceptor
                 : vehicleRates.Select(v => new
                 {
                     VehicleId = v.VehicleId.Value,
+                    PickupLocationId = v.PickupLocationId?.Value,
+                    DeliveryLocationId = v.DeliveryLocationId?.Value,
                     DayPrice = v.Rate.DayPrice,
                     NightPrice = v.Rate.NightPrice,
                     NightCallFee = v.Rate.NightCallFee,

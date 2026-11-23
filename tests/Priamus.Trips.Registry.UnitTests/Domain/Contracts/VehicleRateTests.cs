@@ -2,6 +2,7 @@ using Priamus.Trips.Registry.Domain.Contracts;
 using Priamus.Trips.Registry.Domain.Contracts.Events;
 using Priamus.Trips.Registry.Domain.Contracts.ValueObjects;
 using Priamus.Trips.Registry.Domain.Customers;
+using Priamus.Trips.Registry.Domain.Locations;
 using Priamus.Trips.Registry.Domain.Vehicles;
 using Priamus.Trips.Registry.UnitTests.TestData;
 using Priamus.Trips.SharedKernel.Results;
@@ -24,7 +25,7 @@ public sealed class VehicleRateTests
         Rate.Create(50m, night, fee, minimum ?? new MinimumRule.None()).Value;
 
     private static VehicleRate ForVehicle(VehicleId vehicleId, Rate? rate = null) =>
-        new(vehicleId, rate ?? NewRate());
+        new(vehicleId, null, null, rate ?? NewRate());
 
     private static Result<Contract> CreateWith(
         IReadOnlyList<VehicleRate> vehicleRates,
@@ -143,29 +144,220 @@ public sealed class VehicleRateTests
             .ShouldBe([vehicleRate]);
     }
 
+    private static readonly LocationId Destination = LocationId.New();
+
+    // The vehicle rate and the location rate of the shape the billing level asks for, on one location.
+    private static VehicleRate ForVehicleAt(BillingLevel level, VehicleId vehicleId, LocationId location, Rate? rate = null) =>
+        level switch
+        {
+            BillingLevel.PerPickupLocation => new(vehicleId, location, null, rate ?? NewRate()),
+            BillingLevel.PerDeliveryLocation => new(vehicleId, null, location, rate ?? NewRate()),
+            _ => new(vehicleId, location, Destination, rate ?? NewRate()),
+        };
+
+    private static LocationRate LocationRateAt(BillingLevel level, LocationId location) =>
+        level switch
+        {
+            BillingLevel.PerPickupLocation => new(location, null, NewRate()),
+            BillingLevel.PerDeliveryLocation => new(null, location, NewRate()),
+            _ => new(location, Destination, NewRate()),
+        };
+
+    private static Result<Contract> CreateAt(
+        BillingLevel level,
+        IReadOnlyList<VehicleRate> vehicleRates,
+        IReadOnlyList<LocationId> ratedLocations,
+        PricingMode pricingMode = PricingMode.ByHour,
+        bool nightSurcharge = false) =>
+        Contract.Create(
+            ContractId.New(), CustomerId.New(), OpenFromApril(), level, pricingMode, [], nightSurcharge, null,
+            vehicleRates, [.. ratedLocations.Select(l => LocationRateAt(level, l))], NewClock(), Actor);
+
     [Theory]
     [InlineData(BillingLevel.PerPickupLocation)]
     [InlineData(BillingLevel.PerDeliveryLocation)]
     [InlineData(BillingLevel.PerLocationPair)]
-    public void Create_VehicleRatesOnANonFlatBillingLevel_Fails(BillingLevel level)
+    public void Create_LocationContractWithVehicleRatesOnItsLocations_HoldsThemAndCarriesThemInTheEvent(BillingLevel level)
     {
-        var result = CreateWith([ForVehicle(VehicleId.New())], level);
+        var first = LocationId.New();
+        var second = LocationId.New();
+        var tanker = VehicleId.New();
+        var fixedMinimum = NewRate(minimum: new MinimumRule.FixedMinimum(150m));
+        var vehicleRates = new[]
+        {
+            ForVehicleAt(level, tanker, first, fixedMinimum),
+            ForVehicleAt(level, tanker, second, fixedMinimum),
+            ForVehicleAt(level, VehicleId.New(), second),
+        };
 
-        result.Error.ShouldBe(ContractErrors.VehicleRateNotApplicable);
+        var contract = CreateAt(level, vehicleRates, [first, second]).Value;
+
+        contract.VehicleRates.ShouldBe(vehicleRates);
+        contract.DomainEvents.ShouldHaveSingleItem().ShouldBeOfType<ContractCreated>().VehicleRates
+            .ShouldBe(vehicleRates);
+    }
+
+    [Theory]
+    [InlineData(BillingLevel.PerPickupLocation)]
+    [InlineData(BillingLevel.PerDeliveryLocation)]
+    [InlineData(BillingLevel.PerLocationPair)]
+    public void Create_LocationContractWithoutVehicleRates_IsValid(BillingLevel level)
+    {
+        var contract = CreateAt(level, [], [LocationId.New()]).Value;
+
+        contract.VehicleRates.ShouldBeEmpty();
+    }
+
+    [Theory]
+    [InlineData(BillingLevel.PerPickupLocation)]
+    [InlineData(BillingLevel.PerDeliveryLocation)]
+    [InlineData(BillingLevel.PerLocationPair)]
+    public void Create_TheSameVehicleTwiceOnOneLocationOrPair_Fails(BillingLevel level)
+    {
+        var location = LocationId.New();
+        var vehicleId = VehicleId.New();
+
+        var result = CreateAt(
+            level,
+            [
+                ForVehicleAt(level, vehicleId, location),
+                ForVehicleAt(level, vehicleId, location, NewRate(minimum: new MinimumRule.FixedMinimum(100m))),
+            ],
+            [location]);
+
+        result.Error.ShouldBe(ContractErrors.VehicleRateDuplicate);
     }
 
     [Fact]
-    public void Update_VehicleRatesOnANonFlatBillingLevel_FailsAndLeavesTheContractUnchanged()
+    public void Create_TheSameVehicleOnAToBAndBToA_IsValid()
     {
-        var kept = ForVehicle(VehicleId.New());
-        var contract = CreateWith([kept]).Value;
+        var a = LocationId.New();
+        var b = LocationId.New();
+        var vehicleId = VehicleId.New();
+        var vehicleRates = new VehicleRate[]
+        {
+            new(vehicleId, a, b, NewRate()),
+            new(vehicleId, b, a, NewRate()),
+        };
+
+        var result = Contract.Create(
+            ContractId.New(), CustomerId.New(), OpenFromApril(), BillingLevel.PerLocationPair, PricingMode.ByHour, [],
+            false, null, vehicleRates, [new LocationRate(a, b, NewRate()), new LocationRate(b, a, NewRate())],
+            NewClock(), Actor);
+
+        result.Value.VehicleRates.ShouldBe(vehicleRates);
+    }
+
+    [Theory]
+    [InlineData(BillingLevel.FlatRate, true, false)]
+    [InlineData(BillingLevel.FlatRate, false, true)]
+    [InlineData(BillingLevel.PerPickupLocation, false, false)]
+    [InlineData(BillingLevel.PerPickupLocation, true, true)]
+    [InlineData(BillingLevel.PerPickupLocation, false, true)]
+    [InlineData(BillingLevel.PerDeliveryLocation, false, false)]
+    [InlineData(BillingLevel.PerDeliveryLocation, true, true)]
+    [InlineData(BillingLevel.PerDeliveryLocation, true, false)]
+    [InlineData(BillingLevel.PerLocationPair, false, false)]
+    [InlineData(BillingLevel.PerLocationPair, true, false)]
+    [InlineData(BillingLevel.PerLocationPair, false, true)]
+    public void Create_VehicleRateWithTheWrongSidesForTheLevel_Fails(BillingLevel level, bool pickup, bool delivery)
+    {
+        var location = LocationId.New();
+        var vehicleRate = new VehicleRate(VehicleId.New(), pickup ? location : null, delivery ? location : null, NewRate());
+        IReadOnlyList<LocationRate> locationRates = level == BillingLevel.FlatRate ? [] : [LocationRateAt(level, location)];
+
+        var result = Contract.Create(
+            ContractId.New(), CustomerId.New(), OpenFromApril(), level, PricingMode.ByHour, [], false,
+            level == BillingLevel.FlatRate ? NewRate() : null, [vehicleRate], locationRates, NewClock(), Actor);
+
+        result.Error.ShouldBe(ContractErrors.VehicleRateLocationsMismatch);
+    }
+
+    [Theory]
+    [InlineData(BillingLevel.PerPickupLocation)]
+    [InlineData(BillingLevel.PerDeliveryLocation)]
+    [InlineData(BillingLevel.PerLocationPair)]
+    public void Create_VehicleRateOnALocationTheContractHasNoRateFor_Fails(BillingLevel level)
+    {
+        var result = CreateAt(level, [ForVehicleAt(level, VehicleId.New(), LocationId.New())], [LocationId.New()]);
+
+        result.Error.ShouldBe(ContractErrors.VehicleRateWithoutLocationRate);
+    }
+
+    [Theory]
+    [InlineData(BillingLevel.PerPickupLocation)]
+    [InlineData(BillingLevel.PerDeliveryLocation)]
+    [InlineData(BillingLevel.PerLocationPair)]
+    public void Create_LocationContractVehicleRateJudgedByTheNightAndMinimumRulesOfTheContract(BillingLevel level)
+    {
+        var location = LocationId.New();
+
+        CreateAt(level, [ForVehicleAt(level, VehicleId.New(), location)], [location], nightSurcharge: true)
+            .Error.ShouldBe(ContractErrors.NightRateMissing);
+        CreateAt(level, [ForVehicleAt(level, VehicleId.New(), location, NewRate(55m, 5m))], [location])
+            .Error.ShouldBe(ContractErrors.NightRateNotApplicable);
+        CreateAt(
+            level, [ForVehicleAt(level, VehicleId.New(), location, NewRate(minimum: new MinimumRule.FixedMinimum(100m)))],
+            [location], PricingMode.ByTrip).Error.ShouldBe(ContractErrors.MinimumNotApplicableByTrip);
+    }
+
+    [Fact]
+    public void Update_LocationContractWithTheSameVehicleRatesInAnotherOrder_ChangesNothing()
+    {
+        var level = BillingLevel.PerPickupLocation;
+        var first = LocationId.New();
+        var second = LocationId.New();
+        var vehicleId = VehicleId.New();
+        var onFirst = ForVehicleAt(level, vehicleId, first);
+        var onSecond = ForVehicleAt(level, vehicleId, second);
+        var contract = CreateAt(level, [onFirst, onSecond], [first, second]).Value;
         contract.ClearDomainEvents();
 
-        var result = contract.Update(OpenFromApril(), BillingLevel.PerLocationPair, PricingMode.ByHour, [], false,
-            null, [kept], [], NewClock(), OtherActor);
+        var result = contract.Update(
+            OpenFromApril(), level, PricingMode.ByHour, [], false, null, [onSecond, onFirst],
+            [LocationRateAt(level, second), LocationRateAt(level, first)], NewClock(), OtherActor);
 
-        result.Error.ShouldBe(ContractErrors.VehicleRateNotApplicable);
-        contract.BillingLevel.ShouldBe(BillingLevel.FlatRate);
+        result.IsSuccess.ShouldBeTrue();
+        contract.Version.ShouldBe(0);
+        contract.DomainEvents.ShouldBeEmpty();
+    }
+
+    [Fact]
+    public void Update_ChangingOnlyTheLocationOfAVehicleRate_IsAChange()
+    {
+        var level = BillingLevel.PerPickupLocation;
+        var first = LocationId.New();
+        var second = LocationId.New();
+        var vehicleId = VehicleId.New();
+        var contract = CreateAt(level, [ForVehicleAt(level, vehicleId, first)], [first, second]).Value;
+        contract.ClearDomainEvents();
+        var moved = ForVehicleAt(level, vehicleId, second);
+
+        var result = contract.Update(
+            OpenFromApril(), level, PricingMode.ByHour, [], false, null, [moved],
+            [LocationRateAt(level, first), LocationRateAt(level, second)], NewClock(), OtherActor);
+
+        result.IsSuccess.ShouldBeTrue();
+        contract.Version.ShouldBe(1);
+        contract.VehicleRates.ShouldBe([moved]);
+        contract.DomainEvents.ShouldHaveSingleItem().ShouldBeOfType<ContractUpdated>().VehicleRates.ShouldBe([moved]);
+    }
+
+    [Fact]
+    public void Update_VehicleRateOnALocationTheContractHasNoRateFor_FailsAndLeavesTheContractUnchanged()
+    {
+        var level = BillingLevel.PerPickupLocation;
+        var location = LocationId.New();
+        var kept = ForVehicleAt(level, VehicleId.New(), location);
+        var contract = CreateAt(level, [kept], [location]).Value;
+        contract.ClearDomainEvents();
+
+        var result = contract.Update(
+            OpenFromApril(), level, PricingMode.ByHour, [], false, null,
+            [ForVehicleAt(level, VehicleId.New(), LocationId.New())], [LocationRateAt(level, location)],
+            NewClock(), OtherActor);
+
+        result.Error.ShouldBe(ContractErrors.VehicleRateWithoutLocationRate);
         contract.VehicleRates.ShouldBe([kept]);
         contract.Version.ShouldBe(0);
         contract.DomainEvents.ShouldBeEmpty();

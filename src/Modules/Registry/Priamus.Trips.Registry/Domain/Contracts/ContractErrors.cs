@@ -120,15 +120,20 @@ public static class ContractErrors
         "Registry.Contract.MinimumNotApplicableByTrip",
         "A contract priced by trip has no minimum rule.");
 
-    /// <summary>A contract of a billing level other than flat rate holds vehicle rates.</summary>
-    public static readonly Error VehicleRateNotApplicable = Error.Validation(
-        "Registry.Contract.VehicleRateNotApplicable",
-        "Only a flat-rate contract has vehicle rates.");
+    /// <summary>A vehicle rate does not name exactly the locations of the contract's billing level; none on a flat-rate contract.</summary>
+    public static readonly Error VehicleRateLocationsMismatch = Error.Validation(
+        "Registry.Contract.VehicleRateLocationsMismatch",
+        "A vehicle rate must name exactly the locations of the billing level.");
 
-    /// <summary>A vehicle has more than one vehicle rate in the contract.</summary>
+    /// <summary>A vehicle has more than one vehicle rate in a flat-rate contract, or on the same location or pair.</summary>
     public static readonly Error VehicleRateDuplicate = Error.Validation(
         "Registry.Contract.VehicleRateDuplicate",
-        "A vehicle can have only one vehicle rate in a contract.");
+        "A vehicle can have only one vehicle rate in a flat-rate contract, or on a location or pair of locations.");
+
+    /// <summary>A vehicle rate is for a location or pair the contract has no location rate for.</summary>
+    public static readonly Error VehicleRateWithoutLocationRate = Error.Validation(
+        "Registry.Contract.VehicleRateWithoutLocationRate",
+        "A vehicle rate must be for a location or pair of locations the contract has a rate for.");
 
     /// <summary>A vehicle rate is for a vehicle that does not exist; the vehicle id is the message argument.</summary>
     public static readonly Error VehicleRateUnknownVehicle = Error.Validation(

@@ -40,7 +40,7 @@ internal static class ContractRequestValidation
             }
         }
 
-        foreach (var result in ValidateVehicleRates(billingLevel, pricingMode, nightSurcharge, vehicleRates))
+        foreach (var result in ValidateVehicleRates(billingLevel, pricingMode, nightSurcharge, vehicleRates, locationRates))
         {
             yield return result;
         }
@@ -55,21 +55,30 @@ internal static class ContractRequestValidation
         BillingLevel? billingLevel,
         PricingMode? pricingMode,
         bool? nightSurcharge,
-        IReadOnlyList<ContractVehicleRateRequest>? vehicleRates)
+        IReadOnlyList<ContractVehicleRateRequest>? vehicleRates,
+        IReadOnlyList<ContractLocationRateRequest>? locationRates)
     {
         // A missing BillingLevel is not judged here: it is required and reports its own error.
-        if (vehicleRates is not { Count: > 0 } || billingLevel is null)
+        if (vehicleRates is not { Count: > 0 } || billingLevel is not { } level)
         {
             yield break;
         }
 
-        if (billingLevel != BillingLevel.FlatRate)
+        var isFlatRate = level == BillingLevel.FlatRate;
+        var (usesPickup, usesDelivery) = level.NamedLocations();
+
+        // The keys of the contract's location rates; unknown when the location rates are themselves
+        // missing or malformed, which is reported on their own keys.
+        HashSet<(Guid?, Guid?)>? locationKeys = null;
+        if (!isFlatRate && locationRates is { Count: > 0 }
+            && locationRates.All(item => item is not null
+                && (item.PickupLocationId is not null) == usesPickup
+                && (item.DeliveryLocationId is not null) == usesDelivery))
         {
-            yield return Error(RegistryMessages.Registry_Contract_ValueNotApplicable, "VehicleRates");
-            yield break;
+            locationKeys = [.. locationRates.Select(item => (item.PickupLocationId, item.DeliveryLocationId))];
         }
 
-        var seen = new HashSet<Guid>();
+        var seen = new HashSet<(Guid, Guid?, Guid?)>();
         for (var i = 0; i < vehicleRates.Count; i++)
         {
             var key = $"VehicleRates[{i}]";
@@ -79,13 +88,33 @@ internal static class ContractRequestValidation
                 continue;
             }
 
-            if (item.VehicleId is not { } vehicleId)
+            if (item.VehicleId is null)
             {
                 yield return Error(RegistryMessages.Validation_Required, $"{key}.VehicleId");
             }
-            else if (!seen.Add(vehicleId))
+
+            var pickupJudged = LocationMember(item.PickupLocationId, usesPickup, $"{key}.PickupLocationId");
+            var deliveryJudged = LocationMember(item.DeliveryLocationId, usesDelivery, $"{key}.DeliveryLocationId");
+            foreach (var result in new[] { pickupJudged, deliveryJudged })
             {
-                yield return Error(RegistryMessages.Registry_Contract_VehicleRateDuplicate, $"{key}.VehicleId");
+                if (result is not null)
+                {
+                    yield return result;
+                }
+            }
+
+            var locationKey = usesDelivery ? $"{key}.DeliveryLocationId" : $"{key}.PickupLocationId";
+            if (item.VehicleId is { } vehicleId
+                && !seen.Add((vehicleId, item.PickupLocationId, item.DeliveryLocationId)))
+            {
+                yield return isFlatRate
+                    ? Error(RegistryMessages.Registry_Contract_VehicleRateDuplicate, $"{key}.VehicleId")
+                    : Error(RegistryMessages.Registry_Contract_VehicleRateLocationDuplicate, locationKey);
+            }
+            else if (pickupJudged is null && deliveryJudged is null
+                && locationKeys is not null && !locationKeys.Contains((item.PickupLocationId, item.DeliveryLocationId)))
+            {
+                yield return Error(RegistryMessages.Registry_Contract_VehicleRateWithoutLocationRate, locationKey);
             }
 
             foreach (var result in ValidateRate(true, pricingMode, nightSurcharge, item.RateMembers()))
@@ -124,8 +153,7 @@ internal static class ContractRequestValidation
             yield break;
         }
 
-        var usesPickup = level is BillingLevel.PerPickupLocation or BillingLevel.PerLocationPair;
-        var usesDelivery = level is BillingLevel.PerDeliveryLocation or BillingLevel.PerLocationPair;
+        var (usesPickup, usesDelivery) = level.NamedLocations();
         var seen = new HashSet<(Guid?, Guid?)>();
         for (var i = 0; i < locationRates.Count; i++)
         {

@@ -115,7 +115,7 @@ The prices a contract charges a trip, in the unit of its pricing mode: a day pri
 _Avoid_: price list, tariff, rate validity
 
 **Vehicle rate** (Tariffa del mezzo):
-A complete rate of its own that a contract gives one vehicle (a tractor or a standalone vehicle): day price, night price and night call fee when the contract has the night surcharge, and its own minimum rule. A trip led by that vehicle is priced with it instead of the contract's rate. Like the contract's rate, it lives as long as its contract and has no validity of its own.
+A complete rate of its own that a contract gives one vehicle (a tractor or a standalone vehicle): day price, night price and night call fee when the contract has the night surcharge, and its own minimum rule. A trip led by that vehicle is priced with it instead of the contract's rate. In a contract priced per location or per pair a vehicle rate applies on some of the locations or pairs the contract has a rate for, not on the whole contract: a vehicle may have several vehicle rates with different prices, never two on the same location or pair, and may have none on some locations; a trip led by that vehicle on a location it has a vehicle rate for is priced with it instead of the location's rate. Like the contract's rate, it lives as long as its contract and has no validity of its own.
 _Avoid_: override (the PRD's word, not used by the business), special rate
 
 **Location rate** (Tariffa del luogo):

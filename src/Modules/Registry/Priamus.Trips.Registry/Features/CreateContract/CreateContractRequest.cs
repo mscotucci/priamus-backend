@@ -12,9 +12,11 @@ namespace Priamus.Trips.Registry.Features.CreateContract;
 /// Every member but the end of the validity, the seven rate members, the vehicle rates and the
 /// location rates is required; an empty set of documents is valid and duplicates collapse. The
 /// rate members are required for a flat-rate contract (the night ones with the night surcharge,
-/// the minimum ones as its rule asks) and must be absent for any other billing level, as must the
-/// vehicle rates. The location rates are required, at least one, for any other billing level and
-/// must be absent for a flat-rate contract. An absent list is an empty one.
+/// the minimum ones as its rule asks) and must be absent for any other billing level. The location
+/// rates are required, at least one, for any other billing level and must be absent for a flat-rate
+/// contract. A vehicle rate carries no location on a flat-rate contract; on any other level it names
+/// the pickup and delivery location the level uses, of one of the location rates. An absent list is
+/// an empty one.
 /// </summary>
 [ValidatableType]
 public sealed record CreateContractRequest(

@@ -1,3 +1,4 @@
+using Priamus.Trips.Registry.Domain.Locations;
 using Priamus.Trips.Registry.Domain.Vehicles;
 
 namespace Priamus.Trips.Registry.Domain.Contracts.ValueObjects;
@@ -17,10 +18,16 @@ internal sealed class StoredVehicleRate : StoredRate
         : base(vehicleRate.Rate)
     {
         VehicleId = vehicleRate.VehicleId;
+        PickupLocationId = vehicleRate.PickupLocationId;
+        DeliveryLocationId = vehicleRate.DeliveryLocationId;
     }
 
     internal VehicleId VehicleId { get; private set; }
 
+    internal LocationId? PickupLocationId { get; private set; }
+
+    internal LocationId? DeliveryLocationId { get; private set; }
+
     /// <summary>Rebuilds the vehicle rate from the stored columns.</summary>
-    internal VehicleRate ToVehicleRate() => new(VehicleId, ToRate());
+    internal VehicleRate ToVehicleRate() => new(VehicleId, PickupLocationId, DeliveryLocationId, ToRate());
 }

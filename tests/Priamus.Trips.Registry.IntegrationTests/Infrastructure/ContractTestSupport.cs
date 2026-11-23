@@ -199,9 +199,23 @@ public static class ContractTestSupport
     }
 
     /// <summary>
+    /// One item of the <c>vehicleRates</c> member of a contract request body, with the pickup and the
+    /// delivery location the billing level <paramref name="billingLevel"/> uses and no other (none on
+    /// a flat-rate contract).
+    /// </summary>
+    public static Dictionary<string, object?> VehicleRateFor(
+        string billingLevel, Guid? vehicleId, Guid? pickupId, Guid? deliveryId, string rate = DayOnlyRate)
+    {
+        var item = VehicleRateItem(vehicleId, rate);
+        item["pickupLocationId"] = billingLevel is "PerPickupLocation" or "PerLocationPair" ? pickupId : null;
+        item["deliveryLocationId"] = billingLevel is "PerDeliveryLocation" or "PerLocationPair" ? deliveryId : null;
+        return item;
+    }
+
+    /// <summary>
     /// Writes a contract request body whose own rate is valid for the billing terms and whose single
     /// vehicle rate has <paramref name="vehicleRate"/> as members, so that only the vehicle rate can
-    /// be wrong.
+    /// be wrong; on a location level the vehicle rate applies on the one location rate the body holds.
     /// </summary>
     public static void SetRateWithVehicleRate(
         Dictionary<string, object?> body, string billingLevel, string pricingMode, bool nightSurcharge, string vehicleRate)
@@ -215,16 +229,56 @@ public static class ContractTestSupport
             : nightSurcharge ? """{"dayPrice":45,"nightPrice":55,"nightCallFee":5,"minimumRule":"None"}"""
             : """{"dayPrice":45,"minimumRule":"None"}""";
         SetRate(body, billingLevel, pricingMode, nightSurcharge, contractRate);
-        WithLocationRateForTheLevel(body, billingLevel, nightSurcharge);
-        body["vehicleRates"] = new[] { VehicleRateItem(Guid.NewGuid(), vehicleRate) };
+        var pickupId = Guid.NewGuid();
+        var deliveryId = Guid.NewGuid();
+        WithLocationRateForTheLevel(body, billingLevel, nightSurcharge, pickupId, deliveryId);
+        body["vehicleRates"] = new[] { VehicleRateFor(billingLevel, Guid.NewGuid(), pickupId, deliveryId, vehicleRate) };
     }
 
     /// <summary>
-    /// The 400 keys a broken vehicle rate of <see cref="InvalidRates"/> is reported under: its member
-    /// keys under the first item, or the list as a whole when the contract is not flat rate.
+    /// Writes a location contract priced by the hour with three location rates, (a, b), (b, c) and (c, a)
+    /// as far as the billing level <paramref name="billingLevel"/> uses them, and
+    /// <paramref name="vehicleRates"/> as written.
     /// </summary>
-    public static string[] VehicleRateKeys(string billingLevel, string keys) =>
-        billingLevel == "FlatRate" ? [.. keys.Split(',').Select(k => $"VehicleRates[0].{k}")] : ["VehicleRates"];
+    public static void SetThreeLocationsWithVehicleRates(
+        Dictionary<string, object?> body,
+        string billingLevel,
+        Guid a,
+        Guid b,
+        Guid c,
+        params Dictionary<string, object?>[] vehicleRates)
+    {
+        SetLocationRates(body, billingLevel, "ByHour", false,
+            LocationRateFor(billingLevel, a, b), LocationRateFor(billingLevel, b, c), LocationRateFor(billingLevel, c, a));
+        body["vehicleRates"] = vehicleRates;
+    }
+
+    /// <summary>
+    /// The rows of <see cref="InvalidRates"/> about the members of a rate, each on a flat-rate and on a
+    /// per-pair contract, where a vehicle rate is judged the same: billing level, pricing mode, night
+    /// surcharge, members, error keys.
+    /// </summary>
+    public static TheoryData<string, string, bool, string, string> InvalidVehicleRates
+    {
+        get
+        {
+            var rows = new TheoryData<string, string, bool, string, string>();
+            foreach (var (level, pricingMode, night, rate, keys) in InvalidRates.Select(r => r.Data))
+            {
+                if (level == "FlatRate")
+                {
+                    rows.Add("FlatRate", pricingMode, night, rate, keys);
+                    rows.Add("PerLocationPair", pricingMode, night, rate, keys);
+                }
+            }
+
+            return rows;
+        }
+    }
+
+    /// <summary>The 400 keys a broken vehicle rate is reported under: its member keys under the first item.</summary>
+    public static string[] VehicleRateKeys(string keys) =>
+        [.. keys.Split(',').Select(k => $"VehicleRates[0].{k}")];
 
     /// <summary>
     /// The 400 keys a broken location rate is reported under: its member keys under the first item.

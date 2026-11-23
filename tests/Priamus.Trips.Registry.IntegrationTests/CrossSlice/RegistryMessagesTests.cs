@@ -278,8 +278,9 @@ public sealed class RegistryMessagesTests : RegistryIntegrationTestBase
             ContractErrors.NightRateMissing,
             ContractErrors.NightRateNotApplicable,
             ContractErrors.MinimumNotApplicableByTrip,
-            ContractErrors.VehicleRateNotApplicable,
+            ContractErrors.VehicleRateLocationsMismatch,
             ContractErrors.VehicleRateDuplicate,
+            ContractErrors.VehicleRateWithoutLocationRate,
             ContractErrors.VehicleRateUnknownVehicle,
             ContractErrors.VehicleRateOnTrailer,
             ContractErrors.VehicleRateDecommissioned,
@@ -303,8 +304,9 @@ public sealed class RegistryMessagesTests : RegistryIntegrationTestBase
     {
         var expected = new (Error Error, string[] Arguments, string Text)[]
         {
-            (ContractErrors.VehicleRateNotApplicable, [], "Questo valore non si applica al contratto."),
+            (ContractErrors.VehicleRateLocationsMismatch, [], "Questo valore non si applica al contratto."),
             (ContractErrors.VehicleRateDuplicate, [], "Il mezzo ha già una tariffa propria in questo contratto."),
+            (ContractErrors.VehicleRateWithoutLocationRate, [], "Il contratto non ha una tariffa per questo luogo o questa coppia."),
             (ContractErrors.VehicleRateUnknownVehicle, ["0b6f1c1e"], "Il mezzo 0b6f1c1e non esiste."),
             (ContractErrors.VehicleRateOnTrailer, ["AB456CD"], "Il mezzo AB456CD è un rimorchio: non può avere una tariffa propria."),
             (ContractErrors.VehicleRateDecommissioned, ["AB456CD"], "Il mezzo AB456CD è dismesso: non si può aggiungere una sua tariffa."),

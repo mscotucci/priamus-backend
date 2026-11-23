@@ -495,10 +495,10 @@ public sealed class ContractPersistenceTests : RegistryIntegrationTestBase
     }
 
     private static VehicleRate NightRateWithTieredMinimum(Vehicle vehicle) =>
-        new(vehicle.Id, Rate.Create(52.5m, 70.25m, 12m, new MinimumRule.TieredOverage(100m, 4.5m, 22.25m)).Value);
+        new(vehicle.Id, null, null, Rate.Create(52.5m, 70.25m, 12m, new MinimumRule.TieredOverage(100m, 4.5m, 22.25m)).Value);
 
     private static VehicleRate RateWithoutMinimum(Vehicle vehicle) =>
-        new(vehicle.Id, Rate.Create(48m, 58m, 4m, new MinimumRule.None()).Value);
+        new(vehicle.Id, null, null, Rate.Create(48m, 58m, 4m, new MinimumRule.None()).Value);
 
     private static Contract NewContractWithVehicleRates(CustomerId customerId, params VehicleRate[] vehicleRates) =>
         Contract.Create(
@@ -557,7 +557,7 @@ public sealed class ContractPersistenceTests : RegistryIntegrationTestBase
         var added = await SeedVehicleAsync("EF789GH");
         var contract = await SaveAsync(NewContractWithVehicleRates(
             customer.Id, RateWithoutMinimum(kept), RateWithoutMinimum(removed)));
-        var repriced = new VehicleRate(kept.Id, Rate.Create(55m, 66m, 0m, new MinimumRule.FixedMinimum(120m)).Value);
+        var repriced = new VehicleRate(kept.Id, null, null, Rate.Create(55m, 66m, 0m, new MinimumRule.FixedMinimum(120m)).Value);
         var addedRate = RateWithoutMinimum(added);
 
         // Act
@@ -608,7 +608,7 @@ public sealed class ContractPersistenceTests : RegistryIntegrationTestBase
     {
         // Arrange
         var customer = await SeedCustomerAsync();
-        var unknown = new VehicleRate(VehicleId.New(), Rate.Create(48m, 60m, 5m, new MinimumRule.None()).Value);
+        var unknown = new VehicleRate(VehicleId.New(), null, null, Rate.Create(48m, 60m, 5m, new MinimumRule.None()).Value);
         await using var db = CreateDbContext();
         db.Contracts.Add(NewContractWithVehicleRates(customer.Id, unknown));
 

@@ -84,6 +84,6 @@ public sealed record ContractLocationRateDto(
             locationRate.Rate.Minimum.OveragePrice);
     }
 
-    private static RatedLocationDto RatedLocation(Location location) =>
+    internal static RatedLocationDto RatedLocation(Location location) =>
         new(location.Id.Value, location.Name, location.Municipality, location.Status);
 }

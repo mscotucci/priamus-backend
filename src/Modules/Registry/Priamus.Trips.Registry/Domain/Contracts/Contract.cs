@@ -109,7 +109,7 @@ public sealed class Contract : AggregateRoot
     }
 
     /// <summary>
-    /// The rates some vehicles have of their own, at most one per vehicle; empty when there are none.
+    /// The rates some vehicles have of their own, at most one per vehicle in a flat-rate contract and one per vehicle and location or pair in the others; empty when there are none.
     /// They apply for the whole validity of the contract and have none of their own.
     /// </summary>
     public IReadOnlyList<VehicleRate> VehicleRates
@@ -150,7 +150,7 @@ public sealed class Contract : AggregateRoot
     /// <param name="requiredDocuments">Required documents; duplicates collapse, order is canonicalised.</param>
     /// <param name="nightSurcharge">Whether night trips cost more.</param>
     /// <param name="rate">The rate; required for flat rate, <c>null</c> for any other billing level.</param>
-    /// <param name="vehicleRates">The vehicle rates; only a flat-rate contract has them, each vehicle at most once.</param>
+    /// <param name="vehicleRates">The vehicle rates; each vehicle at most once in a flat-rate contract (no locations), at most once on each location or pair the contract has a rate for in the other billing levels.</param>
     /// <param name="locationRates">The location rates; required (at least one) for a contract priced per location or pair, none for any other billing level, each location or ordered pair at most once.</param>
     /// <param name="clock">Time source.</param>
     /// <param name="createdBy">Actor performing the creation.</param>
@@ -176,7 +176,7 @@ public sealed class Contract : AggregateRoot
         ArgumentNullException.ThrowIfNull(clock);
 
         if ((CheckRate(billingLevel, pricingMode, nightSurcharge, rate)
-            ?? CheckVehicleRates(billingLevel, pricingMode, nightSurcharge, vehicleRates)
+            ?? CheckVehicleRates(billingLevel, pricingMode, nightSurcharge, vehicleRates, locationRates)
             ?? CheckLocationRates(billingLevel, pricingMode, nightSurcharge, locationRates)) is { } invalid)
         {
             return invalid;
@@ -203,7 +203,7 @@ public sealed class Contract : AggregateRoot
     /// <param name="requiredDocuments">Required documents; duplicates collapse, order is canonicalised.</param>
     /// <param name="nightSurcharge">Whether night trips cost more.</param>
     /// <param name="rate">The rate; required for flat rate, <c>null</c> for any other billing level.</param>
-    /// <param name="vehicleRates">The vehicle rates; only a flat-rate contract has them, each vehicle at most once.</param>
+    /// <param name="vehicleRates">The vehicle rates; each vehicle at most once in a flat-rate contract (no locations), at most once on each location or pair the contract has a rate for in the other billing levels.</param>
     /// <param name="locationRates">The location rates; required (at least one) for a contract priced per location or pair, none for any other billing level, each location or ordered pair at most once.</param>
     /// <param name="clock">Time source.</param>
     /// <param name="modifiedBy">Actor performing the change.</param>
@@ -227,7 +227,7 @@ public sealed class Contract : AggregateRoot
         ArgumentNullException.ThrowIfNull(clock);
 
         if ((CheckRate(billingLevel, pricingMode, nightSurcharge, rate)
-            ?? CheckVehicleRates(billingLevel, pricingMode, nightSurcharge, vehicleRates)
+            ?? CheckVehicleRates(billingLevel, pricingMode, nightSurcharge, vehicleRates, locationRates)
             ?? CheckLocationRates(billingLevel, pricingMode, nightSurcharge, locationRates)) is { } invalid)
         {
             return invalid;
@@ -298,29 +298,36 @@ public sealed class Contract : AggregateRoot
         BillingLevel billingLevel,
         PricingMode pricingMode,
         bool nightSurcharge,
-        IReadOnlyList<VehicleRate> vehicleRates)
+        IReadOnlyList<VehicleRate> vehicleRates,
+        IReadOnlyList<LocationRate> locationRates)
     {
-        if (vehicleRates.Count == 0)
-        {
-            return null;
-        }
-
-        if (billingLevel != BillingLevel.FlatRate)
-        {
-            return ContractErrors.VehicleRateNotApplicable;
-        }
-
-        var seen = new HashSet<VehicleId>();
+        var ratedLocations = locationRates
+            .Select(r => (r.PickupLocationId, r.DeliveryLocationId))
+            .ToHashSet();
+        var (usesPickup, usesDelivery) = billingLevel.NamedLocations();
+        var seen = new HashSet<(VehicleId, LocationId?, LocationId?)>();
         foreach (var vehicleRate in vehicleRates)
         {
+            if ((vehicleRate.PickupLocationId is not null) != usesPickup
+                || (vehicleRate.DeliveryLocationId is not null) != usesDelivery)
+            {
+                return ContractErrors.VehicleRateLocationsMismatch;
+            }
+
             if (CheckRateTerms(pricingMode, nightSurcharge, vehicleRate.Rate) is { } invalid)
             {
                 return invalid;
             }
 
-            if (!seen.Add(vehicleRate.VehicleId))
+            if (!seen.Add((vehicleRate.VehicleId, vehicleRate.PickupLocationId, vehicleRate.DeliveryLocationId)))
             {
                 return ContractErrors.VehicleRateDuplicate;
+            }
+
+            if (billingLevel != BillingLevel.FlatRate
+                && !ratedLocations.Contains((vehicleRate.PickupLocationId, vehicleRate.DeliveryLocationId)))
+            {
+                return ContractErrors.VehicleRateWithoutLocationRate;
             }
         }
 
@@ -343,16 +350,12 @@ public sealed class Contract : AggregateRoot
             return ContractErrors.LocationRateNotApplicable;
         }
 
+        var (usesPickup, usesDelivery) = billingLevel.NamedLocations();
         var seen = new HashSet<(LocationId?, LocationId?)>();
         foreach (var locationRate in locationRates)
         {
-            var namesTheLocationsOfTheLevel = billingLevel switch
-            {
-                BillingLevel.PerPickupLocation => locationRate is { PickupLocationId: not null, DeliveryLocationId: null },
-                BillingLevel.PerDeliveryLocation => locationRate is { PickupLocationId: null, DeliveryLocationId: not null },
-                _ => locationRate is { PickupLocationId: not null, DeliveryLocationId: not null },
-            };
-            if (!namesTheLocationsOfTheLevel)
+            if ((locationRate.PickupLocationId is not null) != usesPickup
+                || (locationRate.DeliveryLocationId is not null) != usesDelivery)
             {
                 return ContractErrors.LocationRateLocationsMismatch;
             }

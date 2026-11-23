@@ -18,3 +18,15 @@ public enum BillingLevel
     /// <summary>Per coppia di luoghi.</summary>
     PerLocationPair,
 }
+
+/// <summary>What a <see cref="BillingLevel"/> says about the locations a rate names.</summary>
+public static class BillingLevelExtensions
+{
+    /// <summary>
+    /// Which of the pickup and the delivery location a rate of this level names: both for a pair,
+    /// one for a pickup or delivery level, none for a flat rate.
+    /// </summary>
+    public static (bool Pickup, bool Delivery) NamedLocations(this BillingLevel billingLevel) =>
+        (billingLevel is BillingLevel.PerPickupLocation or BillingLevel.PerLocationPair,
+         billingLevel is BillingLevel.PerDeliveryLocation or BillingLevel.PerLocationPair);
+}

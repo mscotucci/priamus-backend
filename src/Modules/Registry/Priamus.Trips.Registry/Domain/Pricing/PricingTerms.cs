@@ -8,7 +8,7 @@ namespace Priamus.Trips.Registry.Domain.Pricing;
 /// <param name="NightSurcharge">Whether a night trip is priced with the night price and the night call fee.</param>
 /// <param name="BillingLevel">What the contract is priced per: the whole customer or a location or pair.</param>
 /// <param name="Rate">The contract's rate; <c>null</c> on a location level, which has none.</param>
-/// <param name="VehicleRates">The rates of single vehicles, which replace the contract's rate for them.</param>
+/// <param name="VehicleRates">The rates of single vehicles, which replace the contract's rate, or the rate of the location or pair they name, for them.</param>
 /// <param name="LocationRates">The rates of the locations or pairs of a location level.</param>
 public sealed record PricingTerms(
     PricingMode Mode,

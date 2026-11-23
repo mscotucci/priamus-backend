@@ -15,7 +15,7 @@ internal static class PricingEngine
 {
     /// <summary>Computes the amount of a trip.</summary>
     /// <param name="terms">The terms of the contract.</param>
-    /// <param name="vehicle">The trip's leading vehicle; on a flat-rate contract, <c>null</c> or without a rate of its own uses the contract's rate. A location level ignores it.</param>
+    /// <param name="vehicle">The trip's leading vehicle; <c>null</c>, or a vehicle without a rate of its own on the trip's location, uses the contract's rate on a flat-rate contract and the rate of the location or pair on a location level.</param>
     /// <param name="pickup">The trip's pickup location; a flat-rate contract ignores it.</param>
     /// <param name="delivery">The trip's delivery location; a flat-rate contract ignores it.</param>
     /// <param name="trip">The trip; its mode must be the mode of <paramref name="terms"/>.</param>
@@ -56,8 +56,16 @@ internal static class PricingEngine
                 return PricingErrors.NoRateForLocation;
             }
 
-            rate = locationRate.Rate;
-            rateSource = terms.BillingLevel == BillingLevel.PerLocationPair ? RateSource.LocationPair : RateSource.Location;
+            vehicleRate = vehicle is { } id
+                ? terms.VehicleRates.FirstOrDefault(r =>
+                    r.VehicleId == id
+                    && r.PickupLocationId == locationRate.PickupLocationId
+                    && r.DeliveryLocationId == locationRate.DeliveryLocationId)
+                : null;
+            rate = vehicleRate?.Rate ?? locationRate.Rate;
+            rateSource = vehicleRate is not null
+                ? RateSource.Vehicle
+                : terms.BillingLevel == BillingLevel.PerLocationPair ? RateSource.LocationPair : RateSource.Location;
         }
 
         var isNight = band.IsNight(trip.Start);

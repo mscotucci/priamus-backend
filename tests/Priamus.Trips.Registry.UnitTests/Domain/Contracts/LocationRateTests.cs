@@ -368,11 +368,12 @@ public sealed class LocationRateTests
     [InlineData(BillingLevel.PerPickupLocation)]
     [InlineData(BillingLevel.PerDeliveryLocation)]
     [InlineData(BillingLevel.PerLocationPair)]
-    public void Create_VehicleRatesOnALocationContract_Fail(BillingLevel level)
+    public void Create_VehicleRateWithoutLocationsOnALocationContract_Fails(BillingLevel level)
     {
         var result = CreateWith(
-            [ForLevel(level, LocationId.New())], level, vehicleRates: [new VehicleRate(VehicleId.New(), NewRate())]);
+            [ForLevel(level, LocationId.New())], level,
+            vehicleRates: [new VehicleRate(VehicleId.New(), null, null, NewRate())]);
 
-        result.Error.ShouldBe(ContractErrors.VehicleRateNotApplicable);
+        result.Error.ShouldBe(ContractErrors.VehicleRateLocationsMismatch);
     }
 }

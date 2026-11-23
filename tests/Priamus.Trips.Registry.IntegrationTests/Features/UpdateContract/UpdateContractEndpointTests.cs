@@ -724,7 +724,7 @@ public sealed class UpdateContractEndpointTests : RegistryIntegrationTestBase
     }
 
     private static VehicleRate DayRate(VehicleId vehicleId, decimal dayPrice = 70m) =>
-        new(vehicleId, Rate.Create(dayPrice, null, null, new MinimumRule.None()).Value);
+        new(vehicleId, null, null, Rate.Create(dayPrice, null, null, new MinimumRule.None()).Value);
 
     private async Task<Contract> SeedWithVehicleRatesAsync(CustomerId customerId, params VehicleRate[] vehicleRates)
     {
@@ -842,13 +842,19 @@ public sealed class UpdateContractEndpointTests : RegistryIntegrationTestBase
     }
 
     [Theory]
-    [InlineData("unknown")]
-    [InlineData("trailer")]
-    [InlineData("decommissioned")]
-    public async Task VehicleThatCannotHaveAVehicleRate_Returns400WithTheCodeAndTheNameInTheText_AndChangesNothing(string kind)
+    [InlineData("FlatRate", "unknown")]
+    [InlineData("FlatRate", "trailer")]
+    [InlineData("FlatRate", "decommissioned")]
+    [InlineData("PerLocationPair", "unknown")]
+    [InlineData("PerLocationPair", "trailer")]
+    [InlineData("PerLocationPair", "decommissioned")]
+    public async Task VehicleThatCannotHaveAVehicleRate_Returns400WithTheCodeAndTheNameInTheText_AndChangesNothing(
+        string level, string kind)
     {
         // Arrange
         var customer = await SeedCustomerAsync();
+        var a = await SeedLocationRowAsync("Magazzino centrale");
+        var b = await SeedLocationRowAsync("Cantiere nord");
         var seeded = await SeedWithVehicleRatesAsync(customer.Id);
         var unknown = Guid.NewGuid();
         var vehicleId = kind switch
@@ -866,7 +872,12 @@ public sealed class UpdateContractEndpointTests : RegistryIntegrationTestBase
         var before = await AuditCountAsync();
         await using var factory = CreateFactory();
         var body = UpdateBody(seeded.Version);
-        body["vehicleRates"] = new[] { VehicleRateItem(vehicleId) };
+        if (level != "FlatRate")
+        {
+            SetLocationRates(body, level, "ByHour", false, LocationRateFor(level, a.Id.Value, b.Id.Value));
+        }
+
+        body["vehicleRates"] = new[] { VehicleRateFor(level, vehicleId, a.Id.Value, b.Id.Value) };
 
         // Act
         var response = await PutAsync(BackOfficeClient(factory), customer.Id.Value, seeded.Id.Value, body);
@@ -879,7 +890,7 @@ public sealed class UpdateContractEndpointTests : RegistryIntegrationTestBase
     }
 
     [Theory]
-    [MemberData(nameof(InvalidRates), MemberType = typeof(ContractTestSupport))]
+    [MemberData(nameof(InvalidVehicleRates), MemberType = typeof(ContractTestSupport))]
     public async Task InvalidVehicleRate_Returns400UnderTheItemKeys_AndChangesNothing(
         string billingLevel, string pricingMode, bool nightSurcharge, string rate, string keys)
     {
@@ -896,7 +907,7 @@ public sealed class UpdateContractEndpointTests : RegistryIntegrationTestBase
 
         // Assert
         response.StatusCode.ShouldBe(HttpStatusCode.BadRequest);
-        (await ErrorKeysAsync(response)).ShouldBe(VehicleRateKeys(billingLevel, keys));
+        (await ErrorKeysAsync(response)).ShouldBe(VehicleRateKeys(keys));
         (await StoredOneAsync(seeded.Id)).Version.ShouldBe(seeded.Version);
         (await AuditCountAsync()).ShouldBe(before);
     }
@@ -1239,7 +1250,7 @@ public sealed class UpdateContractEndpointTests : RegistryIntegrationTestBase
     }
 
     [Fact]
-    public async Task LocationContractWithARateOfItsOwnOrVehicleRates_Returns400OnThoseMembers_AndChangesNothing()
+    public async Task LocationContractWithARateOfItsOwn_Returns400OnThoseMembers_AndChangesNothing()
     {
         // Arrange
         var customer = await SeedCustomerAsync();
@@ -1250,14 +1261,13 @@ public sealed class UpdateContractEndpointTests : RegistryIntegrationTestBase
         var body = PairBody(seeded.Version, LocationRateFor("PerLocationPair", a.Id.Value, b.Id.Value));
         body["dayPrice"] = 45m;
         body["minimumRule"] = "None";
-        body["vehicleRates"] = new[] { VehicleRateItem(Guid.NewGuid()) };
 
         // Act
         var response = await PutAsync(BackOfficeClient(factory), customer.Id.Value, seeded.Id.Value, body);
 
         // Assert
         response.StatusCode.ShouldBe(HttpStatusCode.BadRequest);
-        (await ErrorKeysAsync(response)).ShouldBe(["DayPrice", "MinimumRule", "VehicleRates"]);
+        (await ErrorKeysAsync(response)).ShouldBe(["DayPrice", "MinimumRule"]);
         (await StoredOneAsync(seeded.Id)).LocationRates.ShouldBe([PairRate(a.Id, b.Id)]);
     }
 
@@ -1382,6 +1392,287 @@ public sealed class UpdateContractEndpointTests : RegistryIntegrationTestBase
         // Assert
         await response.ShouldBeProblemAsync(HttpStatusCode.Conflict, ContractErrors.CustomerDeactivatedReadOnly, Ct);
         (await StoredOneAsync(seeded.Id)).LocationRates.ShouldBe([PairRate(a.Id, b.Id)]);
+    }
+
+    private static VehicleRate PairVehicleRate(VehicleId vehicleId, LocationId pickup, LocationId delivery, decimal dayPrice = 70m) =>
+        new(vehicleId, pickup, delivery, Rate.Create(dayPrice, null, null, new MinimumRule.None()).Value);
+
+    // A location-pair contract priced by the hour with no night surcharge, holding the given location and vehicle rates.
+    private async Task<Contract> SeedWithLocationAndVehicleRatesAsync(
+        CustomerId customerId, LocationRate[] locationRates, params VehicleRate[] vehicleRates)
+    {
+        await using var db = CreateDbContext();
+        return await SeedContractAsync(
+            db, customerId, new DateOnly(2026, 1, 1), new DateOnly(2026, 3, 31), BillingLevel.PerLocationPair,
+            PricingMode.ByHour, [RequiredDocument.WasteForm], nightSurcharge: false,
+            locationRates: locationRates, vehicleRates: vehicleRates);
+    }
+
+    [Fact]
+    public async Task Correction_WritesTheVehicleRatesOfALocationContractWithTheirLocations()
+    {
+        // Arrange
+        var customer = await SeedCustomerAsync();
+        var a = await SeedLocationRowAsync("Magazzino centrale");
+        var b = await SeedLocationRowAsync("Cantiere nord");
+        var c = await SeedLocationRowAsync("Deposito sud");
+        var first = await SeedVehicleRowAsync("AB456CD");
+        var second = await SeedVehicleRowAsync("CD123EF", VehicleType.StandaloneVehicle);
+        var seeded = await SeedWithLocationAndVehicleRatesAsync(
+            customer.Id, [PairRate(a.Id, b.Id), PairRate(b.Id, c.Id), PairRate(c.Id, a.Id)]);
+        await using var factory = CreateFactory();
+        var body = UpdateBody(seeded.Version);
+        SetThreeLocationsWithVehicleRates(body, "PerLocationPair", a.Id.Value, b.Id.Value, c.Id.Value,
+            VehicleRateFor("PerLocationPair", first.Id.Value, a.Id.Value, b.Id.Value),
+            VehicleRateFor("PerLocationPair", first.Id.Value, b.Id.Value, c.Id.Value),
+            VehicleRateFor("PerLocationPair", second.Id.Value, a.Id.Value, b.Id.Value, """{"dayPrice":82.5,"minimumRule":"None"}"""));
+
+        // Act
+        var response = await PutAsync(BackOfficeClient(factory), customer.Id.Value, seeded.Id.Value, body);
+
+        // Assert
+        response.StatusCode.ShouldBe(HttpStatusCode.NoContent);
+        (await StoredOneAsync(seeded.Id)).VehicleRates
+            .Select(r => (r.VehicleId, r.PickupLocationId, r.DeliveryLocationId, r.Rate.DayPrice))
+            .ShouldBe(
+            [
+                (first.Id, a.Id, b.Id, 70m),
+                (first.Id, b.Id, c.Id, 70m),
+                (second.Id, a.Id, b.Id, 82.5m),
+            ],
+            ignoreOrder: true);
+    }
+
+    [Fact]
+    public async Task ChangingOnlyTheLocationsOfAVehicleRate_IsAChange_WithANewVersionAndAnAuditRow()
+    {
+        // Arrange: a first save settles the terms, the second moves the vehicle rate to another location.
+        var customer = await SeedCustomerAsync();
+        var a = await SeedLocationRowAsync("Magazzino centrale");
+        var b = await SeedLocationRowAsync("Cantiere nord");
+        var c = await SeedLocationRowAsync("Deposito sud");
+        var vehicle = await SeedVehicleRowAsync("AB456CD");
+        var seeded = await SeedWithLocationAndVehicleRatesAsync(
+            customer.Id, [PairRate(a.Id, b.Id), PairRate(b.Id, c.Id), PairRate(c.Id, a.Id)]);
+        await using var factory = CreateFactory();
+        var client = BackOfficeClient(factory);
+        var settling = UpdateBody(seeded.Version);
+        SetThreeLocationsWithVehicleRates(settling, "PerLocationPair", a.Id.Value, b.Id.Value, c.Id.Value,
+            VehicleRateFor("PerLocationPair", vehicle.Id.Value, a.Id.Value, b.Id.Value));
+        (await PutAsync(client, customer.Id.Value, seeded.Id.Value, settling)).StatusCode.ShouldBe(HttpStatusCode.NoContent);
+        var settled = await StoredOneAsync(seeded.Id);
+        var auditBefore = await AuditCountAsync();
+        var moving = UpdateBody(settled.Version);
+        SetThreeLocationsWithVehicleRates(moving, "PerLocationPair", a.Id.Value, b.Id.Value, c.Id.Value,
+            VehicleRateFor("PerLocationPair", vehicle.Id.Value, b.Id.Value, c.Id.Value));
+
+        // Act
+        var response = await PutAsync(client, customer.Id.Value, seeded.Id.Value, moving);
+
+        // Assert
+        response.StatusCode.ShouldBe(HttpStatusCode.NoContent);
+        var stored = await StoredOneAsync(seeded.Id);
+        stored.Version.ShouldBe(settled.Version + 1);
+        stored.VehicleRates.ShouldBe([PairVehicleRate(vehicle.Id, b.Id, c.Id)]);
+        (await AuditCountAsync()).ShouldBe(auditBefore + 1);
+    }
+
+    [Fact]
+    public async Task DecommissionedVehicleAlreadyInALocationContract_IsKeptAndMayBeRepriced()
+    {
+        // Arrange
+        var customer = await SeedCustomerAsync();
+        var a = await SeedLocationRowAsync("Magazzino centrale");
+        var b = await SeedLocationRowAsync("Cantiere nord");
+        var vehicle = await SeedVehicleRowAsync("AB456CD", decommissioned: true);
+        var seeded = await SeedWithLocationAndVehicleRatesAsync(
+            customer.Id, [PairRate(a.Id, b.Id)], PairVehicleRate(vehicle.Id, a.Id, b.Id, 60m));
+        await using var factory = CreateFactory();
+        var body = UpdateBody(seeded.Version);
+        SetLocationRates(body, "PerLocationPair", "ByHour", false, LocationRateFor("PerLocationPair", a.Id.Value, b.Id.Value));
+        body["vehicleRates"] = new[] { VehicleRateFor("PerLocationPair", vehicle.Id.Value, a.Id.Value, b.Id.Value) };
+
+        // Act
+        var response = await PutAsync(BackOfficeClient(factory), customer.Id.Value, seeded.Id.Value, body);
+
+        // Assert
+        response.StatusCode.ShouldBe(HttpStatusCode.NoContent);
+        (await StoredOneAsync(seeded.Id)).VehicleRates.ShouldBe([PairVehicleRate(vehicle.Id, a.Id, b.Id)]);
+    }
+
+    [Fact]
+    public async Task DeactivatedCustomer_RefusesVehicleRateChangesOnALocationContract_AndKeepsTheStoredOnes()
+    {
+        // Arrange
+        var customer = await SeedCustomerAsync(deactivated: true);
+        var a = await SeedLocationRowAsync("Magazzino centrale");
+        var b = await SeedLocationRowAsync("Cantiere nord");
+        var vehicle = await SeedVehicleRowAsync("AB456CD");
+        var seeded = await SeedWithLocationAndVehicleRatesAsync(
+            customer.Id, [PairRate(a.Id, b.Id)], PairVehicleRate(vehicle.Id, a.Id, b.Id));
+        await using var factory = CreateFactory();
+        var body = PairBody(seeded.Version, LocationRateFor("PerLocationPair", a.Id.Value, b.Id.Value));
+        body["vehicleRates"] = Array.Empty<Dictionary<string, object?>>();
+
+        // Act
+        var response = await PutAsync(BackOfficeClient(factory), customer.Id.Value, seeded.Id.Value, body);
+
+        // Assert
+        await response.ShouldBeProblemAsync(HttpStatusCode.Conflict, ContractErrors.CustomerDeactivatedReadOnly, Ct);
+        (await StoredOneAsync(seeded.Id)).VehicleRates.ShouldBe([PairVehicleRate(vehicle.Id, a.Id, b.Id)]);
+    }
+
+    [Fact]
+    public async Task Driver_Gets403WhenWritingVehicleRatesOfALocationContract_AndNothingIsSaved()
+    {
+        // Arrange
+        var customer = await SeedCustomerAsync();
+        var a = await SeedLocationRowAsync("Magazzino centrale");
+        var b = await SeedLocationRowAsync("Cantiere nord");
+        var vehicle = await SeedVehicleRowAsync("AB456CD");
+        var seeded = await SeedWithLocationAndVehicleRatesAsync(customer.Id, [PairRate(a.Id, b.Id)]);
+        await using var factory = CreateFactory();
+        var client = TestCaller.WithRole("Driver").ApplyTo(factory.CreateClient());
+        var body = PairBody(seeded.Version, LocationRateFor("PerLocationPair", a.Id.Value, b.Id.Value));
+        body["vehicleRates"] = new[] { VehicleRateFor("PerLocationPair", vehicle.Id.Value, a.Id.Value, b.Id.Value) };
+
+        // Act
+        var response = await PutAsync(client, customer.Id.Value, seeded.Id.Value, body);
+
+        // Assert
+        response.StatusCode.ShouldBe(HttpStatusCode.Forbidden);
+        (await StoredOneAsync(seeded.Id)).VehicleRates.ShouldBeEmpty();
+    }
+
+    [Theory]
+    [InlineData("PerPickupLocation", "VehicleRates[1].PickupLocationId")]
+    [InlineData("PerDeliveryLocation", "VehicleRates[1].DeliveryLocationId")]
+    [InlineData("PerLocationPair", "VehicleRates[1].DeliveryLocationId")]
+    public async Task SameVehicleOnTheSameLocationOrPairTwice_Returns400OnTheLaterItem_InItalian_AndChangesNothing(
+        string level, string key)
+    {
+        // Arrange
+        var customer = await SeedCustomerAsync();
+        var a = await SeedLocationRowAsync("Magazzino centrale");
+        var b = await SeedLocationRowAsync("Cantiere nord");
+        var c = await SeedLocationRowAsync("Deposito sud");
+        var vehicle = await SeedVehicleRowAsync("AB456CD");
+        var seeded = await SeedWithLocationAndVehicleRatesAsync(customer.Id, [PairRate(a.Id, b.Id)]);
+        await using var factory = CreateFactory();
+        var body = UpdateBody(seeded.Version);
+        SetThreeLocationsWithVehicleRates(body, level, a.Id.Value, b.Id.Value, c.Id.Value,
+            VehicleRateFor(level, vehicle.Id.Value, a.Id.Value, b.Id.Value),
+            VehicleRateFor(level, vehicle.Id.Value, a.Id.Value, b.Id.Value, """{"dayPrice":82.5,"minimumRule":"None"}"""));
+
+        // Act
+        var response = await PutAsync(BackOfficeClient(factory), customer.Id.Value, seeded.Id.Value, body);
+
+        // Assert
+        response.StatusCode.ShouldBe(HttpStatusCode.BadRequest);
+        (await ErrorKeysAsync(response)).ShouldBe([key]);
+        var errors = (await response.Content.ReadFromJsonAsync<JsonElement>(Ct)).GetProperty("errors");
+        errors.GetProperty(key)[0].GetString().ShouldBe("Il mezzo ha già una tariffa propria per questo luogo o questa coppia.");
+        (await StoredOneAsync(seeded.Id)).Version.ShouldBe(seeded.Version);
+    }
+
+    [Theory]
+    [InlineData("PerPickupLocation", "VehicleRates[0].PickupLocationId")]
+    [InlineData("PerDeliveryLocation", "VehicleRates[0].DeliveryLocationId")]
+    [InlineData("PerLocationPair", "VehicleRates[0].DeliveryLocationId")]
+    public async Task VehicleRateOnALocationOrPairWithoutALocationRate_Returns400OnTheMember_InItalian_AndChangesNothing(
+        string level, string key)
+    {
+        // Arrange
+        var customer = await SeedCustomerAsync();
+        var a = await SeedLocationRowAsync("Magazzino centrale");
+        var b = await SeedLocationRowAsync("Cantiere nord");
+        var c = await SeedLocationRowAsync("Deposito sud");
+        var vehicle = await SeedVehicleRowAsync("AB456CD");
+        var seeded = await SeedWithLocationAndVehicleRatesAsync(customer.Id, [PairRate(a.Id, b.Id)]);
+        await using var factory = CreateFactory();
+        var body = UpdateBody(seeded.Version);
+        SetLocationRates(body, level, "ByHour", false, LocationRateFor(level, a.Id.Value, b.Id.Value));
+        body["vehicleRates"] = new[] { VehicleRateFor(level, vehicle.Id.Value, b.Id.Value, c.Id.Value) };
+
+        // Act
+        var response = await PutAsync(BackOfficeClient(factory), customer.Id.Value, seeded.Id.Value, body);
+
+        // Assert
+        response.StatusCode.ShouldBe(HttpStatusCode.BadRequest);
+        (await ErrorKeysAsync(response)).ShouldBe([key]);
+        var errors = (await response.Content.ReadFromJsonAsync<JsonElement>(Ct)).GetProperty("errors");
+        errors.GetProperty(key)[0].GetString().ShouldBe("Il contratto non ha una tariffa per questo luogo o questa coppia.");
+        (await StoredOneAsync(seeded.Id)).Version.ShouldBe(seeded.Version);
+    }
+
+    [Fact]
+    public async Task VehicleRatesOfALocationContractWhoseLocationRateLacksItsLocation_ReportOnlyTheLocationRate()
+    {
+        // Arrange
+        var customer = await SeedCustomerAsync();
+        var a = await SeedLocationRowAsync("Magazzino centrale");
+        var b = await SeedLocationRowAsync("Cantiere nord");
+        var vehicle = await SeedVehicleRowAsync("AB456CD");
+        var seeded = await SeedWithLocationAndVehicleRatesAsync(customer.Id, [PairRate(a.Id, b.Id)]);
+        await using var factory = CreateFactory();
+        var body = UpdateBody(seeded.Version);
+        var locationRate = LocationRateFor("PerPickupLocation", a.Id.Value, null);
+        locationRate["pickupLocationId"] = null;
+        SetLocationRates(body, "PerPickupLocation", "ByHour", false, locationRate);
+        body["vehicleRates"] = new[] { VehicleRateFor("PerPickupLocation", vehicle.Id.Value, a.Id.Value, null) };
+
+        // Act
+        var response = await PutAsync(BackOfficeClient(factory), customer.Id.Value, seeded.Id.Value, body);
+
+        // Assert
+        response.StatusCode.ShouldBe(HttpStatusCode.BadRequest);
+        (await ErrorKeysAsync(response)).ShouldBe(["LocationRates[0].PickupLocationId"]);
+        (await StoredOneAsync(seeded.Id)).Version.ShouldBe(seeded.Version);
+    }
+
+    [Fact]
+    public async Task VehicleRateOfALocationContractWithoutLocations_Returns400OnBothMembers_AndChangesNothing()
+    {
+        // Arrange
+        var customer = await SeedCustomerAsync();
+        var a = await SeedLocationRowAsync("Magazzino centrale");
+        var b = await SeedLocationRowAsync("Cantiere nord");
+        var vehicle = await SeedVehicleRowAsync("AB456CD");
+        var seeded = await SeedWithLocationAndVehicleRatesAsync(customer.Id, [PairRate(a.Id, b.Id)]);
+        await using var factory = CreateFactory();
+        var body = PairBody(seeded.Version, LocationRateFor("PerLocationPair", a.Id.Value, b.Id.Value));
+        body["vehicleRates"] = new[] { VehicleRateItem(vehicle.Id.Value) };
+
+        // Act
+        var response = await PutAsync(BackOfficeClient(factory), customer.Id.Value, seeded.Id.Value, body);
+
+        // Assert
+        response.StatusCode.ShouldBe(HttpStatusCode.BadRequest);
+        (await ErrorKeysAsync(response)).ShouldBe(["VehicleRates[0].DeliveryLocationId", "VehicleRates[0].PickupLocationId"]);
+        (await StoredOneAsync(seeded.Id)).Version.ShouldBe(seeded.Version);
+    }
+
+    [Fact]
+    public async Task VehicleRateOfAFlatRateContractWithALocation_Returns400OnTheMember_AndChangesNothing()
+    {
+        // Arrange
+        var customer = await SeedCustomerAsync();
+        var a = await SeedLocationRowAsync("Magazzino centrale");
+        var vehicle = await SeedVehicleRowAsync("AB456CD");
+        var seeded = await SeedWithVehicleRatesAsync(customer.Id);
+        await using var factory = CreateFactory();
+        var body = UpdateBody(seeded.Version);
+        var item = VehicleRateItem(vehicle.Id.Value);
+        item["pickupLocationId"] = a.Id.Value;
+        body["vehicleRates"] = new[] { item };
+
+        // Act
+        var response = await PutAsync(BackOfficeClient(factory), customer.Id.Value, seeded.Id.Value, body);
+
+        // Assert
+        response.StatusCode.ShouldBe(HttpStatusCode.BadRequest);
+        (await ErrorKeysAsync(response)).ShouldBe(["VehicleRates[0].PickupLocationId"]);
+        (await StoredOneAsync(seeded.Id)).Version.ShouldBe(seeded.Version);
     }
 
     [Fact]

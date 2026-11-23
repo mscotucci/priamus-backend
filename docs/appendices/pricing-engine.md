@@ -27,14 +27,14 @@ Tests, in `tests/Priamus.Trips.Registry.UnitTests/Domain/Pricing/`: `NightBandTe
   - `ByWeight(kilograms, start)`: whole kilograms, 1 to 99,999.
   - `ByDistance(kilometres, start)`: whole kilometres, 1 to 9,999.
   - `ByTrip(start)`.
-- `PriceCalculation`: no sentence, only data the caller can write in its own words: `Total`, `Band` (`TimeBand.Day | Night`), `NightSurcharge`, the `NightBand` used, `RateSource` (`Contract | Vehicle | Location | LocationPair`) with `VehicleId`, `Quantity` (minutes, kilograms or kilometres, `null` by trip), `UnitPrice`, `BaseAmount`, `Minimum`, `AmountAfterMinimum`, `MinimumApplied` (the minimum changed the amount) and `NightCallFee` (`null` when none is added).
+- `PriceCalculation`: no sentence, only data the caller can write in its own words: `Total`, `Band` (`TimeBand.Day | Night`), `NightSurcharge`, the `NightBand` used, `RateSource` (`Contract | Vehicle | Location | LocationPair`; `Vehicle` is a vehicle rate on any level, the caller knows the level) with `VehicleId`, `Quantity` (minutes, kilograms or kilometres, `null` by trip), `UnitPrice`, `BaseAmount`, `Minimum`, `AmountAfterMinimum`, `MinimumApplied` (the minimum changed the amount) and `NightCallFee` (`null` when none is added).
 - `PricingEngine.Calculate` returns `Result<PriceCalculation>`. The failures of the engine are `PricingErrors.AmountTooLarge` and `PricingErrors.NoRateForLocation` (both Domain, 422).
 
 ## Algorithm
 
 The engine is a pure function: no state, no I/O, no clock, `decimal` only. In order:
 
-1. **Rate.** On a `FlatRate` contract, the vehicle rate of `vehicle` in `terms.VehicleRates` if there is one, otherwise `terms.Rate`; the locations are ignored. On a location level, the location rate of the trip's pickup (`PerPickupLocation`), delivery (`PerDeliveryLocation`) or pair (`PerLocationPair`), ignoring the other location and the vehicle; an absent location or no rate for it returns `PricingErrors.NoRateForLocation` and computes nothing. Rate, minimum and call fee all come from the same rate.
+1. **Rate.** On a `FlatRate` contract, the vehicle rate of `vehicle` in `terms.VehicleRates` if there is one, otherwise `terms.Rate`; the locations are ignored. On a location level, first the location rate of the trip's pickup (`PerPickupLocation`), delivery (`PerDeliveryLocation`) or pair (`PerLocationPair`), ignoring the other location; an absent location or no rate for it returns `PricingErrors.NoRateForLocation` and computes nothing, whatever the vehicle. Then the vehicle rate of `vehicle` with the same pickup and delivery as that location rate: if there is one it is the rate (`RateSource.Vehicle`, `VehicleId` set), otherwise the location rate. Rate, minimum and call fee all come from the same rate.
 2. **Band.** Night when `band.IsNight(start)`. The classification depends on the start time alone (PRD §5.8): a trip that starts at 21:59 and ends at 02:00 is a day trip.
 3. **Unit price.** The night price when the trip is night and the contract has the night surcharge, otherwise the day price. A night trip without the surcharge stays classified as night, with the day price and no call fee.
 4. **Base amount.**
@@ -75,7 +75,8 @@ Every numeric example of PRD §12.1 to §12.6 has a test that asserts the exact 
 - classification by the start alone, at the boundaries of the band;
 - day trip, night trip with the surcharge, with a zero call fee, and without the surcharge;
 - the vehicle rate used for every step, a vehicle without a rate of its own, and no vehicle;
-- the location and pair rates: the key of each level, the other location and the vehicle ignored, A → B and B → A priced apart, no rate or an absent location refused, night, minimum, tiered overage and call fee of the location's rate, a flat-rate trip ignoring the locations, PRD §12.3 cases A and B as a pair rate;
+- the location and pair rates: the key of each level, the other location ignored, A → B and B → A priced apart, no rate or an absent location refused, night, minimum, tiered overage and call fee of the location's rate, a flat-rate trip ignoring the locations, PRD §12.3 cases A and B as a pair rate;
+- the vehicle rate on a location level: used for every step on each of the three levels, a vehicle without a rate on the trip's location and no vehicle priced with the location's rate, the same vehicle with two rates priced by the trip's location, a location without a rate refused although the vehicle has rates elsewhere, the four cases of PRD §12.3 (90, 161, 165, 266) on a pair;
 - a total over the maximum refused and a total equal to it accepted;
 - a trip of another mode, terms without a night price or call fee, and a trip by trip with a tiered overage all throwing.
 

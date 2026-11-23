@@ -15,8 +15,9 @@ namespace Priamus.Trips.Registry.Features.SimulatePrice;
 /// <c>HH:mm</c>. The end is for a trip by hour
 /// only, <c>Kilograms</c> for a trip by weight only and <c>Kilometres</c> for a trip by distance only;
 /// the quantities are whole numbers, read as numbers so that a fraction is reported on its own member.
-/// <c>VehicleId</c> is the trip's vehicle on a flat-rate contract: <c>null</c>, or a vehicle without a
-/// vehicle rate, uses the contract's rate. <c>PickupLocationId</c> and <c>DeliveryLocationId</c> are the
+/// <c>VehicleId</c> is the trip's vehicle: <c>null</c>, or a vehicle without a vehicle rate on the trip's
+/// location or pair, uses the contract's rate on a flat-rate contract and the rate of the location or pair
+/// on a location level. <c>PickupLocationId</c> and <c>DeliveryLocationId</c> are the
 /// trip's locations: each is required when the billing level uses it, refused when it does not, and must
 /// have a rate among the written location rates.
 /// </summary>
@@ -80,13 +81,7 @@ public sealed record SimulatePriceRequest(
             yield break;
         }
 
-        var usesPickup = level is Domain.Contracts.BillingLevel.PerPickupLocation or Domain.Contracts.BillingLevel.PerLocationPair;
-        var usesDelivery = level is Domain.Contracts.BillingLevel.PerDeliveryLocation or Domain.Contracts.BillingLevel.PerLocationPair;
-
-        if (level != Domain.Contracts.BillingLevel.FlatRate && VehicleId is not null)
-        {
-            yield return NotApplicable(nameof(VehicleId));
-        }
+        var (usesPickup, usesDelivery) = level.NamedLocations();
 
         var memberReported = false;
         foreach (var (value, used, member) in new[]

@@ -241,11 +241,17 @@
   <data name="Registry.Contract.MinimumNotApplicableByTrip" xml:space="preserve">
     <value>Questo valore non si applica al contratto.</value>
   </data>
-  <data name="Registry.Contract.VehicleRateNotApplicable" xml:space="preserve">
+  <data name="Registry.Contract.VehicleRateLocationsMismatch" xml:space="preserve">
     <value>Questo valore non si applica al contratto.</value>
+  </data>
+  <data name="Registry.Contract.VehicleRateWithoutLocationRate" xml:space="preserve">
+    <value>Il contratto non ha una tariffa per questo luogo o questa coppia.</value>
   </data>
   <data name="Registry.Contract.VehicleRateDuplicate" xml:space="preserve">
     <value>Il mezzo ha già una tariffa propria in questo contratto.</value>
+  </data>
+  <data name="Registry.Contract.VehicleRateLocationDuplicate" xml:space="preserve">
+    <value>Il mezzo ha già una tariffa propria per questo luogo o questa coppia.</value>
   </data>
   <data name="Registry.Contract.VehicleRateUnknownVehicle" xml:space="preserve">
     <value>Il mezzo {0} non esiste.</value>

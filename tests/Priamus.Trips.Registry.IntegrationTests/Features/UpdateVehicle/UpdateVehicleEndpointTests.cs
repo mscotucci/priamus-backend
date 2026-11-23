@@ -134,7 +134,7 @@ public sealed class UpdateVehicleEndpointTests : RegistryIntegrationTestBase
         await SeedContractAsync(
             db, customer.Id, validFrom, validTo, BillingLevel.FlatRate, PricingMode.ByHour,
             nightSurcharge: false, rate: Rate.Create(45m, null, null, new MinimumRule.None()).Value,
-            vehicleRates: [new VehicleRate(vehicle.Id, Rate.Create(50m, null, null, new MinimumRule.None()).Value)]);
+            vehicleRates: [new VehicleRate(vehicle.Id, null, null, Rate.Create(50m, null, null, new MinimumRule.None()).Value)]);
         return vehicle;
     }
 
@@ -179,7 +179,7 @@ public sealed class UpdateVehicleEndpointTests : RegistryIntegrationTestBase
             await SeedContractAsync(
                 db, customer.Id, new DateOnly(2020, 1, 1), new DateOnly(2020, 12, 31), BillingLevel.FlatRate, PricingMode.ByHour,
                 nightSurcharge: false, rate: Rate.Create(45m, null, null, new MinimumRule.None()).Value,
-                vehicleRates: [new VehicleRate(seeded.Id, Rate.Create(50m, null, null, new MinimumRule.None()).Value)]);
+                vehicleRates: [new VehicleRate(seeded.Id, null, null, Rate.Create(50m, null, null, new MinimumRule.None()).Value)]);
         }
 
         await using var factory = CreateFactory();
@@ -494,5 +494,34 @@ public sealed class UpdateVehicleEndpointTests : RegistryIntegrationTestBase
         var response = await PutAsync(factory.CreateClient(), seeded.Id.Value, UpdateBody(seeded.Version));
 
         response.StatusCode.ShouldBe(HttpStatusCode.Unauthorized);
+    }
+
+    [Fact]
+    public async Task TurningAVehicleWithAVehicleRateOnALocationIntoATrailer_Returns422_AndSavesNothing()
+    {
+        // Arrange
+        Vehicle vehicle;
+        await using (var db = CreateDbContext())
+        {
+            vehicle = await SeedVehicleAsync(db, "AB456CD");
+            var customer = await SeedCustomerAsync(db, "Ecoservizi Adriatica S.r.l.");
+            var location = await LocationTestSupport.SeedLocationAsync(db);
+            var rate = Rate.Create(50m, null, null, new MinimumRule.None()).Value;
+            await SeedContractAsync(
+                db, customer.Id, new DateOnly(2026, 1, 1), null, BillingLevel.PerPickupLocation, PricingMode.ByHour,
+                nightSurcharge: false,
+                vehicleRates: [new VehicleRate(vehicle.Id, location.Id, null, rate)],
+                locationRates: [new LocationRate(location.Id, null, rate)]);
+        }
+
+        await using var factory = CreateFactory();
+
+        // Act
+        var response = await PutAsync(
+            BackOfficeClient(factory), vehicle.Id.Value, UpdateBody(vehicle.Version, type: "Trailer"));
+
+        // Assert
+        await response.ShouldBeProblemAsync(HttpStatusCode.UnprocessableEntity, VehicleErrors.HasVehicleRates, Ct);
+        (await LoadAsync(vehicle.Id.Value)).Type.ShouldBe(VehicleType.Tractor);
     }
 }

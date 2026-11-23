@@ -19,7 +19,7 @@ public enum RateSource
     /// <summary>The rate of the contract.</summary>
     Contract,
 
-    /// <summary>The rate a vehicle has of its own in the contract.</summary>
+    /// <summary>The rate a vehicle has of its own in the contract, on the whole contract or on the trip's location or pair.</summary>
     Vehicle,
 
     /// <summary>The rate of the pickup location or of the delivery location.</summary>
@@ -35,7 +35,7 @@ public enum RateSource
 /// <param name="NightSurcharge">Whether the contract has the night surcharge.</param>
 /// <param name="NightBand">The night band the trip was classified with.</param>
 /// <param name="RateSource">Where the rate came from.</param>
-/// <param name="VehicleId">The vehicle whose rate was used; <c>null</c> for the contract's rate.</param>
+/// <param name="VehicleId">The vehicle whose rate was used; <c>null</c> when no vehicle rate was used.</param>
 /// <param name="Quantity">Minutes, kilograms or kilometres; <c>null</c> for a trip priced by trip.</param>
 /// <param name="UnitPrice">The price used: day or night, of the rate chosen.</param>
 /// <param name="BaseAmount">The amount before the minimum rule.</param>
