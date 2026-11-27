@@ -51,13 +51,13 @@ public sealed class GetDriverHomeEndpointTests : OperationsIntegrationTestBase
 
     private static CancellationToken Ct => TestContext.Current.CancellationToken;
 
-    private WebApplicationFactory<Program> CreateFactory() =>
+    private WebApplicationFactory<Program> CreateFactory(DateTime? nowUtc = null) =>
         ApiFactory.Create(
             ConnectionString,
             services =>
             {
                 services.RemoveAll<IClock>();
-                services.AddSingleton<IClock>(new FixedClockStub(NowUtc));
+                services.AddSingleton<IClock>(new FixedClockStub(nowUtc ?? NowUtc));
                 services.AddSingleton<ITripRegistry>(_registry);
             },
             useTestAuthentication: true);
@@ -271,7 +271,9 @@ public sealed class GetDriverHomeEndpointTests : OperationsIntegrationTestBase
         trip.EnumerateObject().Select(p => p.Name)
             .ShouldBe(["customer", "pickup", "delivery", "vehicle", "trailer"], ignoreOrder: true);
         body.EnumerateObject().Select(p => p.Name)
-            .ShouldBe(["firstName", "lastName", "inProgress", "planned", "repeatableTrips"], ignoreOrder: true);
+            .ShouldBe(
+                ["firstName", "lastName", "inProgress", "planned", "repeatableTrips", "endedToday", "endedInLastSevenDays"],
+                ignoreOrder: true);
     }
 
     [Fact]
@@ -495,6 +497,50 @@ public sealed class GetDriverHomeEndpointTests : OperationsIntegrationTestBase
         body.GetProperty("repeatableTrips").EnumerateArray()
             .Select(t => t.GetProperty("customer").GetProperty("companyName").GetString())
             .ShouldBe(["Beta SPA", "Alfa SRL"]);
+    }
+
+    [Fact]
+    public async Task Get_CountsOwnEndedTripsOfTodayAndOfTheLastSevenDays()
+    {
+        // Arrange: two trips today, one 6 days ago (inside), one 7 days ago (outside), one of another driver,
+        // one in progress and one planned today (not ended, so not counted).
+        var seeder = new TripSeeder(ConnectionString);
+        await seeder.AddAsync(_driverId, _alfa.Id, NowUtc, leadingVehicleId: _tractor.Id);
+        await seeder.AddAsync(_driverId, _alfa.Id, NowUtc.AddHours(-2), leadingVehicleId: _tractor.Id);
+        await seeder.AddAsync(_driverId, _alfa.Id, NowUtc.AddDays(-6), leadingVehicleId: _tractor.Id);
+        await seeder.AddAsync(_driverId, _alfa.Id, NowUtc.AddDays(-7), leadingVehicleId: _tractor.Id);
+        await seeder.AddAsync(Guid.NewGuid(), _alfa.Id, NowUtc, leadingVehicleId: _tractor.Id);
+        await SeedInProgressAsync(_beta, Today, new TimeOnly(9, 0));
+        await SeedPlannedAsync(_beta, NowUtc);
+        await using var factory = CreateFactory();
+
+        // Act
+        var body = await ReadAsync(await DriverClient(factory).GetAsync(Url, Ct));
+
+        // Assert
+        body.GetProperty("endedToday").GetInt32().ShouldBe(2);
+        body.GetProperty("endedInLastSevenDays").GetInt32().ShouldBe(3);
+    }
+
+    [Fact]
+    public async Task Get_At2330UtcWhenItIsAlreadyTomorrowInItaly_CountsByTheItalianDay()
+    {
+        // Arrange: 23:30 UTC on 2026-06-15 is 01:30 of 2026-06-16 in Italy. Two trips are on the Italian today
+        // (01:30 and 01:00); the one done 7 days ago is on the Italian 2026-06-09, outside the window. Counted
+        // by the UTC day, the window would hold the old one and neither of today's.
+        var nowUtc = new DateTime(2026, 6, 15, 23, 30, 0, DateTimeKind.Utc);
+        var seeder = new TripSeeder(ConnectionString);
+        await seeder.AddAsync(_driverId, _alfa.Id, nowUtc, leadingVehicleId: _tractor.Id);
+        await seeder.AddAsync(_driverId, _alfa.Id, nowUtc.AddMinutes(-30), leadingVehicleId: _tractor.Id);
+        await seeder.AddAsync(_driverId, _alfa.Id, nowUtc.AddDays(-7), leadingVehicleId: _tractor.Id);
+        await using var factory = CreateFactory(nowUtc);
+
+        // Act
+        var body = await ReadAsync(await DriverClient(factory).GetAsync(Url, Ct));
+
+        // Assert
+        body.GetProperty("endedToday").GetInt32().ShouldBe(2);
+        body.GetProperty("endedInLastSevenDays").GetInt32().ShouldBe(2);
     }
 
     [Fact]

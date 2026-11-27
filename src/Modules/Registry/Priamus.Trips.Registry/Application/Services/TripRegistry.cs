@@ -190,6 +190,71 @@ internal sealed class TripRegistry : ITripRegistry
     }
 
     /// <inheritdoc />
+    public async Task<IReadOnlyList<TripDriverName>> DescribeDriversAsync(
+        IReadOnlyCollection<Guid> driverIds, CancellationToken cancellationToken)
+    {
+        if (driverIds.Count == 0)
+        {
+            return [];
+        }
+
+        var keys = driverIds.Select(i => new DriverId(i)).ToList();
+        var drivers = await _db.Drivers
+            .AsNoTracking()
+            .Where(d => keys.Contains(d.Id))
+            .Select(d => new { d.Id, d.FirstName, d.LastName })
+            .ToListAsync(cancellationToken);
+
+        return [.. drivers.Select(d => new TripDriverName(d.Id.Value, d.FirstName, d.LastName))];
+    }
+
+    /// <inheritdoc />
+    public async Task<TripSearchMatches> FindMatchesAsync(string search, CancellationToken cancellationToken)
+    {
+        var text = search.Trim();
+        if (text.Length == 0)
+        {
+            return new TripSearchMatches([], [], [], []);
+        }
+
+        var needle = text.ToLowerInvariant();
+
+        // The VAT number is normalised like the stored value; a needle left empty by it (a bare "IT") would
+        // match every row, so it is skipped.
+        var vatNeedle = VatNumber.Normalize(needle);
+        var customerQuery = _db.Customers.AsNoTracking();
+        customerQuery = vatNeedle.Length == 0
+            ? customerQuery.Where(c => c.CompanyName.ToLower().Contains(needle))
+            : customerQuery.Where(c => c.CompanyName.ToLower().Contains(needle)
+                || c.VatNumber.Unwrap().Contains(vatNeedle));
+        var customers = await customerQuery.Select(c => c.Id).ToListAsync(cancellationToken);
+
+        var drivers = await _db.Drivers
+            .AsNoTracking()
+            .Where(d => d.FirstName.ToLower().Contains(needle)
+                || d.LastName.ToLower().Contains(needle)
+                || (d.FirstName.ToLower() + " " + d.LastName.ToLower()).Contains(needle))
+            .Select(d => d.Id)
+            .ToListAsync(cancellationToken);
+
+        var vehicles = await VehicleSearch.Matching(_db.Vehicles.AsNoTracking(), text)
+            .Select(v => v.Id)
+            .ToListAsync(cancellationToken);
+
+        var locations = await _db.Locations
+            .AsNoTracking()
+            .Where(l => l.Name.ToLower().Contains(needle) || l.Municipality.ToLower().Contains(needle))
+            .Select(l => l.Id)
+            .ToListAsync(cancellationToken);
+
+        return new TripSearchMatches(
+            [.. customers.Select(i => i.Value)],
+            [.. drivers.Select(i => i.Value)],
+            [.. vehicles.Select(i => i.Value)],
+            [.. locations.Select(i => i.Value)]);
+    }
+
+    /// <inheritdoc />
     public async Task<TripAnswersCheck> CheckAnswersAsync(TripAnswers answers, CancellationToken cancellationToken)
     {
         var facts = await LoadFactsAsync(

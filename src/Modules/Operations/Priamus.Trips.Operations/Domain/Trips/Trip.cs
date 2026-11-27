@@ -142,6 +142,13 @@ public sealed class Trip : AggregateRoot
     /// <param name="today">Today in Italy.</param>
     public static DateOnly OldestAddedOnNotExpired(DateOnly today) => today.AddDays(-ExpiryDays);
 
+    /// <summary>
+    /// The first day of the last seven days ending on <paramref name="today"/>: today and the 6 days before,
+    /// the window of the driver's recent ended trips.
+    /// </summary>
+    /// <param name="today">Today in Italy.</param>
+    public static DateOnly FirstDayOfLastSevenDays(DateOnly today) => today.AddDays(-6);
+
     /// <summary>Tells whether this trip is planned and expired on <paramref name="today"/>.</summary>
     /// <param name="today">Today in Italy.</param>
     public bool IsExpiredOn(DateOnly today) => State == TripState.Planned && IsExpired(AddedOn, today);

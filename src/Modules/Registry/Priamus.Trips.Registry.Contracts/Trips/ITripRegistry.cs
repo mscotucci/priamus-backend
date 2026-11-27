@@ -63,6 +63,22 @@ public interface ITripRegistry
         IReadOnlyCollection<Guid> locationIds,
         CancellationToken cancellationToken);
 
+    /// <summary>The drivers with these identifiers, whatever their status.</summary>
+    /// <param name="driverIds">Identifiers of drivers.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    Task<IReadOnlyList<TripDriverName>> DescribeDriversAsync(
+        IReadOnlyCollection<Guid> driverIds, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// The customers, drivers, vehicles and locations that <paramref name="search"/> matches, whatever their
+    /// status: a case-insensitive "contains" on the company name and VAT number of a customer, the first name,
+    /// last name or both of a driver, the plate and description of a vehicle, and the name and municipality of
+    /// a location.
+    /// </summary>
+    /// <param name="search">The search text; an empty one matches nothing.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    Task<TripSearchMatches> FindMatchesAsync(string search, CancellationToken cancellationToken);
+
     /// <summary>
     /// Judges which answers of a trip still hold against the Registry and the contract in force for the
     /// customer on the day (RF-08ter, RF-08quater, PRD §5.4). An answer not given is <c>true</c>: there is

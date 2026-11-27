@@ -5,8 +5,8 @@ using Priamus.Trips.Operations.Features.ListTripVehicles;
 namespace Priamus.Trips.Operations.Features.GetDriverHome;
 
 /// <summary>
-/// What the driver home shows: the driver's name, the trip in progress, the planned trips and the trips the
-/// driver can repeat.
+/// What the driver home shows: the driver's name, the trip in progress, the planned trips, the trips the
+/// driver can repeat and how many trips the driver ended today and in the last seven days.
 /// </summary>
 /// <param name="FirstName">The driver's first name.</param>
 /// <param name="LastName">The driver's last name.</param>
@@ -14,12 +14,17 @@ namespace Priamus.Trips.Operations.Features.GetDriverHome;
 /// <param name="Planned">The planned trips that have not expired, in the order they were added.</param>
 /// <param name="RepeatableTrips">Every repeatable trip of the driver, built from ended trips, the one ended
 /// last first; the page shows the first four and offers the rest.</param>
+/// <param name="EndedToday">How many of the driver's ended trips have today as their day.</param>
+/// <param name="EndedInLastSevenDays">How many of the driver's ended trips have a day of today or one of the 6
+/// days before.</param>
 public sealed record GetDriverHomeResponse(
     string FirstName,
     string LastName,
     InProgressTripDto? InProgress,
     IReadOnlyList<PlannedTripDto> Planned,
-    IReadOnlyList<RepeatableTripDto> RepeatableTrips);
+    IReadOnlyList<RepeatableTripDto> RepeatableTrips,
+    int EndedToday,
+    int EndedInLastSevenDays);
 
 /// <summary>A trip in progress and what its end asks.</summary>
 /// <param name="Trip">The trip.</param>

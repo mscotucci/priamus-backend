@@ -62,4 +62,5 @@ _Avoid_: template, favourite (a favourite would be chosen and stored), route
 - An ended trip keeps for good what it was priced with (rate, night band, amount) and the documents its contract required; later changes of master data never change it.
 - A trip names its driver, customer, contract, vehicles and locations by id; they live in **Registry**.
 - A driver sees and works only on their own trips, and never a price, a rate or an amount.
+- The back office reads every trip of every driver, with its amount and the calculation it was saved with, and changes none.
 - Depends on **Identity** for the current user, whose session names the driver.

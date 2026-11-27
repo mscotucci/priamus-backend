@@ -370,6 +370,115 @@ public sealed class TripRegistryReadsTests : RegistryIntegrationTestBase
     }
 
     [Fact]
+    public async Task DescribeDriversAsync_ReturnsTheNamesWhateverTheStatus_AndSkipsUnknownIds()
+    {
+        await using var db = CreateDbContext();
+        var active = await DriverTestSupport.SeedDriverAsync(db, "Marco", "Di Lauro");
+        var off = await DriverTestSupport.SeedDriverAsync(db, "Luca", "Di Febo", deactivated: true);
+        await DriverTestSupport.SeedDriverAsync(db, "Not", "Asked");
+
+        var names = await ReadAsync(r => r.DescribeDriversAsync(
+            [active.Id.Value, off.Id.Value, Guid.NewGuid()], Ct));
+
+        names.OrderBy(n => n.LastName).ShouldBe(
+        [
+            new TripDriverName(off.Id.Value, "Luca", "Di Febo"),
+            new TripDriverName(active.Id.Value, "Marco", "Di Lauro"),
+        ]);
+    }
+
+    [Fact]
+    public async Task DescribeDriversAsync_AnEmptyListAnswersAnEmptyList()
+    {
+        await using var db = CreateDbContext();
+        await DriverTestSupport.SeedDriverAsync(db);
+
+        var names = await ReadAsync(r => r.DescribeDriversAsync([], Ct));
+
+        names.ShouldBeEmpty();
+    }
+
+    [Fact]
+    public async Task FindMatchesAsync_FindsACustomerByNameAndByVatNumber_WhateverItsStatus()
+    {
+        await using var db = CreateDbContext();
+        var byName = await CustomerTestSupport.SeedCustomerAsync(db, "Trasporti Adriatica Srl", "01455280683", taxCode: null);
+        var off = await CustomerTestSupport.SeedCustomerAsync(db, "Adriatica Chiusa", "12345678903", taxCode: null, deactivated: true);
+        await CustomerTestSupport.SeedCustomerAsync(db, "Altro Srl", "00000000000", taxCode: null);
+
+        var name = await ReadAsync(r => r.FindMatchesAsync("  ADRIATICA ", Ct));
+        var vat = await ReadAsync(r => r.FindMatchesAsync("1455280", Ct));
+
+        name.CustomerIds.OrderBy(i => i).ShouldBe(new[] { byName.Id.Value, off.Id.Value }.OrderBy(i => i));
+        vat.CustomerIds.ShouldBe([byName.Id.Value]);
+    }
+
+    [Fact]
+    public async Task FindMatchesAsync_FindsADriverByFirstName_LastName_AndBothTogether_WhateverItsStatus()
+    {
+        await using var db = CreateDbContext();
+        var marco = await DriverTestSupport.SeedDriverAsync(db, "Marco", "Di Lauro");
+        var off = await DriverTestSupport.SeedDriverAsync(db, "Luca", "Di Febo", deactivated: true);
+
+        var first = await ReadAsync(r => r.FindMatchesAsync("marc", Ct));
+        var last = await ReadAsync(r => r.FindMatchesAsync("FEBO", Ct));
+        var both = await ReadAsync(r => r.FindMatchesAsync("Marco Di Lauro", Ct));
+        var shared = await ReadAsync(r => r.FindMatchesAsync("di", Ct));
+
+        first.DriverIds.ShouldBe([marco.Id.Value]);
+        last.DriverIds.ShouldBe([off.Id.Value]);
+        both.DriverIds.ShouldBe([marco.Id.Value]);
+        shared.DriverIds.Count.ShouldBe(2);
+    }
+
+    [Fact]
+    public async Task FindMatchesAsync_FindsAVehicleByPlateAndByDescription_WhateverItsStatus()
+    {
+        await using var db = CreateDbContext();
+        var plate = await VehicleTestSupport.SeedVehicleAsync(db, "PE482WF", decommissioned: true);
+
+        var byPlate = await ReadAsync(r => r.FindMatchesAsync("pe-482", Ct));
+        var byDescription = await ReadAsync(r => r.FindMatchesAsync("stralis", Ct));
+        var none = await ReadAsync(r => r.FindMatchesAsync("volvo", Ct));
+
+        byPlate.VehicleIds.ShouldBe([plate.Id.Value]);
+        byDescription.VehicleIds.ShouldBe([plate.Id.Value]);
+        none.VehicleIds.ShouldBeEmpty();
+    }
+
+    [Fact]
+    public async Task FindMatchesAsync_FindsALocationByNameAndByMunicipality_WhateverItsStatus()
+    {
+        await using var db = CreateDbContext();
+        var location = await LocationTestSupport.SeedLocationAsync(db, "Cava Nord", "Pescara", deactivated: true);
+
+        var byName = await ReadAsync(r => r.FindMatchesAsync("cava", Ct));
+        var byMunicipality = await ReadAsync(r => r.FindMatchesAsync("PESCARA", Ct));
+        var none = await ReadAsync(r => r.FindMatchesAsync("chieti", Ct));
+
+        byName.LocationIds.ShouldBe([location.Id.Value]);
+        byMunicipality.LocationIds.ShouldBe([location.Id.Value]);
+        none.LocationIds.ShouldBeEmpty();
+    }
+
+    [Fact]
+    public async Task FindMatchesAsync_AnEmptyTextMatchesNothing()
+    {
+        await using var db = CreateDbContext();
+        await DriverTestSupport.SeedDriverAsync(db);
+        await VehicleTestSupport.SeedVehicleAsync(db);
+        await CustomerTestSupport.SeedCustomerAsync(db);
+        await LocationTestSupport.SeedLocationAsync(db);
+
+        var matches = await ReadAsync(r => r.FindMatchesAsync("   ", Ct));
+
+        matches.CustomerIds.ShouldBeEmpty();
+        matches.DriverIds.ShouldBeEmpty();
+        matches.VehicleIds.ShouldBeEmpty();
+        matches.LocationIds.ShouldBeEmpty();
+    }
+
+    [Fact]
     public void TheTypesOperationsReceives_NameNoTermOfAContract()
     {
         string[] forbidden = ["price", "rate", "amount", "minimum", "night", "band"];

@@ -153,6 +153,55 @@ public sealed class TripSeeder
         await db.SaveChangesAsync(TestContext.Current.CancellationToken);
     }
 
+    /// <summary>Saves <paramref name="trip"/> as it is, for a test that builds its own trip with <c>Build</c>.</summary>
+    public async Task SaveAsync(Trip trip)
+    {
+        await using var db = new OperationsDbContext(
+            new DbContextOptionsBuilder<OperationsDbContext>().UseNpgsql(_connectionString).Options);
+        db.Trips.Add(trip);
+        await db.SaveChangesAsync(TestContext.Current.CancellationToken);
+    }
+
+    /// <summary>
+    /// What the registry priced a trip with, for <c>Build</c>: <paramref name="measure"/>, the
+    /// <paramref name="total"/> and <paramref name="unitPrice"/>, and whether the trip started in the night band
+    /// of a contract with the night surcharge.
+    /// </summary>
+    public static RegistryContracts.PricedTrip Priced(
+        RegistryContracts.TripMeasureKind measure,
+        decimal total,
+        decimal unitPrice = 60m,
+        int? quantity = 1,
+        bool isNight = false,
+        bool nightSurcharge = true) =>
+        new(
+            Guid.NewGuid(),
+            measure,
+            [],
+            new RegistryContracts.TripPricing(
+                RegistryContracts.TripRateSource.Contract,
+                null,
+                null,
+                null,
+                DayPrice: 60m,
+                NightPrice: 70m,
+                NightCallFee: 5m,
+                RegistryContracts.TripMinimumKind.None,
+                MinimumAmount: null,
+                MinimumThreshold: null,
+                MinimumOveragePrice: null,
+                NightBandStart: new TimeOnly(22, 0),
+                NightBandEnd: new TimeOnly(6, 0),
+                NightSurcharge: nightSurcharge,
+                IsNight: isNight,
+                Quantity: quantity,
+                UnitPrice: unitPrice,
+                BaseAmount: total,
+                AmountAfterMinimum: total,
+                MinimumApplied: false,
+                AppliedNightCallFee: null,
+                Total: total));
+
     /// <summary>The day in Italy of <paramref name="addedAt"/>, as the domain takes the day a trip was added.</summary>
     private static DateOnly AddedOnInItaly(DateTime addedAt) =>
         new FixedClockStub(addedAt).TodayInItaly();

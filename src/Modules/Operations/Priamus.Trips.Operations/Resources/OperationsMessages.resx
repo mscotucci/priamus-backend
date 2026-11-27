@@ -27,6 +27,18 @@
   <data name="Validation.DayAndTimeTogether" xml:space="preserve">
     <value>Indica il giorno e l'ora insieme.</value>
   </data>
+  <data name="Validation.PeriodTogether" xml:space="preserve">
+    <value>Indica il periodo con "Dal" e "Al" insieme.</value>
+  </data>
+  <data name="Validation.PeriodOrder" xml:space="preserve">
+    <value>"Dal" non può essere dopo "Al".</value>
+  </data>
+  <data name="Validation.NotAllowed" xml:space="preserve">
+    <value>Valore non ammesso.</value>
+  </data>
+  <data name="Validation.EndedOnly" xml:space="preserve">
+    <value>Il periodo e la modalità valgono solo per i viaggi conclusi.</value>
+  </data>
   <data name="Operations.Trip.NotFound" xml:space="preserve">
     <value>Viaggio non trovato.</value>
   </data>

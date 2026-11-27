@@ -55,6 +55,12 @@ public sealed class FakeTripRegistry : ITripRegistry
     /// <summary>The search text of every call of <see cref="ListLocationsAsync"/>, as received.</summary>
     public List<string?> LocationSearches { get; } = [];
 
+    /// <summary>What <see cref="FindMatchesAsync"/> answers, whatever the text.</summary>
+    public TripSearchMatches Matches { get; set; } = new([], [], [], []);
+
+    /// <summary>The text of every call of <see cref="FindMatchesAsync"/>, as received.</summary>
+    public List<string> MatchSearches { get; } = [];
+
     /// <inheritdoc />
     public Task<TripDriver?> FindDriverAsync(Guid driverId, CancellationToken cancellationToken) =>
         Task.FromResult(Drivers.GetValueOrDefault(driverId));
@@ -104,6 +110,21 @@ public sealed class FakeTripRegistry : ITripRegistry
             [.. Vehicles.Where(v => vehicleIds.Contains(v.Id))],
             [.. Customers.Where(c => customerIds.Contains(c.Id))],
             [.. Locations.Where(l => locationIds.Contains(l.Id))]));
+
+    /// <inheritdoc />
+    public Task<IReadOnlyList<TripDriverName>> DescribeDriversAsync(
+        IReadOnlyCollection<Guid> driverIds, CancellationToken cancellationToken) =>
+        Task.FromResult<IReadOnlyList<TripDriverName>>(
+            [.. Drivers
+                .Where(d => driverIds.Contains(d.Key))
+                .Select(d => new TripDriverName(d.Key, d.Value.FirstName, d.Value.LastName))]);
+
+    /// <inheritdoc />
+    public Task<TripSearchMatches> FindMatchesAsync(string search, CancellationToken cancellationToken)
+    {
+        MatchSearches.Add(search);
+        return Task.FromResult(Matches);
+    }
 
     /// <inheritdoc />
     public Task<TripAnswersCheck> CheckAnswersAsync(TripAnswers answers, CancellationToken cancellationToken)

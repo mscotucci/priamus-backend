@@ -4,9 +4,12 @@ using Priamus.Trips.Operations.Features.CheckTripAnswers;
 using Priamus.Trips.Operations.Features.DeleteTrip;
 using Priamus.Trips.Operations.Features.EndTrip;
 using Priamus.Trips.Operations.Features.GetDriverHome;
+using Priamus.Trips.Operations.Features.GetBackOfficeTrip;
 using Priamus.Trips.Operations.Features.GetNewTrip;
 using Priamus.Trips.Operations.Features.GetTrip;
 using Priamus.Trips.Operations.Features.GetTripQuestions;
+using Priamus.Trips.Operations.Features.ListBackOfficeTrips;
+using Priamus.Trips.Operations.Features.ListMyTrips;
 using Priamus.Trips.Operations.Features.ListTripCustomers;
 using Priamus.Trips.Operations.Features.ListTripLocations;
 using Priamus.Trips.Operations.Features.ListTripVehicles;
@@ -36,6 +39,9 @@ public static class OperationsModuleEndpoints
         app.MapStartTrip();
         app.MapEndTrip();
         app.MapDeleteTrip();
+        app.MapListBackOfficeTrips();
+        app.MapGetBackOfficeTrip();
+        app.MapListMyTrips();
         return app;
     }
 }

@@ -11,7 +11,7 @@ namespace Priamus.Trips.Operations.Features.GetDriverHome;
 
 /// <summary>
 /// Handles <c>GET /api/operations/driver/home</c>: the driver's name, the trip in progress, the planned
-/// trips and the trips to repeat.
+/// trips, the trips to repeat and the counts of trips ended today and in the last seven days.
 /// </summary>
 internal sealed class GetDriverHomeHandler
 {
@@ -36,7 +36,8 @@ internal sealed class GetDriverHomeHandler
     /// Reads the driver's name from the Registry, the trip in progress with what its end asks, the planned
     /// trips that have not expired (in the order they were added, with their days to expiry) and, from the
     /// driver's ended trips, one repeatable trip per distinct (customer, pickup, delivery, leading vehicle,
-    /// trailer), the one ended last first (the one numbered last when they ended together).
+    /// trailer), the one ended last first (the one numbered last when they ended together). It also counts the
+    /// driver's ended trips whose day is today and whose day is today or one of the 6 days before.
     /// <see cref="TripErrors.DriverNotFound"/> when the Registry has no driver with the session's identifier.
     /// </summary>
     public async Task<Result<GetDriverHomeResponse>> HandleAsync(CancellationToken cancellationToken)
@@ -88,6 +89,11 @@ internal sealed class GetDriverHomeHandler
             .ThenByDescending(g => g.LatestNumber)
             .ToListAsync(cancellationToken);
 
+        var endedToday = await own.CountAsync(t => t.End != null && t.Day == today, cancellationToken);
+        var weekStart = Trip.FirstDayOfLastSevenDays(today);
+        var endedInLastSevenDays = await own.CountAsync(
+            t => t.End != null && t.Day >= weekStart && t.Day <= today, cancellationToken);
+
         var shown = new List<Trip>(planned);
         if (inProgress is not null)
         {
@@ -119,6 +125,6 @@ internal sealed class GetDriverHomeHandler
             names.VehicleOf(r.LeadingVehicleId),
             r.TrailerId is { } trailerId ? names.VehicleOf(trailerId) : null)).ToList();
 
-        return new GetDriverHomeResponse(driver.FirstName, driver.LastName, inProgressDto, plannedDtos, trips);
+        return new GetDriverHomeResponse(driver.FirstName, driver.LastName, inProgressDto, plannedDtos, trips, endedToday, endedInLastSevenDays);
     }
 }
