@@ -20,4 +20,10 @@ public interface ICurrentUser
 
     /// <summary>The set of roles assigned to the current user. Empty for unauthenticated requests.</summary>
     IReadOnlyCollection<string> Roles { get; }
+
+    /// <summary>
+    /// The identifier of the driver the session names (the <c>driver_id</c> claim), or <c>null</c> when
+    /// the session names none. The claim is trusted as issued.
+    /// </summary>
+    Guid? DriverId { get; }
 }

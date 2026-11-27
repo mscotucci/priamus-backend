@@ -10,6 +10,7 @@ using Priamus.Trips.Registry.Domain.Drivers;
 using Priamus.Trips.Registry.Domain.Locations;
 using Priamus.Trips.Registry.Domain.NightBands;
 using Priamus.Trips.Registry.Domain.Pricing;
+using Priamus.Trips.Registry.Domain.Trips;
 using Priamus.Trips.Registry.Domain.Vehicles;
 using Priamus.Trips.Registry.IntegrationTests.Infrastructure;
 using Priamus.Trips.Registry.Resources;
@@ -109,6 +110,18 @@ public sealed class RegistryMessagesTests : RegistryIntegrationTestBase
         (await DetailAsync(PricingErrors.KilometresTooLarge)).ShouldBe("Al massimo 9.999 km.");
         (await DetailAsync(PricingErrors.AmountTooLarge)).ShouldBe("Importo troppo alto.");
         (await DetailAsync(PricingErrors.NoRateForLocation)).ShouldBe("Non c'è una tariffa per i luoghi del viaggio.");
+        (await DetailAsync(PricingErrors.MeasureMissing)).ShouldBe("Mancano gli orari o le misure del viaggio.");
+    }
+
+    [Fact]
+    public async Task TripErrors_AnswerInItalian_WithoutNamingAnAmount()
+    {
+        (await DetailAsync(TripErrors.AnswersChanged)).ShouldBe(
+            "Qualcosa è cambiato mentre compilavi. Controlla le risposte e riprova.");
+        (await DetailAsync(TripErrors.NotPriceable)).ShouldBe(
+            "Non è stato possibile terminare il viaggio. Chiama la segreteria.");
+        (await DetailAsync(TripErrors.MeasureChanged)).ShouldBe(
+            "Il contratto è cambiato mentre terminavi il viaggio. Controlla i dati e riprova.");
     }
 
     [Fact]

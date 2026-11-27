@@ -1,6 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
-using Priamus.Trips.Registry.Domain.Vehicles.ValueObjects;
+using Priamus.Trips.Registry.Application.Services;
 using Priamus.Trips.Registry.Persistence;
 using Priamus.Trips.SharedKernel.Paging;
 using Priamus.Trips.SharedKernel.Results;
@@ -53,16 +53,7 @@ internal sealed class ListVehiclesHandler
         var search = request.Search?.Trim();
         if (!string.IsNullOrEmpty(search))
         {
-            // The stored plate is already in normal form, so the search text normalised the same
-            // way is matched with Contains; the description is matched on its lowercased text. A
-            // search made only of spaces and hyphens has an empty plate needle, which would match
-            // every plate, so it is matched on the description alone.
-            var plateNeedle = LicensePlate.Normalize(search);
-            var descriptionNeedle = search.ToLowerInvariant();
-            query = plateNeedle.Length == 0
-                ? query.Where(v => v.Description.ToLower().Contains(descriptionNeedle))
-                : query.Where(v => v.LicensePlate.Unwrap().Contains(plateNeedle)
-                    || v.Description.ToLower().Contains(descriptionNeedle));
+            query = VehicleSearch.Matching(query, search);
         }
 
         // ── Total count before paging ────────────────────────────────────────

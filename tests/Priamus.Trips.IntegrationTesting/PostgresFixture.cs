@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using Npgsql;
 using Priamus.Trips.Identity.Persistence;
+using Priamus.Trips.Operations.Persistence;
 using Priamus.Trips.Registry.Persistence;
 using Testcontainers.PostgreSql;
 using Xunit;
@@ -70,6 +71,16 @@ public sealed class PostgresFixture : IAsyncLifetime
         await using (var registryCtx = new RegistryDbContext(registryOptions))
         {
             await registryCtx.Database.MigrateAsync();
+        }
+
+        var operationsOptions = new DbContextOptionsBuilder<OperationsDbContext>()
+            .UseNpgsql(templateConnStr, npgsql =>
+                npgsql.MigrationsHistoryTable("__ef_migrations_history", "operations"))
+            .Options;
+
+        await using (var operationsCtx = new OperationsDbContext(operationsOptions))
+        {
+            await operationsCtx.Database.MigrateAsync();
         }
 
         // Belt-and-suspenders: clear any remaining pooled connections to guarantee that

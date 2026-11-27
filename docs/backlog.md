@@ -2,10 +2,14 @@
 
 Work deferred on purpose, with the decision that deferred it. Items leave this file when a slice picks them up or a decision drops them. Plan folders under `.plans/` are not committed, so anything a future slice must know lives here.
 
-## Trips — to analyse when the first trip slice is grilled (recorded 2026-11-19)
+## Trips (recorded 2026-11-19, updated 2026-11-24)
 
-- **Changes to master data after a trip used them.** Since the vehicle rates slice, a vehicle that has a vehicle rate in any contract cannot become a trailer: the rate must be removed from the contract first. With trips, decide how registered trips react to such changes (a vehicle's type, a vehicle rate removed or changed, a contract's terms): the trip's snapshot of the rate may be enough, but it must be analysed, not assumed (decided by Michele at the grilling of the vehicle rates).
-- **Show when the contract in force differs from a trip's snapshot.** A trip keeps the rate and the night band it was priced with; the back office must see on the trip when the contract in force today for that day says something different (a correction, a vehicle rate changed or removed, the night band changed). Asked by Michele at the grilling of the pricing engine on 2026-11-20; what is compared and how it is shown is decided with the trip slice.
+- **Show when the contract in force differs from a trip's snapshot.** A trip keeps the rate and the night band it was priced with; the back office must see on the trip when the contract in force today for that day says something different (a correction, a vehicle rate changed or removed, the night band changed). Asked by Michele at the grilling of the pricing engine on 2026-11-20; what is compared and how it is shown is decided with the slice of the back-office trip list.
+- **A trip registered by the back office for a driver.** PRD §3.4 gives the registration to drivers only. Raised at the grilling of the driver trip on 2026-11-23: it chooses the driver, shows the amount and is audited, so it is a function of its own, to decide with the slice of the back-office trip list.
+
+- **Planning of trips by the back office.** A trip can exist before it starts (a planned trip: vehicle, customer and locations, without a day), decided at the grilling of 2026-11-24. The same state can carry a planning: the back office adds planned trips for a driver, with the day they are meant for, and the driver finds them on the home and starts them. What it needs beyond what exists: who may add a trip for a driver, a planned day (left out on purpose while the driver alone plans: it would be a forecast), and what happens to a planned trip not done on its day. Noted by Michele on 2026-11-24; not analysed.
+
+- **Expired and deleted planned trips in the back-office trip list.** The list of slice 5 must leave expired planned trips out with the same domain function the driver reads use (`Trip.IsExpired` / `IsExpiredOn`), and decide whether it shows deleted trips (they stay in the table with `DeletedAt` and `DeletedBy`; it reads them with the query filter ignored). The command that deletes planned trips older than a number of days below 7 belongs to the same slice (Michele, 2026-11-24): this slice has the 7 days alone.
 
 ## Registry — vehicle rates (recorded 2026-11-20)
 

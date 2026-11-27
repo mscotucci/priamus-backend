@@ -1,0 +1,72 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Italian user-facing messages of the Operations module. Neutral culture on purpose: Italian is the only
+     language, so the file answers every request and needs no request-localization configuration.
+     Error entries are keyed by Error.Code; Validation.* entries are the messages of the request. -->
+<root>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="Validation.Required" xml:space="preserve">
+    <value>Valore obbligatorio.</value>
+  </data>
+  <data name="Validation.Range" xml:space="preserve">
+    <value>Il valore deve essere compreso tra {1} e {2}.</value>
+  </data>
+  <data name="Validation.MaxLength" xml:space="preserve">
+    <value>Massimo {1} caratteri.</value>
+  </data>
+  <data name="Validation.DayAndTimeTogether" xml:space="preserve">
+    <value>Indica il giorno e l'ora insieme.</value>
+  </data>
+  <data name="Operations.Trip.NotFound" xml:space="preserve">
+    <value>Viaggio non trovato.</value>
+  </data>
+  <data name="Operations.Trip.InTheFuture" xml:space="preserve">
+    <value>L'ora non può essere nel futuro.</value>
+  </data>
+  <data name="Operations.Trip.Overlaps" xml:space="preserve">
+    <value>Hai già un viaggio dalle {0} alle {1} di quel giorno. Controlla l'ora.</value>
+  </data>
+  <data name="Operations.Trip.AnotherInProgress" xml:space="preserve">
+    <value>Hai un viaggio in corso: termina quello prima di iniziare questo.</value>
+  </data>
+  <data name="Operations.Trip.NotPlanned" xml:space="preserve">
+    <value>Il viaggio è già iniziato.</value>
+  </data>
+  <data name="Operations.Trip.NotInProgress" xml:space="preserve">
+    <value>Il viaggio non è in corso.</value>
+  </data>
+  <data name="Operations.Trip.DurationOutOfRange" xml:space="preserve">
+    <value>Un viaggio dura da 1 minuto a meno di 24 ore.</value>
+  </data>
+  <data name="Operations.Trip.EndedTripCannotBeDeleted" xml:space="preserve">
+    <value>Un viaggio concluso non si può eliminare.</value>
+  </data>
+  <data name="Operations.Trip.Deleted" xml:space="preserve">
+    <value>Il viaggio è stato eliminato.</value>
+  </data>
+  <data name="Operations.Trip.KilogramsMismatch" xml:space="preserve">
+    <value>Il peso va indicato solo per un viaggio misurato a peso.</value>
+  </data>
+  <data name="Operations.Trip.KilometresMismatch" xml:space="preserve">
+    <value>I chilometri vanno indicati solo per un viaggio misurato a distanza.</value>
+  </data>
+  <data name="Operations.Trip.OwnedByAnotherDriver" xml:space="preserve">
+    <value>Questo viaggio appartiene a un altro autista.</value>
+  </data>
+  <data name="Operations.Trip.NoContractThatDay" xml:space="preserve">
+    <value>Il cliente non ha un contratto in quel giorno.</value>
+  </data>
+  <data name="Operations.Trip.DriverNotFound" xml:space="preserve">
+    <value>Autista non trovato.</value>
+  </data>
+</root>

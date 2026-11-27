@@ -2,6 +2,7 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using Microsoft.OpenApi;
 using Priamus.Trips.Identity.DependencyInjection;
+using Priamus.Trips.Operations.DependencyInjection;
 using Priamus.Trips.Registry.DependencyInjection;
 using Priamus.Trips.SharedKernel.Http;
 using Serilog;
@@ -54,6 +55,9 @@ builder.Services.AddIdentityModule(builder.Configuration);
 // ── Registry module ───────────────────────────────────────────────────────────
 builder.Services.AddRegistryModule(builder.Configuration);
 
+// ── Operations module ─────────────────────────────────────────────────────────
+builder.Services.AddOperationsModule(builder.Configuration);
+
 var app = builder.Build();
 
 // ── Startup ───────────────────────────────────────────────────────────────────
@@ -62,6 +66,7 @@ if (app.Environment.IsDevelopment())
 {
     await app.Services.MigrateIdentityDatabaseAsync();
     await app.Services.MigrateRegistryDatabaseAsync();
+    await app.Services.MigrateOperationsDatabaseAsync();
 }
 
 // The first administrator is created from configuration in every environment, only when no user exists.
@@ -78,6 +83,9 @@ app.MapIdentityEndpoints();
 
 // ── Registry endpoints ────────────────────────────────────────────────────────
 app.MapRegistryEndpoints();
+
+// ── Operations endpoints ──────────────────────────────────────────────────────
+app.MapOperationsEndpoints();
 
 app.Run();
 

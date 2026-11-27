@@ -19,4 +19,7 @@ public sealed class FakeCurrentUser : ICurrentUser
 
     /// <inheritdoc />
     public IReadOnlyCollection<string> Roles => ["Admin"];
+
+    /// <inheritdoc />
+    public Guid? DriverId => null;
 }

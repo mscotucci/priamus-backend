@@ -112,6 +112,8 @@ The JSON converter uses `System.Text.Json` (never Newtonsoft) with custom conver
 
 Never store sealed types in JSON when their fields need to be queried.
 
+The pricing a trip keeps (`TripPricing`) is not stored this way: its total, its day or night and its rate are summed and filtered by the back-office trip list, so it is a `ComplexProperty` with one column per member (`TripConfiguration`).
+
 ## Querying inside a value object
 
 A `ValueConverter<TVO, string>` (or any `ValueConverter<TVO, TStore>`) maps the
@@ -239,6 +241,8 @@ builder.Property<int>("Version")
 
 The aggregate increments it manually in modification methods. Persistence only configures it as token. There is no global handler: the handler catches `DbUpdateConcurrencyException` around its `SaveChangesAsync` and returns the aggregate's concurrency error, a Conflict that answers 409 (`slices-and-handlers.md`, "Unit of work").
 
+The trip acts (start, end, delete) do not answer 409 on a lost save: they save through `OperationsDbContext.TrySaveTripAsync`, which clears the tracked changes and returns `false`, and the handler re-reads the trip once and answers through its normal paths (a trip already started or ended is answered as it is, a trip deleted meanwhile is not found). A second lost save on that one retry propagates (decided by Michele on 2026-11-25).
+
 A write on an entity the user edited from a screen sends back the version it read (decided 2026-11-16). The handler sets it as the original value of the token before saving — `db.Entry(vehicle).Property(v => v.Version).OriginalValue = request.Version` — so a stale version fails the save with `DbUpdateConcurrencyException`. Every response that returns such an entity carries its `version`.
 
 ## Check constraints (defense in depth)
@@ -321,7 +325,7 @@ Per `context.md` §6, persistence is tested against real PostgreSQL via Testcont
 
 ## Domain event persistence
 
-Aggregates emit domain events (`UserPasswordChanged`, `TripRegistered`, etc.) inside their state-change methods. These events serve two distinct purposes which are handled by two distinct mechanisms.
+Aggregates emit domain events (`UserPasswordChanged`, `TripEnded`, etc.) inside their state-change methods. These events serve two distinct purposes which are handled by two distinct mechanisms.
 
 ### Default: synchronous audit log
 

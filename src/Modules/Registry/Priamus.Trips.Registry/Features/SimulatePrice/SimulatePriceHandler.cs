@@ -92,16 +92,11 @@ internal sealed class SimulatePriceHandler
     private static Result<TripMeasure> BuildTrip(SimulatePriceRequest request)
     {
         var start = TimeOfDayFormatAttribute.Parse(request.StartTime)!.Value;
-        return request.PricingMode!.Value switch
-        {
-            PricingMode.ByHour => Widen(TripMeasure.ByHour.Create(start, TimeOfDayFormatAttribute.Parse(request.EndTime)!.Value)),
-            PricingMode.ByWeight => Widen(TripMeasure.ByWeight.Create((int)request.Kilograms!.Value, start)),
-            PricingMode.ByDistance => Widen(TripMeasure.ByDistance.Create((int)request.Kilometres!.Value, start)),
-            _ => new TripMeasure.ByTrip(start),
-        };
+        return TripMeasureFactory.Create(
+            request.PricingMode!.Value,
+            start,
+            TimeOfDayFormatAttribute.Parse(request.EndTime),
+            (int?)request.Kilograms,
+            (int?)request.Kilometres);
     }
-
-    private static Result<TripMeasure> Widen<T>(Result<T> measure)
-        where T : TripMeasure =>
-        measure.IsFailure ? measure.Error : measure.Value;
 }

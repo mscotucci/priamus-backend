@@ -21,3 +21,5 @@ ADRs 0001–0011 predate the short format and keep their original long form (sta
 | [0013](0013-registry-reads-identity-users.md) | Registry reads Identity users through a lookup in Identity.Contracts | Accepted |
 | [0014](0014-one-location-registry-without-owner.md) | One location registry, without an owner customer | Accepted |
 | [0015](0015-vehicle-rate-applies-on-chosen-locations.md) | A vehicle rate of a location contract applies on chosen locations | Accepted |
+| [0016](0016-trip-saved-without-required-documents.md) | A trip is saved without its required documents | Accepted |
+| [0017](0017-operations-reads-registry-through-contracts.md) | Operations reads the Registry through one interface in Registry.Contracts | Accepted |

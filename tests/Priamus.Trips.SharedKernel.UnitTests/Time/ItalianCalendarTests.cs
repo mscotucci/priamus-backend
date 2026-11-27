@@ -24,4 +24,14 @@ public sealed class ItalianCalendarTests
 
         new FixedClock(utc).TodayInItaly().ShouldBe(DateOnly.Parse(expectedDay));
     }
+
+    [Theory]
+    [InlineData("2026-11-18T23:30:00Z", "2026-11-19T00:30:00")] // winter time, UTC+1
+    [InlineData("2026-07-01T21:59:00Z", "2026-07-01T23:59:00")] // summer time, UTC+2
+    public void NowInItaly_ReturnsTheRomeWallClock(string utcInstant, string expectedNow)
+    {
+        var utc = DateTime.Parse(utcInstant, null, System.Globalization.DateTimeStyles.AdjustToUniversal);
+
+        new FixedClock(utc).NowInItaly().ShouldBe(DateTime.Parse(expectedNow, System.Globalization.CultureInfo.InvariantCulture));
+    }
 }

@@ -44,8 +44,13 @@ This file lives in the backend repository and is the source of truth for the pro
 | Importo calcolato | CalculatedAmount |
 | Motore di calcolo | PricingEngine |
 | Configurazione fasce | TimeBandConfiguration |
-| Numero di riferimento viaggio | TripReferenceNumber |
-| Contesto registrazione viaggio | TripRegistrationContext |
+| Numero del viaggio | TripNumber |
+| Viaggio da fare | Planned trip |
+| Viaggio in corso | Trip in progress |
+| Viaggio concluso | Ended trip |
+| Inserire un viaggio | Add a trip |
+| Iniziare un viaggio | Start a trip |
+| Terminare un viaggio | End a trip |
 | Finestra di edit | EditWindow |
 | Giornata operativa | OperatingDay |
 | Cut-off riepilogo | SummaryCutoff |

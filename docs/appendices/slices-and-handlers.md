@@ -12,31 +12,21 @@ Features/{UseCase}/
 └── {UseCase}Endpoint.cs      # HTTP mapping
 ```
 
-Naming: verb + noun in English, taken from the PRD use case (`RegisterTrip`, `UploadAttachment`, `ListDriverTrips`). The XML doc of the handler cites the PRD sections and requirements it implements (`PRD §5.2`, `RF-08quater`).
+Naming: verb + noun in English, taken from the PRD use case (`AddTrip`, `StartTrip`, `ListTripCustomers`). The XML doc of the handler cites the PRD sections and requirements it implements (`PRD §5.2`, `RF-08quater`).
 
 ## Request DTO (command)
 
 ```csharp
 [ValidatableType]
-public sealed record RegisterTripRequest(
-    [Required] Guid CustomerId,
-    [Required] Guid PrimaryVehicleId,
+public sealed record AddTripRequest(
+    [Required(ErrorMessageResourceType = typeof(OperationsMessages), ErrorMessageResourceName = nameof(OperationsMessages.Validation_Required))]
+    Guid? CustomerId,
+    [Required(ErrorMessageResourceType = typeof(OperationsMessages), ErrorMessageResourceName = nameof(OperationsMessages.Validation_Required))]
+    Guid? VehicleId,
     Guid? TrailerId,
-    DateOnly ExecutionDate,
-    DateTime StartTime,
-    DateTime? EndTime,
-    [Range(0.001, 10000)] decimal? Tons,
-    [Range(0.1, 10000)] decimal? Kilometers
-) : IValidatableObject
-{
-    public IEnumerable<ValidationResult> Validate(ValidationContext context)
-    {
-        if (EndTime.HasValue && EndTime <= StartTime)
-        {
-            yield return new ValidationResult("End time must be after start time.", [nameof(EndTime)]);
-        }
-    }
-}
+    Guid? PickupLocationId,
+    Guid? DeliveryLocationId,
+    bool Start);
 ```
 
 Rules:
@@ -55,38 +45,46 @@ Plain `sealed record`, no behaviour, bare `Guid` ids.
 ## Handler
 
 ```csharp
-internal sealed class RegisterTripHandler
+internal sealed class AddTripHandler
 {
     private readonly OperationsDbContext _db;
-    private readonly ITripRegistrationContextFactory _contextFactory;
-    private readonly IPricingEngine _pricingEngine;
-    private readonly ICurrentUser _currentUser;
+    private readonly ITripRegistry _registry;
     private readonly IClock _clock;
-    private readonly ILogger<RegisterTripHandler> _logger;
+    private readonly ICurrentUser _currentUser;
 
-    public RegisterTripHandler(/* DI */) { /* ... */ }
-
-    /// <summary>PRD §5.2, §5.4, RF-08quater.</summary>
-    public async Task<Result<RegisterTripResponse>> HandleAsync(
-        RegisterTripRequest request, CancellationToken ct)
+    public AddTripHandler(OperationsDbContext db, ITripRegistry registry, IClock clock, ICurrentUser currentUser)
     {
-        var context = await _contextFactory.BuildAsync(/* ids from the request */, ct);
-        if (context.IsFailure)
+        _db = db;
+        _registry = registry;
+        _clock = clock;
+        _currentUser = currentUser;
+    }
+
+    public async Task<Result<AddTripOutcome>> HandleAsync(
+        Guid tripId, AddTripRequest request, CancellationToken cancellationToken)
+    {
+        var driverId = _currentUser.DriverId
+            ?? throw new InvalidOperationException("The session names no driver.");
+
+        var today = _clock.TodayInItaly();
+        var validated = await _registry.ValidateTripAsync(
+            new TripAnswers(
+                request.VehicleId, request.TrailerId, request.CustomerId, today,
+                request.PickupLocationId, request.DeliveryLocationId),
+            cancellationToken);
+        if (validated.IsFailure)
         {
-            return context.Error;
+            return validated.Error;
         }
 
-        try
-        {
-            var trip = Trip.Register(context.Value, MapToInput(request), _pricingEngine, _clock, _currentUser.UserId);
-            _db.Trips.Add(trip);
-            await _db.SaveChangesAsync(ct);
-            return new RegisterTripResponse(trip.Id.Value, trip.ReferenceNumber);
-        }
-        catch (DomainException ex)
-        {
-            return ex.Error;
-        }
+        var trip = Trip.Add(
+            new TripId(tripId), driverId, request.CustomerId!.Value, request.VehicleId!.Value,
+            request.TrailerId, request.PickupLocationId, request.DeliveryLocationId,
+            _clock.UtcNow, today, _currentUser.UserId);
+
+        _db.Trips.Add(trip);
+        await _db.SaveChangesAsync(cancellationToken);
+        return new AddTripOutcome(await trip.ToDtoAsync(_registry, cancellationToken), Created: true);
     }
 }
 ```
@@ -95,7 +93,7 @@ Rules:
 - `internal sealed class` (nothing outside the module resolves a handler, and its constructor takes internal ports), constructor injection, one public `HandleAsync(request, ct)` returning `Result<T>` or `Result`.
 - Inject the module `DbContext` directly (ADR 0009). No repositories.
 - Implicit conversions: `return SomeErrors.NotFound;`, `return new Response(...);`.
-- Wrap aggregate calls in `try/catch (DomainException)` and return `ex.Error`; do not catch anything else.
+- An aggregate method that can refuse returns a `Result` (the handler returns its `Error`); the handler catches no exception except the ones mapped in "Unit of work" below.
 - Map DTO → domain input in private static methods, field by field.
 - `IClock` for time, `CancellationToken` on every await, structured logging.
 - The handler calls `SaveChangesAsync` explicitly; see "Unit of work" below.
@@ -104,30 +102,35 @@ Rules:
 ## Endpoint
 
 ```csharp
-public static class RegisterTripEndpoint
+public static class AddTripEndpoint
 {
-    public static IEndpointRouteBuilder MapRegisterTrip(this IEndpointRouteBuilder app)
+    public static IEndpointRouteBuilder MapAddTrip(this IEndpointRouteBuilder app)
     {
-        app.MapPost("/api/operations/trips", HandleAsync)
+        app.MapPut("/api/operations/driver/trips/{tripId:guid}", HandleAsync)
             .RequireAuthorization(AuthorizationPolicies.Driver)
-            .WithName("RegisterTrip")
-            .WithTags("Operations.Trips")
-            .Produces<RegisterTripResponse>(StatusCodes.Status201Created)
+            .WithName("AddTrip")
+            .WithTags("Operations.Driver")
+            .Produces<TripDto>(StatusCodes.Status201Created)
+            .Produces<TripDto>(StatusCodes.Status200OK)
             .ProducesProblem(StatusCodes.Status400BadRequest)
-            .ProducesProblem(StatusCodes.Status404NotFound)
+            .ProducesProblem(StatusCodes.Status409Conflict)
             .ProducesProblem(StatusCodes.Status422UnprocessableEntity);
         return app;
     }
 
     private static async Task<IResult> HandleAsync(
-        [FromBody] RegisterTripRequest request,
-        [FromServices] RegisterTripHandler handler,
-        CancellationToken ct)
+        [FromRoute] Guid tripId,
+        [FromBody] AddTripRequest request,
+        [FromServices] AddTripHandler handler,
+        CancellationToken cancellationToken)
     {
-        var result = await handler.HandleAsync(request, ct);
+        var result = await handler.HandleAsync(tripId, request, cancellationToken);
+
         return result.Match(
-            onSuccess: r => Results.Created($"/api/operations/trips/{r.TripId}", r),
-            onFailure: e => e.ToProblemDetails());
+            onSuccess: outcome => outcome.Created
+                ? Results.Created($"/api/operations/driver/trips/{outcome.Trip.Id}", outcome.Trip)
+                : Results.Ok(outcome.Trip),
+            onFailure: error => error.ToProblemDetails());
     }
 }
 ```
@@ -167,7 +170,7 @@ Module B exposes an interface in `Priamus.Trips.{B}.Contracts` and implements it
 
 ## Application services
 
-Code shared between slices of the same module (context factories such as the trip registration context, policies such as "can the driver still edit this trip") lives in `Application/Services/`: stateless, injected into handlers, not slices. It is extracted from working slices, never written ahead of them (ADR 0012).
+Code shared between slices of the same module (services that look up facts several handlers need, policies such as "can the driver still edit this trip") lives in `Application/Services/`: stateless, injected into handlers, not slices. It is extracted from working slices, never written ahead of them (ADR 0012).
 
 ## Unit of work: the handler is the commit point (ADR 0011)
 
@@ -175,3 +178,4 @@ Code shared between slices of the same module (context factories such as the tri
 - Multi-step atomicity: `await using var tx = await _db.Database.BeginTransactionAsync(ct); ... await tx.CommitAsync(ct);` local to the handler.
 - `Result.Failure` with nothing to persist: do not call `SaveChangesAsync`. `Result.Failure` with a deliberate side effect (audit row, e.g. `LoginFailed`): call it before returning.
 - Infrastructure exceptions are mapped to domain errors by the handler, with a try/catch scoped to the `SaveChangesAsync` that can raise them (`DbUpdateConcurrencyException` → the aggregate's concurrency error; a unique violation → the aggregate's "already taken" error).
+- The trip acts (start, end, delete) are the exception to the 409 mapping of `DbUpdateConcurrencyException`: they save through `OperationsDbContext.TrySaveTripAsync`, which on a lost save reads the trip again, once, and answers through the handler's normal paths (a trip started meanwhile is answered as it is, a trip deleted meanwhile is not found), decided by Michele on 2026-11-25. See `persistence.md`, "Concurrency".

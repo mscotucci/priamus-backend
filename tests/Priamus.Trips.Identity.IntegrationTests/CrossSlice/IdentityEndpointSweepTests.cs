@@ -99,10 +99,11 @@ public sealed class IdentityEndpointSweepTests : IdentityIntegrationTestBase
             .Select(e => Normalise(e.RoutePattern.RawText ?? string.Empty))
             .Where(r => r.StartsWith("/api/", StringComparison.Ordinal)
                 && !r.StartsWith(Prefix, StringComparison.Ordinal)
-                && !r.StartsWith("/api/registry/", StringComparison.Ordinal))
+                && !r.StartsWith("/api/registry/", StringComparison.Ordinal)
+                && !r.StartsWith("/api/operations/", StringComparison.Ordinal))
             .ToList();
 
-        // Assert: Identity and Registry are the modules with endpoints today; a new module adds its own prefix here.
+        // Assert: Identity, Registry and Operations are the modules with endpoints today; a new module adds its own prefix here.
         outside.ShouldBeEmpty();
     }
 

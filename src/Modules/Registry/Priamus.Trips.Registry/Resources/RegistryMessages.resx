@@ -91,6 +91,18 @@
   <data name="Registry.Pricing.NoRateForLocation" xml:space="preserve">
     <value>Non c'è una tariffa per i luoghi del viaggio.</value>
   </data>
+  <data name="Registry.Pricing.MeasureMissing" xml:space="preserve">
+    <value>Mancano gli orari o le misure del viaggio.</value>
+  </data>
+  <data name="Registry.Trip.AnswersChanged" xml:space="preserve">
+    <value>Qualcosa è cambiato mentre compilavi. Controlla le risposte e riprova.</value>
+  </data>
+  <data name="Registry.Trip.NotPriceable" xml:space="preserve">
+    <value>Non è stato possibile terminare il viaggio. Chiama la segreteria.</value>
+  </data>
+  <data name="Registry.Trip.MeasureChanged" xml:space="preserve">
+    <value>Il contratto è cambiato mentre terminavi il viaggio. Controlla i dati e riprova.</value>
+  </data>
   <data name="Validation.VatNumber" xml:space="preserve">
     <value>La partita IVA deve avere 11 cifre con cifra di controllo valida; spazi e un IT iniziale sono ignorati.</value>
   </data>

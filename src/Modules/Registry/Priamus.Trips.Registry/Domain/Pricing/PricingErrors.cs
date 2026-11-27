@@ -31,6 +31,11 @@ public static class PricingErrors
         "Registry.Pricing.KilometresTooLarge",
         "The distance cannot exceed 9,999 km.");
 
+    /// <summary>A value the pricing mode needs to measure a trip (end time, kilograms or kilometres) is missing.</summary>
+    public static readonly Error MeasureMissing = Error.Validation(
+        "Registry.Pricing.MeasureMissing",
+        "A value needed to measure the trip is missing.");
+
     /// <summary>The total of a computation is above the largest amount the system holds.</summary>
     public static readonly Error AmountTooLarge = Error.Domain(
         "Registry.Pricing.AmountTooLarge",

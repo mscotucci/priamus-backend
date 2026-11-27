@@ -14,4 +14,7 @@ public static class AuthorizationPolicies
 
     /// <summary>Users with the BackOffice or the Admin role.</summary>
     public const string BackOfficeOrAdmin = "BackOfficeOrAdmin";
+
+    /// <summary>Users with the Driver role whose session names a driver (the <c>driver_id</c> claim).</summary>
+    public const string Driver = "Driver";
 }

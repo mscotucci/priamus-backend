@@ -44,6 +44,7 @@ public static class RegistryModuleExtensions
 
         services.AddRegistryPersistence(connectionString);
         services.AddScoped<IDriverLookup, DriverLookup>();
+        services.AddScoped<ITripRegistry, TripRegistry>();
 
         services.Scan(scan => scan
             .FromAssemblyOf<RegistryModuleMarker>()

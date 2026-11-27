@@ -134,6 +134,12 @@ public static class IdentityModuleExtensions
                 policy => policy.RequireRole(
                     UserRole.BackOffice.ToString(),
                     UserRole.Admin.ToString()));
+
+            options.AddPolicy(
+                AuthorizationPolicies.Driver,
+                policy => policy
+                    .RequireRole(UserRole.Driver.ToString())
+                    .RequireClaim("driver_id"));
         });
 
         // ── Handlers (Scrutor scan) ──────────────────────────────────────────────

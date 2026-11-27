@@ -280,6 +280,8 @@ public sealed class AdminBootstrapTests : IdentityIntegrationTestBase
         public UserId UserId => throw new InvalidOperationException("No request is in progress.");
 
         public IReadOnlyCollection<string> Roles => [];
+
+        public Guid? DriverId => null;
     }
 
     private sealed class CapturingLoggerProvider : ILoggerProvider

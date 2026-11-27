@@ -4,13 +4,14 @@ The pricing engine is the highest-risk component of the system (PRD §10.2). Thi
 
 ## Scope
 
-The engine lives in module `Registry`, in `src/Modules/Registry/Priamus.Trips.Registry/Domain/Pricing/`, and is internal to the module. Exposing it to Operations through `Registry.Contracts` is the job of the trips slice. Nothing here saves a trip or a snapshot.
+The engine lives in module `Registry`, in `src/Modules/Registry/Priamus.Trips.Registry/Domain/Pricing/`, and stays internal to the module. Its one caller for real trips is `TripRegistry` (`Application/Services/TripRegistry.cs`), through `ITripRegistry.PriceTripAsync` in `Registry.Contracts`: it finds the contract in force for the customer on the trip day and its rates (the registry facts of a trip on a day are checked by `ITripRegistry.ValidateTripAsync`, when the trip is added and when it is started; pricing, at the end, reads no status), builds the `TripMeasure` (`TripMeasureFactory`, also used by the simulation), reads the night band and calls `PricingEngine.Calculate`. The returned `PricedTrip` carries everything a trip keeps; Operations saves it (ADR 0017). The engine itself saves nothing.
 
 It works on the types the contract slices already have (`Rate`, `VehicleRate`, `MinimumRule`, in `Domain/Contracts/ValueObjects/`) with euro `decimal` amounts. It does not use a `RateMatrix`, a `Money` type or a second `MinimumRule`.
 
 Files:
 - `NightBand.cs`: the night band value object.
 - `TripMeasure.cs`: what of a trip the engine measures, one case per pricing mode.
+- `TripMeasureFactory.cs`: builds the measure of a pricing mode from the values of a trip.
 - `PricingTerms.cs`: the terms of a contract.
 - `PriceCalculation.cs`: the structured result, with the `TimeBand` and `RateSource` enums.
 - `PricingErrors.cs`: the errors of the night band, the measures and the engine.

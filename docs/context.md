@@ -99,22 +99,17 @@ Priamus.Trips.{Module}/
 
 ```
 Trip (AggregateRoot)
-├── Id: TripId
-├── ReferenceNumber: string
+├── Id: TripId, Number? (trip number, from a sequence when ended)
 ├── DriverId, CustomerId, ContractId
-├── VehicleComposition (sealed: TractorWithTrailer | StandaloneTractor | StandaloneVehicle)
-├── Route (value object)
-├── Parameters (sealed: ByHourParameters | ByWeightParameters | ByDistanceParameters | ByTripParameters)
-├── RateSnapshot (immutable value object, jsonb in DB)
-├── FinalAmount: Money (denormalized)
-├── AppliedTimeBand: TimeBand (sealed: Daytime | Nighttime, denormalized)
-├── Attachments, Issues (child entities)
-├── Audit fields, Version (concurrency)
+├── LeadingVehicleId, TrailerId?, PickupLocationId?, DeliveryLocationId?
+├── Day?, Start?, End?, EndedAt?, MeasureKind?, Kilograms?, Kilometres?
+├── Pricing: TripPricing (immutable, typed), RequiredDocuments
+├── AddedAt, AddedOn, AddedBy, DeletedAt?, DeletedBy?
 ```
 
 Detailed invariants, structure, and operations are in `appendices/domain-modeling.md`.
 
-The pricing engine is the single highest-risk component (PRD §10.2). It lives in module `Registry`, exposed via `IPricingEngine` in `Registry.Contracts`. It is a **pure function**: same inputs → same output, no side effects, no I/O (ADR 0003). All test cases in PRD §12 must have corresponding numeric test assertions; coverage target on pricing types: 100%. Algorithm and edge cases are in `appendices/pricing-engine.md`.
+The pricing engine is the single highest-risk component (PRD §10.2). It lives in module `Registry`, exposed to the other modules through `ITripRegistry` in `Registry.Contracts` (ADR 0017). It is a **pure function**: same inputs → same output, no side effects, no I/O (ADR 0003). All test cases in PRD §12 must have corresponding numeric test assertions; coverage target on pricing types: 100%. Algorithm and edge cases are in `appendices/pricing-engine.md`.
 
 ---
 

@@ -56,4 +56,10 @@ internal sealed class HttpContextCurrentUser : ICurrentUser
             .Select(c => c.Value)
             .ToList()
             ?? [];
+
+    /// <inheritdoc />
+    public Guid? DriverId =>
+        Guid.TryParse(_httpContextAccessor.HttpContext?.User.FindFirstValue("driver_id"), out var id)
+            ? id
+            : null;
 }
